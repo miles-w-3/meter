@@ -1,0 +1,39 @@
+[
+  {
+    "type": "snapshot",
+    "revision": 0,
+    "generation": "d6f2c699-f2dc-4884-86af-ccc78f16a35d",
+    "view": {
+      "conversationId": "conversation-1",
+      "status": "idle",
+      "partial": null,
+      "entries": [
+        {
+          "id": "entry-1",
+          "kind": "user",
+          "text": "hello"
+        }
+      ],
+      "tools": []
+    }
+  },
+  {
+    "type": "update",
+    "revision": 1,
+    "generation": "d6f2c699-f2dc-4884-86af-ccc78f16a35d",
+    "view": {
+      "conversationId": "conversation-1",
+      "status": "running",
+      "partial": "streaming",
+      "entries": [
+        {
+          "id": "entry-2",
+          "kind": "tool",
+          "text": "file",
+          "toolName": "read"
+        }
+      ],
+      "tools": []
+    }
+  }
+]

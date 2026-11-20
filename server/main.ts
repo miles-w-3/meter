@@ -133,7 +133,7 @@ async function metadata(conversation: Conversation) {
   const tail = await conversation.entries({ order: "descending" }, 8, undefined, context);
   const lastActivity = tail.items.flatMap((entry) => [...(entry.model ?? [])].reverse())
     .find((message) => Number.isSafeInteger(message.timestamp) && message.timestamp >= 0)?.timestamp;
-  return { id, cwd: agent.cwd, lastActivity, title: await titleFor(conversation, id), projectId: workspaces.projectFor(id, agent.cwd ?? ""), model: agent.model ? agent.model.provider + "/" + agent.model.modelId : "unconfigured" };
+  return { id, cwd: agent.cwd, lastActivity, title: workspaces.conversationTitle(id) ?? await titleFor(conversation, id), projectId: workspaces.projectFor(id, agent.cwd ?? ""), model: agent.model ? agent.model.provider + "/" + agent.model.modelId : "unconfigured" };
 }
 
 async function canonicalCwd(cwd: string) {
@@ -228,6 +228,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }, context);
     if (projectId) workspaces.associate(String(conversation.id), projectId);
     return reply(res, 201, await metadata(conversation));
+  }
+  const titlePath = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/title$/);
+  if (titlePath && req.method === "PUT") {
+    const { name } = await parseBody(req, projectRenameInput);
+    const conversation = await conversationFor(titlePath[1]);
+    workspaces.renameConversation(titlePath[1], name);
+    return reply(res, 200, await metadata(conversation));
   }
   const match = url.pathname.match(/^\/v1\/conversations\/([^/]+)(?:\/(entries|messages|abort|cwd))?$/);
   if (match) {

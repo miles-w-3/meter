@@ -14,6 +14,48 @@ type nameEditor struct {
 }
 
 func (a *app) dialogs(c *ui.Context) {
+	if target := a.closePaneConfirm; target != nil {
+		open := true
+		ui.Modal(c.Key("close-running-pane"), &open, func() {
+			ui.Column(c).Width(360).Gap(12).Children(func() {
+				text(c, "Close running pane?", 16, ink).FontWeight(650)
+				text(c, "The conversation will continue in the background.", 13, muted)
+				ui.Row(c).Gap(6).Justify(ui.End).Children(func() {
+					if action(c, "Cancel", false) {
+						open = false
+					}
+					if action(c, "Close pane", a.busy()) {
+						open = false
+						a.closePane(target.tab, target.pane)
+					}
+				})
+			})
+		})
+		if !open {
+			a.closePaneConfirm = nil
+		}
+	}
+	if id := a.closeTabConfirm; id != nil {
+		open := true
+		ui.Modal(c.Key("close-running-tab"), &open, func() {
+			ui.Column(c).Width(360).Gap(12).Children(func() {
+				text(c, "Close running tab?", 16, ink).FontWeight(650)
+				text(c, "The conversation will continue in the background.", 13, muted)
+				ui.Row(c).Gap(6).Justify(ui.End).Children(func() {
+					if action(c, "Cancel", false) {
+						open = false
+					}
+					if action(c, "Close tab", a.busy()) {
+						open = false
+						a.closeTab(*id)
+					}
+				})
+			})
+		})
+		if !open {
+			a.closeTabConfirm = nil
+		}
+	}
 	if a.projectForm {
 		ui.Modal(c.Key("new-project"), &a.projectForm, func() {
 			ui.Column(c).Width(480).Gap(12).Children(func() {
@@ -37,16 +79,49 @@ func (a *app) dialogs(c *ui.Context) {
 		if edit.id == uuid.Nil {
 			label = "New tab"
 		}
-		if !a.nameDialog(c, label, "Tab name", "Save tab", &edit.value, func(name string) {
-			a.save(func(layout *protocol.Layout) {
-				if edit.id == uuid.Nil {
-					a.paneScroll.X = 0
-					addTab(layout, *layout.ActiveProject, name)
-				} else {
-					layout.Tabs[tabIndex(layout, edit.id)].Name = &name
+		open := true
+		ui.Modal(c.Key("tab-editor"), &open, func() {
+			ui.Column(c).Width(340).Gap(12).Children(func() {
+				text(c, label, 16, ink).FontWeight(650)
+				input := ui.TextInput(c, &edit.value).Label("Tab name").Placeholder(edit.suggestion).AutoFocus()
+				name := strings.TrimSpace(edit.value)
+				if name == "" && edit.id == uuid.Nil {
+					name = edit.suggestion
 				}
+				valid := a.layout.ActiveProject != nil && len([]rune(name)) <= 80 && !a.busy() && tabNameAvailable(a.layout, *a.layout.ActiveProject, edit.id, name)
+				if name != "" && a.layout.ActiveProject != nil && !tabNameAvailable(a.layout, *a.layout.ActiveProject, edit.id, name) {
+					text(c, "A tab with this name already exists in this project.", 12, warning)
+				}
+				ui.Row(c).Gap(6).Justify(ui.End).Children(func() {
+					if action(c, "Cancel", false) {
+						open = false
+					}
+					if action(c, "Save tab", !valid) || (valid && input.Submitted()) {
+						open = false
+						conversationID := ""
+						if i := tabIndex(&a.layout, edit.id); i >= 0 {
+							panes := orderedPanes(&a.layout.Tabs[i])
+							if len(panes) == 1 && panes[0].ConversationId != nil {
+								conversationID = *panes[0].ConversationId
+							}
+						}
+						a.saveThen(func(layout *protocol.Layout) {
+							if edit.id == uuid.Nil {
+								a.paneScroll.X = 0
+								addTab(layout, *layout.ActiveProject, name)
+							} else {
+								layout.Tabs[tabIndex(layout, edit.id)].Name = &name
+							}
+						}, func() {
+							if conversationID != "" {
+								a.renameConversation(conversationID, name)
+							}
+						})
+					}
+				})
 			})
-		}) {
+		})
+		if !open {
 			a.tabEditor = nil
 		}
 	}
@@ -178,7 +253,7 @@ func (a *app) jumpTo(conversation protocol.Conversation) {
 			if len(layout.Tabs) >= 24 {
 				return
 			}
-			addTab(layout, *projectID, "Main")
+			addTab(layout, *projectID, suggestTabName(*layout, *projectID))
 		}
 		tab := &layout.Tabs[tabIndex(layout, *layout.ActiveTab)]
 		panes := orderedPanes(tab)

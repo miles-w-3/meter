@@ -61,6 +61,7 @@ const spec = {
     "/v1/conversations/{id}": { parameters: [id], get: {
       operationId: "GetConversation", responses: { "200": response("Conversation", "Conversation"), ...failures },
     } },
+    "/v1/conversations/{id}/title": { parameters: [id], put: post("RenameConversation", "ProjectRenameInput", "200", "Conversation") },
     "/v1/conversations/{id}/cwd": { parameters: [id], put: post("SetConversationCwd", "CwdInput", "200", "Conversation") },
     "/v1/conversations/{id}/entries": { parameters: [id], get: {
       operationId: "GetEntries",

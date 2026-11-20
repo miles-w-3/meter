@@ -3,8 +3,10 @@ package gui
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,6 +20,12 @@ import (
 	"pi-workspace.local/workspace/internal/protocol"
 )
 
+//go:embed assets/meter.png
+var appIcon []byte
+
+//go:embed assets/fir-menu.png
+var menuIcon []byte
+
 type pane struct {
 	conversation     string
 	expandedTools    map[string]bool
@@ -30,6 +38,8 @@ type pane struct {
 	draft            string
 	notice           string
 	connected        bool
+	starting         bool
+	pendingFirst     bool
 	loading          bool
 	meterLevel       float32
 	meterAt          time.Time
@@ -37,8 +47,9 @@ type pane struct {
 }
 
 type editor struct {
-	id    uuid.UUID
-	value string
+	id         uuid.UUID
+	value      string
+	suggestion string
 }
 
 type paneDrag struct {
@@ -49,6 +60,7 @@ type app struct {
 	ctx                  context.Context
 	api                  *client.Client
 	window               *mygo.Window
+	tray                 *mygo.Tray
 	update               func(func())
 	name                 string
 	provider             string
@@ -60,6 +72,8 @@ type app struct {
 	revealPane           uuid.UUID
 	projectForm          bool
 	tabEditor, cwdEditor *editor
+	closeTabConfirm      *uuid.UUID
+	closePaneConfirm     *paneDrag
 	nameEditor           *nameEditor
 	paletteOpen          bool
 	paletteFilter        string
@@ -114,6 +128,21 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 			MinWidth: 850, MinHeight: 550, Content: ui.View(a.view),
 		})
 		a.update = a.window.Update
+		if err := a.window.SetIcon(appIcon); err != nil {
+			log.Printf("set window icon: %v", err)
+		}
+		if runtime.GOOS == "darwin" {
+			if err := mygo.App.Dock.SetIcon(appIcon); err != nil {
+				log.Printf("set dock icon: %v", err)
+			}
+			var err error
+			a.tray, err = mygo.NewTray(mygo.TrayOptions{Icon: menuIcon, IconIsTemplate: true, ToolTip: "meter"})
+			if err != nil {
+				log.Printf("create menu bar icon: %v", err)
+			} else {
+				a.tray.OnClick(func() { a.window.Show(); a.window.Focus() })
+			}
+		}
 		a.window.OnClose(func(*mygo.CloseEvent) {
 			bounds := a.window.Bounds()
 			if bounds.Width >= 850 && bounds.Height >= 550 {
@@ -188,19 +217,29 @@ func (a *app) syncPanes() {
 	active := make(map[uuid.UUID]bool)
 	for _, tab := range a.layout.Tabs {
 		for _, node := range tab.Nodes {
+			active[node.Id] = true
+			p := a.panes[node.Id]
 			if node.ConversationId == nil {
+				if p == nil {
+					a.panes[node.Id] = &pane{}
+				}
 				continue
 			}
-			active[node.Id] = true
-			if previous := a.panes[node.Id]; previous != nil {
-				if previous.conversation == *node.ConversationId {
-					continue
-				}
-				previous.cancel()
+			if p != nil && p.conversation == *node.ConversationId {
+				continue
+			}
+			if p == nil {
+				p = &pane{}
+				a.panes[node.Id] = p
+			}
+			if !p.pendingFirst {
+				p.draft = ""
+			}
+			if p.cancel != nil {
+				p.cancel()
 			}
 			ctx, cancel := context.WithCancel(a.ctx)
-			p := &pane{cancel: cancel, conversation: *node.ConversationId}
-			a.panes[node.Id] = p
+			p.cancel, p.conversation = cancel, *node.ConversationId
 			go func(id uuid.UUID, conversation string) {
 				for event := range a.api.Subscribe(ctx, conversation) {
 					a.update(func() {
@@ -208,6 +247,10 @@ func (a *app) syncPanes() {
 							p.connected = event.View != nil
 							old := p.state.Current.Entries
 							p.state.Apply(event)
+							if p.connected && p.pendingFirst {
+								p.pendingFirst, p.starting = false, false
+								a.send(p, p.conversation, "prompt", false)
+							}
 							p.updateMeter(time.Now())
 							a.captureTitle(p)
 							a.updateBadge()
@@ -223,7 +266,9 @@ func (a *app) syncPanes() {
 	}
 	for id, p := range a.panes {
 		if !active[id] {
-			p.cancel()
+			if p.cancel != nil {
+				p.cancel()
+			}
 			delete(a.panes, id)
 		}
 	}
@@ -288,7 +333,9 @@ func (a *app) captureTitle(p *pane) {
 
 func (a *app) busy() bool { return !a.loaded || a.saving || a.fetching || a.creating || a.conflict }
 
-func (a *app) save(edit func(*protocol.Layout)) {
+func (a *app) save(edit func(*protocol.Layout)) { a.saveThen(edit, nil) }
+
+func (a *app) saveThen(edit func(*protocol.Layout), done func()) {
 	if a.busy() {
 		return
 	}
@@ -301,6 +348,11 @@ func (a *app) save(edit func(*protocol.Layout)) {
 			a.saving = false
 			if err != nil {
 				a.notice = err.Error()
+				for _, p := range a.panes {
+					if p.pendingFirst {
+						p.pendingFirst, p.starting, p.notice = false, false, err.Error()
+					}
+				}
 				a.revealPane = uuid.Nil
 				var problem *client.APIError
 				a.conflict = !errors.As(err, &problem) || problem.Problem.Code == "layout_conflict"
@@ -309,6 +361,28 @@ func (a *app) save(edit func(*protocol.Layout)) {
 			a.layout = layout
 			a.notice = ""
 			a.syncPanes()
+			if done != nil {
+				done()
+			}
+		})
+	}()
+}
+
+func (a *app) renameConversation(id, name string) {
+	go func() {
+		updated, err := a.api.RenameConversation(a.ctx, id, name)
+		a.update(func() {
+			if err != nil {
+				a.notice = "Tab renamed, but conversation rename failed: " + err.Error()
+				return
+			}
+			for i, item := range a.catalog.Conversations {
+				if item.Id == id {
+					a.catalog.Conversations[i] = updated
+					return
+				}
+			}
+			a.catalog.Conversations = append(a.catalog.Conversations, updated)
 		})
 	}()
 }
@@ -333,7 +407,7 @@ func (a *app) scopePrototypeTabs() {
 			}
 		}
 	}
-	if a.layout.ActiveProject != nil {
+	if a.layout.ActiveProject != nil || a.layout.Revision > 0 {
 		return
 	}
 	if tab := a.activeTab(); tab != nil && tab.ProjectId != nil {
@@ -409,28 +483,30 @@ func (a *app) register() {
 			a.save(func(layout *protocol.Layout) {
 				selectProject(layout, id)
 				if layout.ActiveTab == nil {
-					addTab(layout, id, "Main")
+					addTab(layout, id, suggestTabName(*layout, id))
 				}
 			})
 		})
 	}()
 }
 
-func (a *app) create(tabID uuid.UUID, node protocol.LayoutNode, cwd string) {
-	if a.busy() {
+func (a *app) create(tabID uuid.UUID, node protocol.LayoutNode, cwd string, p *pane) {
+	if a.busy() || p.starting || strings.TrimSpace(p.draft) == "" {
 		return
 	}
 	input := protocol.CreateInput{Cwd: cwd, ProjectId: a.layout.ActiveProject}
+	p.starting, p.notice = true, "Creating conversation…"
 	a.creating = true
 	go func() {
 		conversation, err := a.api.CreateConversation(a.ctx, input)
 		a.update(func() {
 			a.creating = false
 			if err != nil {
-				a.notice = err.Error()
+				p.starting, p.notice = false, err.Error()
 				return
 			}
 			a.catalog.Conversations = append([]protocol.Conversation{conversation}, a.catalog.Conversations...)
+			p.pendingFirst, p.notice = true, "Connecting…"
 			a.openIn(tabID, node.Id, conversation.Id)
 		})
 	}()
@@ -450,7 +526,7 @@ func (a *app) recent(id string) {
 	if tab == nil {
 		if a.layout.ActiveProject != nil && len(a.layout.Tabs) < 24 {
 			a.save(func(layout *protocol.Layout) {
-				addTab(layout, *layout.ActiveProject, "Main")
+				addTab(layout, *layout.ActiveProject, suggestTabName(*layout, *layout.ActiveProject))
 				tab := &layout.Tabs[len(layout.Tabs)-1]
 				tab.Nodes[0] = protocol.LayoutNode{Id: tab.Root, ConversationId: &id}
 			})

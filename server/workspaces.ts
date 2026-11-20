@@ -57,6 +57,9 @@ export class Workspaces {
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY, cwd TEXT NOT NULL UNIQUE, name TEXT NOT NULL
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS conversation_titles (
+        conversation_id TEXT PRIMARY KEY, title TEXT NOT NULL
+      ) STRICT;
       CREATE TABLE IF NOT EXISTS conversation_projects (
         conversation_id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id)
       ) STRICT;
@@ -82,6 +85,15 @@ export class Workspaces {
     return found ? String(found.id) : undefined;
   }
 
+  conversationTitle(conversation: string): string | undefined {
+    const row = this.db.prepare("SELECT title FROM conversation_titles WHERE conversation_id=?").get(conversation);
+    return row ? String(row.title) : undefined;
+  }
+
+  renameConversation(conversation: string, title: string) {
+    this.db.prepare("INSERT INTO conversation_titles VALUES (?, ?) ON CONFLICT(conversation_id) DO UPDATE SET title=excluded.title").run(conversation, title);
+  }
+
   associate(conversation: string, project: string) {
     this.db.prepare("INSERT OR IGNORE INTO conversation_projects VALUES (?, ?)").run(conversation, project);
   }
@@ -103,7 +115,22 @@ export class Workspaces {
   }
 
   async save(id: string, current: Layout, verify: (id: string) => Promise<unknown>): Promise<Layout> {
-    if (this.get(id).revision !== current.revision) throw new LayoutConflict("Workspace changed. Reload layout before editing.");
+    const previous = this.get(id);
+    if (previous.revision !== current.revision) throw new LayoutConflict("Workspace changed. Reload layout before editing.");
+    // Preserve legacy duplicate names, but never allow a save to introduce another.
+    const counts = (value: Layout) => {
+      const result = new Map<string, number>();
+      for (const tab of value.tabs) {
+        if (!tab.projectId) continue;
+        const key = tab.projectId + "\0" + (tab.name ?? "Main").trim().toLowerCase();
+        result.set(key, (result.get(key) ?? 0) + 1);
+      }
+      return result;
+    };
+    const before = counts(previous);
+    for (const [key, count] of counts(current)) {
+      if (count > 1 && count > (before.get(key) ?? 0)) throw new InvalidLayout("Tab names must be unique within a project");
+    }
     const active = current.tabs.find((tab) => tab.id === current.activeTab);
     if (active?.projectId && active.projectId !== current.activeProject) throw new InvalidLayout("Active tab belongs to another project");
     const projects = new Set(current.tabs.map((tab) => tab.projectId));

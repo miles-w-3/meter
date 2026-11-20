@@ -364,6 +364,9 @@ type SetConversationCwdJSONRequestBody = CwdInput
 // SubmitMessageJSONRequestBody defines body for SubmitMessage for application/json ContentType.
 type SubmitMessageJSONRequestBody = SubmitInput
 
+// RenameConversationJSONRequestBody defines body for RenameConversation for application/json ContentType.
+type RenameConversationJSONRequestBody = ProjectRenameInput
+
 // ResolveCwdJSONRequestBody defines body for ResolveCwd for application/json ContentType.
 type ResolveCwdJSONRequestBody = CwdInput
 
@@ -592,6 +595,14 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	SubmitMessage(ctx context.Context, id string, body SubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RenameConversationWithBody performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
+	// with any type of body and a specified content type.
+	RenameConversationWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenameConversation performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request.
+	// Takes a body of the `application/json` content type.
+	RenameConversation(ctx context.Context, id string, body RenameConversationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ResolveCwdWithBody performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request,
 	// with any type of body and a specified content type.
 	ResolveCwdWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -775,6 +786,34 @@ func (c *Client) SubmitMessageWithBody(ctx context.Context, id string, contentTy
 // Takes a body of the `application/json` content type.
 func (c *Client) SubmitMessage(ctx context.Context, id string, body SubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSubmitMessageRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenameConversationWithBody performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
+// with any type of body and a specified content type.
+func (c *Client) RenameConversationWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameConversationRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RenameConversation performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request.
+// Takes a body of the `application/json` content type.
+func (c *Client) RenameConversation(ctx context.Context, id string, body RenameConversationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameConversationRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1239,6 +1278,53 @@ func NewSubmitMessageRequestWithBody(server string, id string, contentType strin
 	return req, nil
 }
 
+// NewRenameConversationRequest calls the generic RenameConversation builder with application/json body
+func NewRenameConversationRequest(server string, id string, body RenameConversationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRenameConversationRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewRenameConversationRequestWithBody constructs an http.Request for the RenameConversation method, with any body, and a specified content type
+func NewRenameConversationRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/title", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewResolveCwdRequest calls the generic ResolveCwd builder with application/json body
 func NewResolveCwdRequest(server string, body ResolveCwdJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1599,6 +1685,16 @@ type ClientWithResponsesInterface interface {
 	// SubmitMessageWithResponse performs a POST /v1/conversations/{id}/messages (the `SubmitMessage` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	SubmitMessageWithResponse(ctx context.Context, id string, body SubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitMessageResponse, error)
+
+	// RenameConversationWithBodyWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	RenameConversationWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameConversationResponse, error)
+
+	// RenameConversationWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	RenameConversationWithResponse(ctx context.Context, id string, body RenameConversationJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameConversationResponse, error)
 
 	// ResolveCwdWithBodyWithResponse performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request,
 	// with any type of body and a specified content type.
@@ -2126,6 +2222,75 @@ func (r SubmitMessageResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SubmitMessageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RenameConversationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Conversation
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RenameConversationResponse) GetJSON200() *Conversation {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RenameConversationResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RenameConversationResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RenameConversationResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RenameConversationResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RenameConversationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RenameConversationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RenameConversationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RenameConversationResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2673,6 +2838,28 @@ func (c *ClientWithResponses) SubmitMessageWithResponse(ctx context.Context, id 
 	return ParseSubmitMessageResponse(rsp)
 }
 
+// RenameConversationWithBodyWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
+// with any type of body and a specified content type.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) RenameConversationWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameConversationResponse, error) {
+	rsp, err := c.RenameConversationWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameConversationResponse(rsp)
+}
+
+// RenameConversationWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) RenameConversationWithResponse(ctx context.Context, id string, body RenameConversationJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameConversationResponse, error) {
+	rsp, err := c.RenameConversation(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameConversationResponse(rsp)
+}
+
 // ResolveCwdWithBodyWithResponse performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -3134,6 +3321,60 @@ func ParseSubmitMessageResponse(rsp *http.Response) (*SubmitMessageResponse, err
 			return nil, err
 		}
 		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRenameConversationResponse parses an HTTP response from a RenameConversationWithResponse call
+func ParseRenameConversationResponse(rsp *http.Response) (*RenameConversationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RenameConversationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Conversation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Problem

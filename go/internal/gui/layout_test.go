@@ -87,16 +87,17 @@ func TestDesktopLayoutControls(t *testing.T) {
 		}
 	}
 
-	if recent := a.recentConversations(a.catalog.Projects[0]); len(recent) != 1 || recent[0].conversation.Id != "1" {
+	if recent := a.recentConversations(); len(recent) != 1 || recent[0].conversation.Id != "1" {
 		t.Fatalf("recent conversations should contain only open panes: %+v", recent)
 	}
-	click("+ New pane")
+	click("New pane")
 	saved()
 	panes := orderedPanes(a.activeTab())
-	if len(panes) != 2 || panes[0].Id != first || panes[1].Empty == nil || !driver.HasText("Start conversation") {
+	if len(panes) != 2 || panes[0].Id != first || panes[1].Empty == nil || !driver.HasText("Start a conversation") {
 		t.Fatalf("new pane was not added on the right: %+v", panes)
 	}
 
+	driver.Advance(200 * time.Millisecond)
 	header, ok := driver.Find("Drag Conversation #1")
 	if !ok {
 		t.Fatalf("pane header missing: %v", driver.Texts())
@@ -131,13 +132,15 @@ func TestDesktopLayoutControls(t *testing.T) {
 		t.Fatal("command palette stayed open")
 	}
 	driver.SetSize(950, 780)
-	click("+ New pane")
+	click("New pane")
 	saved()
 	if len(orderedPanes(a.activeTab())) != 3 || a.paneScroll.X <= 0 {
 		t.Fatal("new pane did not scroll into view in a narrow window")
 	}
 
-	click("Tab options")
+	if err := driver.RightClick("Reliability"); err != nil {
+		t.Fatal(err)
+	}
 	click("Rename tab")
 	click("Tab name")
 	driver.Key(ui.Cmd, ui.KeyA)
@@ -160,16 +163,32 @@ func TestDesktopLayoutControls(t *testing.T) {
 	if tabName(*a.activeTab()) != "Reconnect" {
 		t.Fatal("selecting an open conversation should navigate to its tab")
 	}
-	click("Tab options")
+	if err := driver.RightClick("Reconnect"); err != nil {
+		t.Fatal(err)
+	}
 	click("Close tab")
 	saved()
-	if tabName(*a.activeTab()) != "Scratch" || len(a.recentConversations(a.catalog.Projects[0])) != 0 {
+	if tabName(*a.activeTab()) != "Scratch" || len(a.recentConversations()) != 0 {
 		t.Fatal("closing tab should remove its conversation from Recents")
 	}
 	click("Dotfiles")
 	saved()
 	if a.layout.ActiveProject == nil || *a.layout.ActiveProject != other || driver.HasText("Scratch") {
 		t.Fatal("switching projects should hide the other project's tabs")
+	}
+}
+
+func TestRecentConversationsAcrossProjects(t *testing.T) {
+	first, second := uuid.New(), uuid.New()
+	a := &app{}
+	selectProject(&a.layout, first)
+	addTab(&a.layout, first, "First")
+	a.activeTab().Nodes[0].ConversationId, a.activeTab().Nodes[0].Empty = new("first"), nil
+	selectProject(&a.layout, second)
+	addTab(&a.layout, second, "Second")
+	a.activeTab().Nodes[0].ConversationId, a.activeTab().Nodes[0].Empty = new("second"), nil
+	if recent := a.recentConversations(); len(recent) != 2 {
+		t.Fatalf("expected open conversations from both projects, got %+v", recent)
 	}
 }
 

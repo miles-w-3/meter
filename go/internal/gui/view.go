@@ -3,7 +3,6 @@ package gui
 import (
 	"cmp"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
 	"time"
@@ -37,51 +36,37 @@ func (a *app) view(c *ui.Context) {
 	if c.Shortcut(ui.Cmd, ui.KeyK) && !a.busy() {
 		a.paletteOpen, a.paletteFilter = true, ""
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyN) && !a.busy() {
-		project, ok := a.activeProject()
-		if tab := a.activeTab(); ok && tab != nil {
-			for _, node := range orderedPanes(tab) {
-				if node.Empty != nil && (a.cwdEditor == nil || a.cwdEditor.id != node.Id) {
-					cwd := project.Cwd
-					if node.Cwd != nil {
-						cwd = *node.Cwd
-					}
-					a.create(tab.Id, node, cwd)
-					break
-				}
-			}
-		}
-	}
 	if a.writeToast != "" {
 		c.Toast(a.writeToast)
 		a.writeToast = ""
 	}
 	ui.Column(c).Fill().Background(background).Children(func() {
 		layout.TitleBar(c, layout.TitleBarOptions{
-			Label: "meter", MinHeight: 49,
+			Label: "meter", MinHeight: 44,
 			Leading: func() {
-				ui.Icon(c, gauge).Size(23, 23).TextColor(accent)
+				ui.Image(c, firTitle).Size(23, 23)
 				text(c, "meter", 17, ink).Font(monoFont).FontWeight(600)
 				if a.name != "default" {
 					text(c, a.name, 12, muted)
 				}
 			},
 			Trailing: func() {
-				a.daemonPill(c)
-				if iconButton(c, refreshIcon, "Refresh", a.fetching || a.creating || a.saving).Clicked() {
-					if a.conflict || !a.loaded {
-						a.reload()
-					} else {
-						a.refreshCatalog()
+				ui.Row(c).Padding(0, 16, 0, 0).Gap(8).AlignItems(ui.Center).Children(func() {
+					a.daemonPill(c)
+					if iconButton(c, refreshIcon, "Refresh", a.fetching || a.creating || a.saving).Clicked() {
+						if a.conflict || !a.loaded {
+							a.reload()
+						} else {
+							a.refreshCatalog()
+						}
 					}
-				}
+				})
 			},
 		}).Background(sidebar)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			project, hasProject := a.activeProject()
 			a.sidebarView(c, project)
-			ui.Box(c).Width(1).Background(theme.Border)
-			ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Radius(12).Clip().Background(contentSurface).Children(func() {
 				tab := a.activeTab()
 				if hasProject {
 					a.projectHeader(c, project, tab)
@@ -120,6 +105,11 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 	ui.Column(c).Width(sidebarWidth).MinWidth(sidebarWidth).MinHeight(0).Background(sidebar).Padding(14, 16).Gap(9).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			sectionLabel(c, "PROJECTS").Grow(1)
+			if project.Id != "" {
+				options := ui.ButtonBase(c).Size(20, 20).Label("Project options").Tooltip("Project options").Disabled(a.busy())
+				options.Children(func() { text(c, "⋯", 16, muted) })
+				options.Menu(func(m *ui.Menu) { a.projectMenu(m, project, true) })
+			}
 			if ghostPlus(c, "Add project", a.busy()).Clicked() {
 				a.pathError = ""
 				a.projectForm = !a.projectForm
@@ -129,17 +119,13 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 			ui.Column(c).Gap(4).Children(func() {
 				for _, item := range a.catalog.Projects {
 					selected := item.Id == project.Id
-					row := sidebarRow(c.Key(item.Id), item.Name, a.busy()).Tooltip(item.Cwd)
+					row := sidebarRow(c.Key(item.Id), item.Name, a.busy())
 					if selected {
-						row.Background(panel)
+						row.Background(selectedFill)
 					}
 					count := a.runningCount(item)
 					row.Children(func() {
-						bar := ui.Box(c).Width(2).Height(23).Radius(1)
-						if selected {
-							bar.Background(accent)
-						}
-						ui.Icon(c, folderIcon).Size(14, 14).TextColor(muted)
+						ui.Icon(c, folderIcon).Size(14, 14).TextColor(muted).Tooltip(item.Cwd)
 						color := muted
 						if selected {
 							color = ink
@@ -148,16 +134,7 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 						text(c, fmt.Sprint(count), 11, muted).Font(monoFont).FontFeatures("tnum").
 							Tooltip(fmt.Sprintf("%d running panes", count))
 					})
-					row.ContextMenu(func(m *ui.Menu) {
-						if m.Item("Rename project").Disabled(a.busy()).Chosen() {
-							a.nameEditor = &nameEditor{label: "Rename project", value: item.Name, save: func(name string) { a.renameProject(item, name) }}
-						}
-						if m.Item("Close project").Disabled(a.busy() || !selected).Chosen() {
-							a.save(func(layout *protocol.Layout) {
-								layout.ActiveProject, layout.ActiveTab = nil, nil
-							})
-						}
-					})
+					row.ContextMenu(func(m *ui.Menu) { a.projectMenu(m, item, selected) })
 					if row.Clicked() && !selected {
 						if id, err := uuid.Parse(item.Id); err == nil {
 							a.selectProject(id)
@@ -166,15 +143,15 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 				}
 			})
 		})
-		if project.Id == "" {
-			return
-		}
 		ui.Box(c).Height(1).Background(theme.Border)
 		sectionLabel(c, "RECENT")
-		ui.TextInput(c, &a.filter).Placeholder("Filter conversations").Label("Filter conversations")
+		filter := ui.TextInputBase(c, &a.filter).Placeholder("Filter conversations").Label("Filter conversations").Padding(7, 9).Radius(6).Background(panel)
+		if filter.Focused() {
+			filter.Border(1, theme.Focus)
+		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(5).Children(func() {
-				conversations := a.recentConversations(project)
+				conversations := a.recentConversations()
 				if len(conversations) == 0 {
 					text(c, "No open conversations", 12, muted)
 				}
@@ -189,6 +166,12 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 						ui.Column(c).Gap(3).Grow(1).MinWidth(0).Padding(4, 3).Children(func() {
 							text(c, title, 13, ink).NoWrap().Ellipsis("…")
 							subtitle := tabName(entry.tab)
+							for _, p := range a.catalog.Projects {
+								if entry.tab.ProjectId != nil && p.Id == entry.tab.ProjectId.String() {
+									subtitle = p.Name + " · " + subtitle
+									break
+								}
+							}
 							if conversation.LastActivity != nil {
 								subtitle += " · " + activityAge(c.Now(), *conversation.LastActivity)
 							}
@@ -197,14 +180,26 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 					})
 					if row.Clicked() {
 						a.revealPane = entry.node.Id
-						if a.layout.ActiveTab == nil || *a.layout.ActiveTab != entry.tab.Id {
-							a.save(func(layout *protocol.Layout) { layout.ActiveTab = &entry.tab.Id })
+						if a.layout.ActiveTab == nil || *a.layout.ActiveTab != entry.tab.Id || a.layout.ActiveProject == nil || *a.layout.ActiveProject != *entry.tab.ProjectId {
+							a.save(func(layout *protocol.Layout) {
+								layout.ActiveProject, layout.ActiveTab = entry.tab.ProjectId, &entry.tab.Id
+							})
 						}
 					}
 				}
 			})
 		})
 	})
+}
+
+func (a *app) projectMenu(m *ui.Menu, project protocol.Project, selected bool) {
+	if m.Item("Rename project").Disabled(a.busy()).Chosen() {
+		a.nameEditor = &nameEditor{label: "Rename project", value: project.Name, save: func(name string) { a.renameProject(project, name) }}
+	}
+	if m.Item("Close project").Disabled(a.busy() || !selected).Chosen() {
+		a.tabEditor, a.cwdEditor = nil, nil
+		a.save(func(layout *protocol.Layout) { layout.ActiveProject, layout.ActiveTab = nil, nil })
+	}
 }
 
 func sidebarRow(c *ui.Context, label string, disabled bool) ui.Element {
@@ -278,7 +273,9 @@ func conversationLight(p *pane) (ui.Color, bool) {
 	}
 	switch p.state.Current.Status {
 	case "idle":
-		return ui.Hex("#4f9cf9"), true
+		return idleStatus, true
+	case "running":
+		return runningColor, true
 	case "failed":
 		return theme.Danger, true
 	default:
@@ -286,11 +283,11 @@ func conversationLight(p *pane) (ui.Color, bool) {
 	}
 }
 
-func (a *app) recentConversations(project protocol.Project) []recentEntry {
+func (a *app) recentConversations() []recentEntry {
 	var recent []recentEntry
 	needle := strings.ToLower(strings.TrimSpace(a.filter))
 	for _, tab := range a.layout.Tabs {
-		if tab.ProjectId == nil || tab.ProjectId.String() != project.Id {
+		if tab.ProjectId == nil {
 			continue
 		}
 		for _, node := range orderedPanes(&tab) {
@@ -340,48 +337,81 @@ func tabName(tab protocol.LayoutTab) string {
 }
 
 func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *protocol.LayoutTab) {
-	ui.Row(c).Height(40).Background(sidebar).Padding(0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Height(40).Background(sidebar).Padding(0, 16, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
 		ui.ScrollHorizontal(c).Grow(1).MinWidth(0).Children(func() {
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Height(40).Gap(4).AlignItems(ui.Center).Children(func() {
 				for _, tab := range a.layout.Tabs {
 					if tab.ProjectId == nil || tab.ProjectId.String() != project.Id {
 						continue
 					}
 					selected := active != nil && active.Id == tab.Id
-					ui.Column(c.Key(tab.Id.String())).Gap(2).Children(func() {
-						chip := ui.Button(c, tabName(tab)).FontSize(13).Disabled(a.busy()).Border(0, theme.Border)
-						chip.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, tab) })
-						if selected {
-							chip.TextColor(ink)
-						}
+					row := ui.Row(c.Key(tab.Id.String())).Height(32).Padding(0, 10).Gap(7).AlignItems(ui.Center).Radius(8)
+					if selected {
+						row.Background(contentSurface)
+					}
+					row.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, tab) })
+					row.Children(func() {
+						chip := ui.ButtonBase(c).Label(tabName(tab)).Height(32).MaxWidth(200).Disabled(a.busy())
+						chip.Children(func() {
+							color := muted
+							if selected {
+								color = ink
+							}
+							text(c, tabName(tab), 13, color).NoWrap().Ellipsis("…").MaxWidth(200)
+						})
 						if chip.Clicked() && !selected {
 							a.tabEditor, a.cwdEditor = nil, nil
 							a.paneScroll.X = 0
 							a.save(func(layout *protocol.Layout) { layout.ActiveTab = &tab.Id })
 						}
-						underline := ui.Box(c).Height(2).Radius(1)
-						if selected {
-							underline.Background(accent)
+						if row.Hovered() && iconButton(c, closeIcon, "Close tab "+tabName(tab), a.busy()).Clicked() {
+							a.requestCloseTab(tab)
 						}
 					})
 				}
 				if ghostPlus(c.Key("new-tab"), "New tab", a.busy() || len(a.layout.Tabs) >= 24).Clicked() {
-					a.tabEditor = &editor{id: uuid.Nil}
+					a.tabEditor = &editor{id: uuid.Nil, suggestion: suggestTabName(a.layout, *a.layout.ActiveProject)}
 				}
 			})
 		})
 		if active != nil {
-			more := ui.ButtonBase(c).Size(29, 29).Label("Tab options").Tooltip("Tab options").Disabled(a.busy())
-			more.Children(func() { text(c, "⋯", 16, muted) })
-			more.Menu(func(m *ui.Menu) { a.tabMenu(m, *active) })
-			if ui.Button(c, "+ New pane").FontSize(12).TextColor(accent).Background(panel).
-				Disabled(a.busy() || len(orderedPanes(active)) >= maxPanes).Clicked() {
-				a.appendPane(active.Id, emptyPane())
-			}
+			ui.Row(c).Height(40).AlignItems(ui.Center).Children(func() {
+				if iconButton(c, newPaneIcon, "New pane", a.busy() || len(orderedPanes(active)) >= maxPanes).Clicked() {
+					a.appendPane(active.Id, emptyPane())
+				}
+			})
 		}
 	})
-	ui.Box(c).Height(1).Background(theme.Border)
+}
 
+func (a *app) tabStatus(tab protocol.LayoutTab) string {
+	status := "idle"
+	for _, node := range orderedPanes(&tab) {
+		if p := a.panes[node.Id]; p != nil && p.connected {
+			if p.state.Current.Status == "running" {
+				return "running"
+			}
+			if p.state.Current.Status == "failed" {
+				status = "failed"
+			}
+		}
+	}
+	return status
+}
+
+func (a *app) requestCloseTab(tab protocol.LayoutTab) {
+	if a.tabStatus(tab) == "running" {
+		id := tab.Id
+		a.closeTabConfirm = &id
+		return
+	}
+	a.closeTab(tab.Id)
+}
+
+func (a *app) closeTab(id uuid.UUID) {
+	a.tabEditor, a.cwdEditor = nil, nil
+	a.paneScroll.X = 0
+	a.save(func(layout *protocol.Layout) { closeTab(layout, id) })
 }
 
 func (a *app) tabMenu(m *ui.Menu, tab protocol.LayoutTab) {
@@ -389,16 +419,14 @@ func (a *app) tabMenu(m *ui.Menu, tab protocol.LayoutTab) {
 		a.tabEditor = &editor{id: tab.Id, value: tabName(tab)}
 	}
 	if m.Item("Close tab").Disabled(a.busy()).Chosen() {
-		a.tabEditor, a.cwdEditor = nil, nil
-		a.paneScroll.X = 0
-		a.save(func(layout *protocol.Layout) { closeTab(layout, tab.Id) })
+		a.requestCloseTab(tab)
 	}
 }
 
 func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.LayoutTab) {
 	panes := orderedPanes(tab)
 	width, _ := c.Size()
-	const gap = 14
+	const gap = 12
 	available := max(minPaneWidth*float32(len(panes)), width-sidebarWidth-1-float32((len(panes)+1)*gap))
 	widths := paneWidths(panes, available)
 	ui.ScrollHorizontal(c.Key(tab.Id.String())).Grow(1).MinHeight(0).MinWidth(0).
@@ -416,8 +444,11 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					}
 				}
 				column := ui.Column(c.Key(node.Id.String())).Width(paneWidth).MinWidth(paneWidth).MinHeight(0).Clip().
-					Radius(12).Background(sidebar).Transition(ui.ElementTransition{Enter: &ui.Motion{X: 6}})
+					Radius(12).Background(contentSurface).Transition(ui.ElementTransition{Enter: &ui.Motion{X: 6}})
 				column.Children(func() {
+					if len(panes) > 1 {
+						ui.Box(c).FillWidth().Height(1).Background(highlight)
+					}
 					a.renderPane(c, project, tab, node, accent)
 				})
 				if a.revealPane == node.Id {
@@ -462,15 +493,27 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		if node.Cwd != nil {
 			cwd = *node.Cwd
 		}
-		a.paneHeader(c, tab, node, paneTitle(node, "New pane"), "", "", muted, cwd, project.Cwd, false, nil)
-		ui.Column(c).Grow(1).MinHeight(0).Padding(15).Gap(12).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Icon(c, gauge).Size(32, 32).TextColor(muted)
-			text(c, "No conversation", 14, muted)
-			if ui.PrimaryButton(c, "Start conversation").FontSize(13).Disabled(a.busy() || (a.cwdEditor != nil && a.cwdEditor.id == node.Id)).Clicked() {
-				a.create(tab.Id, node, cwd)
-			}
-			text(c, "⌘N", 11, muted).Font(monoFont)
+		a.paneHeader(c, tab, node, paneTitle(node, "New pane"))
+		p := a.panes[node.Id]
+		if p == nil {
+			return
+		}
+		ui.Column(c).Grow(1).MinHeight(0).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			text(c, "Start a conversation", 14, muted)
 		})
+		composerArea(c, func() {
+			composer(c, &p.draft, form.ComposerOptions{
+				Label: "New conversation", Placeholder: "Message…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
+				ReadOnly:       p.starting,
+				SubmitDisabled: a.busy() || p.starting || (a.cwdEditor != nil && a.cwdEditor.id == node.Id),
+				OnSubmit:       func(string) { a.create(tab.Id, node, cwd, p) },
+			})
+			if p.notice != "" {
+				text(c, clean(p.notice), 12, warning)
+			}
+		})
+		a.paneStatusLine(c, tab, node, cwd, false, p)
+		a.directoryDialog(c, tab, node, false)
 		return
 	}
 	p := a.panes[node.Id]
@@ -478,37 +521,17 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		return
 	}
 	id := *node.ConversationId
-	conversation, found := a.metadata(id)
+	conversation, _ := a.metadata(id)
 	title := paneTitle(node, a.title(conversation))
-	status, color := "Connecting…", muted
-	if p.connected {
-		switch p.state.Current.Status {
-		case "running":
-			status, color = "Running", theme.Success
-		case "failed":
-			status, color = "Interrupted", warning
-			if reason := p.state.Current.Failure; reason != nil {
-				status = "Failed · " + *reason
-			}
-		default:
-			status = "Idle"
-		}
-	} else if !found {
-		status, color = "Unavailable", warning
-	}
 	running := p.connected && p.state.Current.Status == "running"
-	a.paneHeader(c, tab, node, title, "", status, color, conversation.Cwd, project.Cwd, !p.connected || running, func() {
-		if p.state.Before != nil && action(c, "Older history", p.loading || !p.connected) {
-			a.history(p, id)
-		}
+	a.paneHeader(c, tab, node, title)
+	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Background(contentSurface).Children(func() {
+		a.transcript(c, p, tint, id)
 	})
-	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Background(background).Children(func() {
-		ui.Column(c).Padding(12, 4).Justify(ui.End).Children(func() { meter(c, p) })
-		a.transcript(c, p, tint)
-	})
-	ui.Column(c).Padding(10, paneGutter).Gap(5).Background(sidebar).Children(func() {
-		form.Composer(c, &p.draft, form.ComposerOptions{
-			Label: "Message " + id, Placeholder: "Message…", SubmitLabel: "Send",
+	composerArea(c, func() {
+		composer(c, &p.draft, form.ComposerOptions{
+			Label: "Message " + id, Placeholder: "Message…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
+			ReadOnly:       p.pendingFirst,
 			SubmitDisabled: !p.connected || running,
 			OnSubmit:       func(string) { a.send(p, id, "prompt", false) },
 			Actions: func() {
@@ -537,6 +560,52 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 			text(c, clean(p.notice), 12, muted)
 		}
 	})
+	a.paneStatusLine(c, tab, node, conversation.Cwd, !p.connected || running, p)
+	a.directoryDialog(c, tab, node, !p.connected || running)
+}
+
+func composer(c *ui.Context, draft *string, options form.ComposerOptions) {
+	canSend := func(value string) bool {
+		return !options.ReadOnly && !options.Disabled && !options.SubmitDisabled && strings.TrimSpace(value) != ""
+	}
+	ui.Column(c).FillWidth().MinWidth(0).Radius(8).Clip().Background(panel).Children(func() {
+		ui.Box(c).FillWidth().Height(1).Background(highlight)
+		ui.Row(c).Padding(8).Gap(8).AlignItems(ui.End).Children(func() {
+			ui.TextAreaBase(c, draft).Grow(1).MinWidth(0).Lines(1, 8).Label(options.Label).
+				Placeholder(options.Placeholder).ReadOnly(options.ReadOnly).FontSize(14).TextColor(ink).
+				OnTextKey(func(k ui.TextKey) bool {
+					if k.Key != ui.KeyEnter || k.Mods != 0 {
+						return false
+					}
+					value := k.Text()
+					if canSend(value) {
+						*draft = value
+						options.OnSubmit(value)
+						if *draft != value {
+							k.SetText(*draft)
+						}
+					}
+					return true
+				})
+			if options.Actions != nil {
+				options.Actions()
+			}
+			button := ui.ButtonBase(c).Label(options.SubmitLabel).Size(32, 32).Radius(16).Background(accent).Center().Disabled(!canSend(*draft)).KeepFocus()
+			button.Children(func() { text(c, "↑", 18, background).FontWeight(650) })
+			if button.Clicked() && canSend(*draft) {
+				options.OnSubmit(*draft)
+			}
+		})
+	})
+}
+
+func composerArea(c *ui.Context, children func()) {
+	ui.Row(c).FillWidth().Padding(8, paneGutter, 12, paneGutter).Justify(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MaxWidth(720).MinWidth(0).Gap(5).Children(func() {
+			children()
+			text(c, "⏎ send · ⇧⏎ newline", 10, muted)
+		})
+	})
 }
 
 func paneTitle(node protocol.LayoutNode, fallback string) string {
@@ -544,95 +613,6 @@ func paneTitle(node protocol.LayoutNode, fallback string) string {
 		return *node.Name
 	}
 	return fallback
-}
-
-func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, title, id, status string, color ui.Color, cwd, projectCwd string, locked bool, extra func()) {
-	ui.Column(c).Padding(9, paneGutter).Gap(6).Background(panel).Children(func() {
-		row := ui.Row(c).Gap(7).AlignItems(ui.Center)
-		row.Children(func() {
-			handle := ui.Row(c.Key("handle")).Gap(6).Grow(1).MinWidth(0).AlignItems(ui.Center)
-			canDrag := !a.busy() && len(orderedPanes(tab)) > 1
-			if canDrag {
-				handle.Label("Drag " + title).Cursor(ui.CursorGrab).Drag(paneDrag{tab: tab.Id, pane: node.Id})
-			}
-			handle.Children(func() {
-				text(c, title, 14, ink).FontWeight(650).Grow(1).NoWrap().Ellipsis("…")
-				if canDrag && (row.Hovered() || handle.Hovered() || handle.Dragging()) {
-					text(c, "⠿", 13, muted).Width(12)
-				}
-				if id != "" {
-					text(c, id, 10, muted).Font(monoFont).FontFeatures("tnum")
-				}
-			})
-			if status != "" {
-				dot := ui.Box(c.Key("status")).Size(6, 6).Radius(3).Background(color)
-				if status == "Running" && !c.Preferences().ReduceMotion {
-					fraction := dot.Loop("pulse", 1400*time.Millisecond, ui.Linear)
-					dot.Opacity(.45 + .55*float32((1-math.Cos(float64(fraction)*2*math.Pi))/2))
-				}
-				dot.Tooltip(status)
-			}
-			lastEmpty := node.Empty != nil && len(tab.Nodes) == 1
-			closePaneAction := func() {
-				if a.cwdEditor != nil && a.cwdEditor.id == node.Id {
-					a.cwdEditor = nil
-				}
-				a.save(func(layout *protocol.Layout) { closePane(&layout.Tabs[tabIndex(layout, tab.Id)], node.Id) })
-			}
-			row.ContextMenu(func(m *ui.Menu) {
-				if m.Item("Rename pane").Disabled(a.busy()).Chosen() {
-					a.nameEditor = &nameEditor{label: "Rename pane", value: title, save: func(name string) {
-						a.save(func(layout *protocol.Layout) {
-							tab := &layout.Tabs[tabIndex(layout, tab.Id)]
-							tab.Nodes[nodeIndex(tab, node.Id)].Name = &name
-						})
-					}}
-				}
-				if m.Item("Change directory").Disabled(a.busy() || locked).Chosen() {
-					a.pathError = ""
-					a.cwdEditor = &editor{id: node.Id, value: cwd}
-				}
-				if m.Item("Close pane").Disabled(a.busy() || lastEmpty).Chosen() {
-					closePaneAction()
-				}
-			})
-			if iconButton(c, closeIcon, "Close pane", a.busy() || lastEmpty).Clicked() {
-				closePaneAction()
-			}
-		})
-		if edit := a.cwdEditor; edit != nil && edit.id == node.Id {
-			open := true
-			ui.Modal(c.Key("change-directory"), &open, func() {
-				ui.Column(c).Width(480).Gap(12).Children(func() {
-					text(c, "Change directory", 16, ink).FontWeight(650)
-					submitted := a.pathPicker(c, &edit.value)
-					valid := strings.TrimSpace(edit.value) != "" && !a.busy() && !locked
-					ui.Row(c).Gap(6).Justify(ui.End).Children(func() {
-						if action(c, "Cancel", false) {
-							open = false
-						}
-						if action(c, "Apply", !valid) || (valid && submitted) {
-							a.changeCwd(tab.Id, node, expandHome(edit.value))
-						}
-					})
-				})
-			})
-			if !open {
-				a.cwdEditor = nil
-			}
-		} else if cwd != "" && cwd != projectCwd {
-			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-				pathLabel(c, cwd)
-				if row.Hovered() && iconButton(c, folderIcon, "Change directory", a.busy() || locked).Clicked() {
-					a.pathError = ""
-					a.cwdEditor = &editor{id: node.Id, value: cwd}
-				}
-			})
-		}
-		if extra != nil {
-			extra()
-		}
-	})
 }
 
 func clean(value string) string {

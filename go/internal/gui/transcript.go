@@ -9,6 +9,7 @@ import (
 	"github.com/Cyenoch/mygoui/content"
 	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo/ui"
+	mmd "github.com/egoist/mygo/ui/markdown"
 )
 
 func ghost(c *ui.Context, label string, disabled bool) bool {
@@ -42,37 +43,13 @@ func (p *pane) updateMeter(now time.Time) {
 	p.meterAt = now
 }
 
-func meter(c *ui.Context, p *pane) {
-	const segments = 40
-	column := ui.Column(c.Key("meter")).Width(6).MinWidth(6).Gap(2).Justify(ui.End)
-	tooltip := "Context usage unavailable"
-	if usage := p.state.Current.ContextUsage; p.connected && usage != nil && usage.Window > 0 {
-		tooltip = fmt.Sprintf("Estimated context · %d of %d tokens", usage.Tokens, usage.Window)
-	}
-	if p.connected && p.state.Current.Status == "running" {
-		tooltip = "Estimated streaming throughput"
-	}
-	column.Tooltip(tooltip).Children(func() {
-		level := p.meterLevel
-		if p.connected && p.state.Current.Status == "running" && !c.Preferences().ReduceMotion {
-			column.Loop("throughput", time.Second, ui.Linear)
-			level *= max(0, 1-float32(c.Now().Sub(p.meterAt).Seconds()))
-		}
-		fill := column.Animate("segments", level*segments, 120*time.Millisecond)
-		for i := range segments {
-			filled := min(1, max(0, fill-float32(segments-1-i)))
-			ui.Box(c.Key(i)).Size(6, 3).Radius(1).Background(theme.Border.Mix(accent, filled))
-		}
-	})
-}
-
 type message struct {
 	id, label, text string
 	tool, user      bool
 	succeeded       bool
 }
 
-func (a *app) transcript(c *ui.Context, p *pane, tint ui.Color) {
+func (a *app) transcript(c *ui.Context, p *pane, tint ui.Color, conversationID string) {
 	entries := p.state.Entries()
 	messages := make([]message, 0, len(entries)+len(p.state.Current.Tools)+1)
 	completed := make(map[string]bool)
@@ -116,50 +93,92 @@ func (a *app) transcript(c *ui.Context, p *pane, tint ui.Color) {
 	if partial := p.state.Current.Partial; partial != nil {
 		messages = append(messages, message{id: "partial", label: "assistant · streaming", text: clean(*partial) + " ▍"})
 	}
-	if len(messages) == 0 {
+	if len(messages) == 0 && p.state.Before == nil {
 		ui.Column(c).Grow(1).MinHeight(0).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			text(c, "Messages appear here", 14, muted)
 		})
 		return
 	}
-	p.list.Key = func(row int) any { return messages[row].id }
+	offset := 0
+	if p.state.Before != nil {
+		offset = 1
+	}
+	p.list.Key = func(row int) any {
+		if offset == 1 && row == 0 {
+			return "older-history"
+		}
+		return messages[row-offset].id
+	}
 	p.list.FollowEnd = true
-	ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Background(background).Clip().Children(func() {
-		viewport := ui.List(c, &p.list, len(messages), func(i int) {
-			msg := messages[i]
-			if msg.tool {
-				toolRow(c, p, msg)
-				return
-			}
-			row := ui.Row(c).MinWidth(0).AlignItems(ui.Stretch)
-			if msg.user {
-				row.Background(panel).Radius(5)
-			}
-			row.Children(func() {
-				ui.Row(c).Width(56).MinWidth(56).Padding(9, 12).Justify(ui.End).Children(func() {
-					if msg.user {
-						text(c, "›", 16, accent).Font(monoFont)
+	ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Background(contentSurface).Clip().Children(func() {
+		viewport := ui.List(c, &p.list, len(messages)+offset, func(i int) {
+			if offset == 1 && i == 0 {
+				ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
+					if ui.Button(c, "Older history").FontSize(12).TextColor(muted).Background(panel).Radius(12).Disabled(p.loading || !p.connected).Clicked() {
+						a.history(p, conversationID)
 					}
 				})
-				messageBody(c, msg)
+				return
+			}
+			msg := messages[i-offset]
+			ui.Row(c).FillWidth().MinWidth(0).Padding(0, paneGutter).Justify(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).MaxWidth(720).MinWidth(0).Children(func() {
+					if msg.tool {
+						toolRow(c, p, msg)
+						return
+					}
+					row := ui.Row(c).MinWidth(0).AlignItems(ui.Stretch)
+					if msg.user {
+						row.Background(panel).Radius(8)
+					}
+					row.Children(func() {
+						if msg.user {
+							ui.Box(c).Width(2).MinWidth(2).Background(accent)
+						}
+						messageBody(c, msg)
+					})
+				})
 			})
-		}).Grow(1).MinHeight(0).MinWidth(0).Padding(10, 0).Gap(7).TrackScroll(&p.transcriptScroll)
+		}).Grow(1).MinHeight(0).MinWidth(0).Padding(12, 0).Gap(20).TrackScroll(&p.transcriptScroll)
 		mygoui.ScrollFade(c, viewport, &p.transcriptScroll, mygoui.ScrollFadeOptions{
-			Mode: mygoui.SurfaceFade, Surface: background, Edges: mygoui.FadeTop | mygoui.FadeBottom, Size: 24,
+			Mode: mygoui.SurfaceFade, Surface: contentSurface, Edges: mygoui.FadeTop, Size: 24,
 		})
 	})
 }
 
 func messageBody(c *ui.Context, msg message) {
-	ui.Column(c).Grow(1).MinWidth(0).Padding(9, paneGutter, 9, 0).Children(func() {
+	ui.Column(c).Grow(1).MinWidth(0).Padding(8, paneGutter).Children(func() {
 		if body := strings.TrimSpace(msg.text); body != "" {
 			if msg.user {
 				text(c, body, 14, ink).Selectable().LineHeight(1.5)
 			} else {
-				content.Markdown(c, content.MarkdownOptions{Source: body, Compact: true})
+				prose(c, body)
 			}
 		}
 	})
+}
+
+type proseState struct {
+	options mmd.Options
+	theme   mmd.Theme
+}
+type proseKey struct{}
+
+func prose(c *ui.Context, body string) {
+	root := ui.Column(c).FillWidth().MinWidth(0)
+	st := *ui.Local(root, proseKey{}, func() *proseState {
+		s := &proseState{}
+		s.options.Theme = &s.theme
+		s.options.CodeBlock = func(c *ui.Context, b *mmd.CodeBlockView) {
+			content.Highlighter(c, content.HighlighterOptions{Code: b.Code(), Language: b.Language})
+		}
+		return s
+	})
+	st.theme = mmd.Theme{Font: "Source Serif 4", CodeFont: monoFont, FontSize: 15, LineHeight: 1.6,
+		Text: ink, Muted: muted, Link: rain, Strong: ink, Code: ink, CodeBackground: panel,
+		QuoteBar: theme.Border, QuoteText: muted, Rule: theme.Border, TableBorder: theme.Border,
+		TableHeader: panel, Checkbox: accent, BlockSpacing: .6}
+	root.Children(func() { mmd.View(c, body, &st.options) })
 }
 
 func toolRow(c *ui.Context, p *pane, msg message) {
@@ -182,7 +201,7 @@ func toolRow(c *ui.Context, p *pane, msg message) {
 	if expanded {
 		glyph = "⌄"
 	}
-	color := muted
+	color := rain
 	ui.Column(c).MinWidth(0).Children(func() {
 		button := ui.ButtonBase(c).Label(summary).AlignSelf(ui.Stretch).MinWidth(0).MinHeight(26).
 			Justify(ui.Start).AlignItems(ui.Center).Padding(0, paneGutter).Gap(6).Radius(6).Disabled(msg.text == "")
@@ -190,7 +209,9 @@ func toolRow(c *ui.Context, p *pane, msg message) {
 			button.Background(sidebar)
 		}
 		button.Children(func() {
-			text(c, glyph, 13, muted).Width(8)
+			if msg.text != "" {
+				text(c, glyph, 13, muted).Width(8)
+			}
 			text(c, kind, 11, color).Font(monoFont)
 			if status != "" {
 				text(c, status, 11, muted).Font(monoFont).Grow(1).NoWrap().Ellipsis("…")

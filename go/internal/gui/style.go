@@ -20,20 +20,40 @@ var geist []byte
 //go:embed fonts/JetBrainsMono.ttf
 var jetBrainsMono []byte
 
+//go:embed fonts/SourceSerif4.ttf
+var sourceSerif []byte
+
+//go:embed assets/fir-title.png
+var firTitlePNG []byte
+
+var firTitle = func() ui.ImageSource {
+	image, err := ui.DecodeImage(firTitlePNG)
+	if err != nil {
+		panic(err)
+	}
+	return image
+}()
+
 var registerFonts = sync.OnceValue(func() error {
-	return errors.Join(ui.RegisterFont(geist, "Geist"), ui.RegisterFont(jetBrainsMono, monoFont))
+	return errors.Join(ui.RegisterFont(geist, "Geist"), ui.RegisterFont(jetBrainsMono, monoFont), ui.RegisterFont(sourceSerif, "Source Serif 4"))
 })
 
 var (
-	theme      = meterTheme()
-	background = theme.Background
-	sidebar    = theme.Surface
-	panel      = theme.SurfaceHover
-	ink        = theme.Text
-	muted      = theme.TextMuted
-	accent     = theme.Accent
-	warning    = theme.Warning
-	gauge      = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 17a8 8 0 1 1 16 0M12 15l4-5M6 14h1m10 0h1M12 7v1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/></svg>`))
+	theme          = meterTheme()
+	background     = theme.Background
+	sidebar        = theme.Background
+	contentSurface = theme.Surface
+	panel          = theme.SurfaceHover
+	ink            = theme.Text
+	muted          = theme.TextMuted
+	accent         = theme.Accent
+	warning        = theme.Warning
+	idleStatus     = ui.Hex("#6b7b70")
+	faint          = ui.Hex("#647568")
+	runningColor   = ui.Hex("#d2a85f")
+	rain           = ui.Hex("#7f9fb0")
+	selectedFill   = ui.RGBA(143, 174, 122, .10)
+	highlight      = ui.RGBA(255, 255, 255, .04)
 )
 
 // Configure the component library from the same palette as the native controls.
@@ -46,7 +66,7 @@ func init() {
 		MutedBackground: &panel, MutedForeground: &muted,
 		Accent: &panel, AccentForeground: &ink,
 		Destructive: &theme.Danger, DestructiveForeground: &ink,
-		Border: &theme.Border, Input: &theme.Border, Ring: &accent,
+		Border: &theme.Border, Input: &theme.Border, Ring: &theme.Focus,
 		Sidebar: &sidebar, SidebarForeground: &ink, SidebarBorder: &theme.Border,
 		Code: &sidebar, CodeForeground: &ink,
 	}
@@ -58,16 +78,17 @@ func init() {
 
 func meterTheme() *ui.Theme {
 	t := ui.DarkTheme()
-	t.Background, t.Surface, t.SurfaceHover = ui.Hex("#0c110e"), ui.Hex("#142019"), ui.Hex("#1b2c21")
-	t.SurfacePressed = ui.Hex("#294334")
-	t.Border = ui.Hex("#30483a")
-	t.Text, t.TextMuted = ui.Hex("#e5eee7"), ui.Hex("#8ca596")
-	t.Accent, t.AccentText = ui.Hex("#6db888"), ui.Hex("#0c110e")
-	t.AccentHover, t.AccentPressed = ui.Hex("#8dcca3"), ui.Hex("#4b9368")
-	t.Danger, t.Warning, t.Success = ui.Hex("#e46d61"), t.TextMuted, t.Accent
-	t.Focus, t.InactiveAccent = t.Accent, t.Accent
-	t.Selection = ui.RGBA(109, 184, 136, .25)
-	t.Scrollbar = ui.RGBA(140, 165, 150, .35)
+	t.Background, t.Surface, t.SurfaceHover = ui.Hex("#0e1511"), ui.Hex("#141d18"), ui.Hex("#1a251f")
+	t.SurfacePressed = ui.Hex("#222f27")
+	t.Border = ui.RGBA(200, 220, 205, .08)
+	t.Text, t.TextMuted = ui.Hex("#d3dcd0"), ui.Hex("#8e9f92")
+	t.Accent, t.AccentText = ui.Hex("#8fae7a"), ui.Hex("#0e1511")
+	t.AccentHover, t.AccentPressed = ui.Hex("#a3bf8e"), ui.Hex("#7a9966")
+	t.Danger, t.Warning, t.Success = ui.Hex("#c8705a"), ui.Hex("#d2a85f"), ui.Hex("#86a878")
+	t.Focus, t.InactiveAccent = ui.Hex("#86a5b5"), t.Accent
+	t.Selection = ui.RGBA(143, 174, 122, .18)
+	t.Scrollbar = ui.RGBA(190, 210, 195, .22)
+	t.ScrollbarStyle.Hover = ui.RGBA(190, 210, 195, .38)
 	t.Font, t.Radius = "Geist", 7
 	return t
 }
@@ -83,7 +104,7 @@ func pathLabel(c *ui.Context, path string) ui.Element {
 			prefix = "…" + string(filepath.Separator) + filepath.Base(dir) + string(filepath.Separator)
 		}
 	}
-	return ui.RichText(c, ui.Span{Text: prefix, Color: muted}, ui.Span{Text: last, Color: ink}).
+	return ui.RichText(c, ui.Span{Text: prefix, Color: faint}, ui.Span{Text: last, Color: muted}).
 		Font(monoFont).FontSize(11).MinWidth(0).Grow(1).NoWrap().Ellipsis("…").Tooltip(path)
 }
 
@@ -99,6 +120,7 @@ func firstLine(s string) string {
 const paneGutter = 12
 
 var (
+	newPaneIcon = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="2.5" width="14" height="19" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v8M8 12h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`))
 	folderIcon  = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 7v12h18V8H11L9 5H3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`))
 	closeIcon   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="m6 6 12 12M6 18 18 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`))
 	refreshIcon = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 10a8 8 0 0 0-14-4L3 9m0-5v5h5m-4 5a8 8 0 0 0 14 4l3-3m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`))

@@ -242,6 +242,7 @@ async function workspaceChecks() {
   assert.equal(await readFile(join(movedRoot, "result.txt"), "utf8"), "written by Durable\n");
   const movedMetadata = (await request(pathOf(movedID))).value;
   assert.equal(movedMetadata.title, "Review the pane directory");
+  assert.equal((await request(pathOf(movedID) + "/title", "PUT", { name: "Renamed conversation" })).value.title, "Renamed conversation");
   assert.ok(movedMetadata.lastActivity > 0);
   movedView.ws.close();
 
@@ -256,6 +257,9 @@ async function workspaceChecks() {
   const scratch = { id: randomUUID(), name: "Scratch", projectId, root: empty.id, nodes: [empty] };
   const body = { revision: 0, activeTab: tab.id, activeProject: projectId, tabs: [tab, scratch] };
 
+  const duplicateTab = structuredClone(body);
+  duplicateTab.tabs[1].name = "reliability";
+  assert.equal((await request(path, "PUT", duplicateTab)).value.code, "invalid_layout");
   const invalid = structuredClone(body);
   invalid.tabs[0].nodes[0].first = branch.id;
   assert.equal((await request(path, "PUT", invalid)).value.code, "invalid_layout");
@@ -273,6 +277,7 @@ async function workspaceChecks() {
   server = start();
   await server.ready;
   assert.deepEqual((await request(path)).value, saved);
+  assert.equal((await request(pathOf(movedID))).value.title, "Renamed conversation");
   assert.equal((await request(pathOf(movedID))).value.cwd, await realpath(movedRoot));
   assert.equal((await request(pathOf(movedID))).value.projectId, projectId);
   assert.equal((await request("/v1/catalog")).value.projects[0].id, renamed.value.id);

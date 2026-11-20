@@ -39,6 +39,17 @@ func (c *Client) RenameProject(ctx context.Context, id, name string) (protocol.P
 	return protocol.Project{}, responseError(res.StatusCode(), res.GetBody())
 }
 
+func (c *Client) RenameConversation(ctx context.Context, id, name string) (protocol.Conversation, error) {
+	res, err := c.api.RenameConversationWithResponse(ctx, id, protocol.ProjectRenameInput{Name: name})
+	if err != nil {
+		return protocol.Conversation{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.Conversation{}, responseError(res.StatusCode(), res.GetBody())
+}
+
 func (c *Client) Layout(ctx context.Context, id string) (protocol.Layout, error) {
 	res, err := c.api.GetLayoutWithResponse(ctx, id)
 	if err != nil {

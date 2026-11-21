@@ -7,13 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync/atomic"
 
 	"github.com/gen2brain/malgo"
 )
 
 const canCaptureAudio = true
 
-func captureMicrophone(ctx context.Context, release <-chan struct{}, samples chan<- []byte) error {
+func captureMicrophone(ctx context.Context, release <-chan struct{}, samples chan<- []byte, ready chan<- struct{}) error {
 	backends := []malgo.Backend{malgo.BackendPulseaudio, malgo.BackendAlsa}
 	if runtime.GOOS == "darwin" {
 		backends = []malgo.Backend{malgo.BackendCoreaudio}
@@ -30,6 +31,7 @@ func captureMicrophone(ctx context.Context, release <-chan struct{}, samples cha
 	config.PeriodSizeInMilliseconds = 20
 	overflow := make(chan struct{}, 1)
 	stopped := make(chan struct{}, 1)
+	var received atomic.Bool
 	mic, err := malgo.InitDevice(audio.Context, config, malgo.DeviceCallbacks{
 		Data: func(_ []byte, capture []byte, _ uint32) {
 			if len(capture) == 0 {
@@ -38,6 +40,9 @@ func captureMicrophone(ctx context.Context, release <-chan struct{}, samples cha
 			block := append([]byte(nil), capture...)
 			select {
 			case samples <- block:
+				if received.CompareAndSwap(false, true) {
+					signalCapture(ready)
+				}
 			default:
 				signalCapture(overflow)
 			}

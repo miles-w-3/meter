@@ -9,6 +9,6 @@ import (
 
 const canCaptureAudio = false
 
-func captureMicrophone(context.Context, <-chan struct{}, chan<- []byte) error {
+func captureMicrophone(context.Context, <-chan struct{}, chan<- []byte, chan<- struct{}) error {
 	return errors.New("microphone capture is unavailable in this build")
 }

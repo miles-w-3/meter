@@ -3,13 +3,11 @@ package gui
 import (
 	"context"
 	"fmt"
-	"io"
-	"strings"
-
-	"github.com/Cyenoch/mygoui"
-	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
+	"io"
+	"strings"
+	"time"
 )
 
 type dictationRecording struct {
@@ -17,30 +15,74 @@ type dictationRecording struct {
 	release  chan struct{}
 	cancel   context.CancelFunc
 	released bool
+	live     bool
 	preview  string
+	base     string
 }
 
-func (a *app) dictationButton(c *ui.Context, id uuid.UUID, p *pane, disabled bool) {
-	if !a.mayDictate || !canCaptureAudio {
+const dictationHold = 350 * time.Millisecond
+
+func dictationStatus(recording *dictationRecording) (string, ui.Color) {
+	if recording.released {
+		return "Transcribing…", ui.Transparent
+	}
+	if recording.live {
+		return "Listening", ui.RGBA(218, 106, 104, .65)
+	}
+	return "Starting…", ui.RGBA(210, 168, 95, .65)
+}
+
+type spaceHold struct {
+	pane       *pane
+	at         time.Time
+	before     string
+	start, end int
+	active     bool
+	restore    bool
+}
+
+func (a *app) dictationInput(c *ui.Context, input ui.Element, p *pane, disabled bool, begin func()) {
+	start, end := input.TextSelection()
+	input.ObserveInput(func(ev ui.InputEvent) {
+		hold := a.spaceHold
+		if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeySpace && ev.Mods == 0 && !ev.Repeat && hold == nil && a.dictation == nil && a.mayDictate && canCaptureAudio && !disabled {
+			a.spaceHold = &spaceHold{pane: p, at: time.Now(), before: p.draft, start: start, end: end}
+		} else if hold != nil && hold.pane == p && ev.Kind == ui.InputKeyUp && ev.Key == ui.KeySpace {
+			if hold.active && a.dictation != nil && a.dictation.pane == p && !a.dictation.released {
+				a.dictation.released = true
+				close(a.dictation.release)
+			}
+			a.spaceHold = nil
+		} else if hold != nil && hold.pane == p && !hold.active && ev.Kind == ui.InputKeyDown && ev.Key != ui.KeySpace {
+			a.spaceHold = nil
+		}
+	})
+	hold := a.spaceHold
+	if hold == nil || hold.pane != p {
 		return
 	}
-	current := a.dictation
-	onPane := current != nil && current.pane == p
-	a.dictationVisible = a.dictationVisible || onPane
-	button := mygoui.Button(c, mygoui.ButtonOptions{
-		Label: "Hold to dictate", Size: uitheme.ButtonExtraSmall, Variant: mygoui.ButtonSecondary,
-		Disabled: (disabled && !onPane) || (current != nil && !onPane),
-	})
-	held := button.Pressed()
-	switch {
-	case current == nil && held:
-		a.dictationVisible = true
-		a.startDictation(id, p)
-	case onPane && button.PressCanceled():
-		a.cancelDictation()
-	case onPane && !held && !current.released:
-		current.released = true
-		close(current.release)
+	if !input.Focused() || disabled {
+		a.spaceHold = nil
+		if hold.active {
+			a.cancelDictation()
+		}
+		return
+	}
+	if hold.restore {
+		input.SetTextSelection(hold.start, hold.end)
+		hold.restore = false
+	}
+	if !hold.active {
+		remaining := dictationHold - time.Since(hold.at)
+		if remaining > 0 {
+			c.After(remaining)
+			return
+		}
+		hold.active = true
+		hold.restore = true
+		p.draft = hold.before
+		begin()
+		c.After(time.Millisecond)
 	}
 }
 
@@ -49,18 +91,13 @@ func (a *app) dictationPreview(c *ui.Context, p *pane) {
 	if current == nil || current.pane != p {
 		return
 	}
-	message := current.preview
-	if message == "" {
-		message = "Listening…"
-	}
-	if current.released {
-		message = "Finishing dictation…"
-	}
-	text(c, clean(message), 12, muted)
+	a.dictationVisible = true
 }
 
 func (a *app) cancelDictation() {
+	a.spaceHold = nil
 	if a.dictation != nil {
+		a.dictation.pane.draft = a.dictation.base
 		a.dictation.cancel()
 		a.dictation = nil
 	}
@@ -68,13 +105,35 @@ func (a *app) cancelDictation() {
 
 func (a *app) startDictation(id uuid.UUID, p *pane) {
 	ctx, cancel := context.WithCancel(a.ctx)
-	recording := &dictationRecording{pane: p, release: make(chan struct{}), cancel: cancel}
+	recording := &dictationRecording{pane: p, base: p.draft, release: make(chan struct{}), cancel: cancel}
 	a.dictation = recording
 	captured := make(chan []byte, 100)
 	micErr := make(chan error, 1)
+	micReady := make(chan struct{}, 1)
 	go func() {
 		defer close(captured)
-		micErr <- captureMicrophone(ctx, recording.release, captured)
+		err := captureMicrophone(ctx, recording.release, captured, micReady)
+		micErr <- err
+		if err != nil && ctx.Err() == nil {
+			a.update(func() {
+				if a.dictation == recording {
+					p.draft, p.notice = recording.base, err.Error()
+					a.dictation = nil
+					cancel()
+				}
+			})
+		}
+	}()
+	go func() {
+		select {
+		case <-micReady:
+			a.update(func() {
+				if a.dictation == recording && !recording.released {
+					recording.live = true
+				}
+			})
+		case <-ctx.Done():
+		}
 	}()
 	go func() {
 		defer cancel()
@@ -82,6 +141,7 @@ func (a *app) startDictation(id uuid.UUID, p *pane) {
 			a.update(func() {
 				if a.dictation == recording {
 					recording.preview = preview
+					p.draft = dictationDraft(recording.base, preview)
 				}
 			})
 		})
@@ -99,21 +159,29 @@ func (a *app) startDictation(id uuid.UUID, p *pane) {
 			}
 			a.dictation = nil
 			if captureErr != nil {
+				p.draft = recording.base
 				p.notice = captureErr.Error()
 				return
 			}
 			if err != nil {
+				p.draft = recording.base
 				p.notice = fmt.Sprintf("Dictation failed: %v", err)
 				return
 			}
-			if result = strings.TrimSpace(result); result != "" {
-				if p.draft != "" && !strings.HasSuffix(p.draft, " ") && !strings.HasSuffix(p.draft, "\n") {
-					p.draft += " "
-				}
-				p.draft += result
-			}
+			p.draft = dictationDraft(recording.base, result)
 		})
 	}()
+}
+
+func dictationDraft(base, spoken string) string {
+	spoken = strings.TrimSpace(spoken)
+	if spoken == "" {
+		return base
+	}
+	if base != "" && !strings.HasSuffix(base, " ") && !strings.HasSuffix(base, "\n") {
+		base += " "
+	}
+	return base + spoken
 }
 
 type pcmReader struct {

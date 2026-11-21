@@ -94,6 +94,7 @@ type app struct {
 	mayRetry, mayAbort   bool
 	mayDictate           bool
 	dictation            *dictationRecording
+	spaceHold            *spaceHold
 	dictationVisible     bool
 	backend              BackendControls
 	backendInfo          protocol.ServerInfo

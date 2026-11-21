@@ -109,7 +109,7 @@ func (a *app) view(c *ui.Context) {
 	a.dialogs(c)
 	a.backendPanel(c)
 	a.conversationPalette(c)
-	if !a.dictationVisible || (a.dictation != nil && c.Shortcut(0, ui.KeyEscape)) {
+	if a.dictation != nil && (!a.dictationVisible || c.Shortcut(0, ui.KeyEscape)) {
 		a.cancelDictation()
 	}
 }
@@ -520,12 +520,11 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 			text(c, "Start a conversation", 14, muted)
 		})
 		composerArea(c, func() {
-			composer(c, &p.draft, form.ComposerOptions{
+			a.composer(c, node.Id, p, form.ComposerOptions{
 				Label: "New conversation", Placeholder: "Message…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
 				ReadOnly:       p.starting,
 				SubmitDisabled: a.busy() || p.starting || (a.cwdEditor != nil && a.cwdEditor.id == node.Id),
 				OnSubmit:       func(string) { a.create(tab.Id, node, cwd, p) },
-				Actions:        func() { a.dictationButton(c, node.Id, p, p.starting) },
 			})
 			a.dictationPreview(c, p)
 			if p.notice != "" {
@@ -549,13 +548,12 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		a.transcript(c, p, id)
 	})
 	composerArea(c, func() {
-		composer(c, &p.draft, form.ComposerOptions{
+		a.composer(c, node.Id, p, form.ComposerOptions{
 			Label: "Message " + id, Placeholder: "Message…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
 			ReadOnly:       p.pendingFirst,
 			SubmitDisabled: !p.connected || running,
 			OnSubmit:       func(string) { a.send(p, id, "prompt", false) },
 			Actions: func() {
-				a.dictationButton(c, node.Id, p, p.pendingFirst)
 				empty := strings.TrimSpace(p.draft) == ""
 				if running {
 					if ghost(c, "Queue", empty) {
@@ -586,16 +584,23 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 	a.directoryDialog(c, tab, node, !p.connected || running)
 }
 
-func composer(c *ui.Context, draft *string, options form.ComposerOptions) {
+func (a *app) composer(c *ui.Context, id uuid.UUID, p *pane, options form.ComposerOptions) {
+	draft := &p.draft
+	recording := a.dictation != nil && a.dictation.pane == p
 	canSend := func(value string) bool {
-		return !options.ReadOnly && !options.Disabled && !options.SubmitDisabled && strings.TrimSpace(value) != ""
+		return !recording && !options.ReadOnly && !options.Disabled && !options.SubmitDisabled && strings.TrimSpace(value) != ""
 	}
-	ui.Column(c).FillWidth().MinWidth(0).Radius(8).Clip().Background(panel).Children(func() {
+	border := ui.Transparent
+	status := ""
+	if recording {
+		status, border = dictationStatus(a.dictation)
+	}
+	ui.Column(c).FillWidth().MinWidth(0).Radius(8).Clip().Background(panel).Border(1, border).Children(func() {
 		ui.Box(c).FillWidth().Height(1).Background(highlight)
 		ui.Row(c).Padding(8, paneGutter, 8, paneTextInset).Gap(8).AlignItems(ui.End).Children(func() {
-			ui.TextAreaBase(c, draft).Grow(1).MinWidth(0).Lines(1, 8).Label(options.Label).
+			input := ui.TextAreaBase(c, draft).Grow(1).MinWidth(0).Lines(1, 8).Label(options.Label).
 				Placeholder(options.Placeholder).PlaceholderColor(ui.Hex("#abbcb0")).Padding(0).
-				ReadOnly(options.ReadOnly).FontSize(14).TextColor(ink).
+				ReadOnly(options.ReadOnly || recording).FontSize(14).TextColor(ink).
 				OnTextKey(func(k ui.TextKey) bool {
 					if k.Key != ui.KeyEnter || k.Mods != 0 {
 						return false
@@ -610,8 +615,16 @@ func composer(c *ui.Context, draft *string, options form.ComposerOptions) {
 					}
 					return true
 				})
+			if recording && strings.TrimSpace(a.dictation.preview) != "" {
+				start := len([]rune(dictationDraft(a.dictation.base, "x"))) - 1
+				input.TextRanges(ui.TextRange{Start: start, End: len([]rune(p.draft)), Color: muted})
+			}
+			a.dictationInput(c, input, p, options.ReadOnly || options.Disabled, func() { a.startDictation(id, p) })
 			if options.Actions != nil {
 				options.Actions()
+			}
+			if recording {
+				text(c, status, 11, muted).NoWrap()
 			}
 			button := ui.ButtonBase(c).Label(options.SubmitLabel).Size(32, 32).Radius(16).Background(accent).Center().Disabled(!canSend(*draft)).KeepFocus()
 			button.Children(func() { text(c, "↑", 18, background).FontWeight(650) })

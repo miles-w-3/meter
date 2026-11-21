@@ -138,16 +138,42 @@ export async function abortTarget(harness: Harness, conversation: Conversation, 
 const clip = (text: string, limit = 12_000) =>
   text.length > limit ? text.slice(0, limit) + "\n[output truncated]" : text;
 
-export function projectEntry(entry: EntryRecord) {
+export function entryText(entry: EntryRecord) {
+  return (entry.model ?? []).flatMap((message) => {
+    if (typeof message.content === "string") return [message.content];
+    return message.content.flatMap((block) => block.type === "text" ? [block.text] : []);
+  }).join("\n");
+}
+
+export function projectEntries(entries: readonly EntryRecord[]) {
+  const targets = new Map<string, string>();
+  const projected = entries.map((entry) => projectEntry(entry, targets));
+  return { projected, targets };
+}
+
+function projectEntry(entry: EntryRecord, targets: Map<string, string>) {
   const messages = entry.model ?? [];
+  const assistant = messages.findLast((message) => message.role === "assistant");
   const tool = messages.find((message) => message.role === "toolResult");
+  for (const block of assistant?.content ?? []) {
+    if (block.type !== "toolCall") continue;
+    const target = block.arguments.path ?? block.arguments.file_path ?? block.arguments.command ?? block.arguments.query;
+    if (typeof target === "string") targets.set(block.id, clip(target.replace(/\s+/g, " ").trim(), 400));
+  }
+  const text = entryText(entry);
+  const details = tool?.details;
+  const diff = details && typeof details === "object" && "diff" in details && typeof details.diff === "string" ? details.diff : undefined;
+  const changes = diff?.split("\n");
   return {
     id: String(entry.id), kind: entry.kind,
-    text: clip(messages.flatMap((message) => {
-      if (typeof message.content === "string") return [message.content];
-      return message.content.flatMap((block) => block.type === "text" ? [block.text] : []);
-    }).join("\n")),
+    text: clip(text),
     toolName: tool?.toolName, toolSucceeded: tool ? !tool.isError : undefined,
+    toolCallId: tool?.toolCallId, toolTarget: tool && targets.get(tool.toolCallId),
+    durationMs: tool?.durationMs ?? assistant?.durationMs,
+    tokens: assistant?.usage.totalTokens,
+    added: changes?.filter((line) => /^\+(?!\+\+)/.test(line)).length,
+    removed: changes?.filter((line) => /^-(?!--)/.test(line)).length,
+    outputClipped: tool && text.length > 12_000 ? true : undefined,
   };
 }
 
@@ -170,6 +196,7 @@ export function contextTokens(active: ContextView) {
 export function project(value: ConversationView, usage?: z.infer<typeof contextUsage>) {
   const live = value.docs["pi.live"] as LiveState | undefined;
   const partial = live?.generation?.message?.content?.flatMap((block) => block.type === "text" ? [block.text] : []).join("");
+  const { projected, targets } = projectEntries(value.entries);
   return view.parse({
     conversationId: String(value.conversation.id),
     status: live?.run ? "running" : live?.runFailure ? "failed" : "idle",
@@ -177,11 +204,11 @@ export function project(value: ConversationView, usage?: z.infer<typeof contextU
     abortTarget: live?.run && String(live.run.taskId),
     before: value.before && value.entries.length ? historyCursor(value.entries[0].id) : undefined,
     partial: partial ? clip(partial) : null,
-    entries: value.entries.map(projectEntry), contextUsage: usage,
+    entries: projected, contextUsage: usage,
     tools: live?.tools?.slice(0, 24).map((slot) => ({
       callId: slot.callId, taskId: slot.taskId === undefined ? undefined : String(slot.taskId),
       entryId: slot.entry === undefined ? undefined : String(slot.entry),
-      name: slot.name, status: slot.status, output: slot.output && clip(slot.output, 2500),
+      name: slot.name, status: slot.status, output: slot.output && clip(slot.output, 2500), target: targets.get(slot.callId),
     })) ?? [],
   });
 }

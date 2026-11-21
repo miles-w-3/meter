@@ -93,3 +93,14 @@ func (c *Client) ResolveCwd(ctx context.Context, cwd string) (string, error) {
 	}
 	return "", responseError(res.StatusCode(), res.GetBody())
 }
+
+func (c *Client) ToolOutput(ctx context.Context, id, entry string) (string, error) {
+	res, err := c.api.GetToolOutputWithResponse(ctx, id, entry)
+	if err != nil {
+		return "", err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return body.Text, nil
+	}
+	return "", responseError(res.StatusCode(), res.GetBody())
+}

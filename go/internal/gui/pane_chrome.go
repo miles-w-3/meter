@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
 	"pi-workspace.local/workspace/internal/protocol"
+	palette "pi-workspace.local/workspace/internal/theme"
 )
 
 func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, title string) {
@@ -25,39 +26,41 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 		if target == 0 {
 			return
 		}
-		row := ui.Row(c).FillWidth().Height(28).Padding(0, 8).Gap(7).AlignItems(ui.Center)
-		row.Children(func() {
-			index := 1
-			for i, pane := range panes {
-				if pane.Id == node.Id {
-					index = i + 1
-					break
+		paneContent(c, func() {
+			row := ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center)
+			row.Children(func() {
+				index := 1
+				for i, pane := range panes {
+					if pane.Id == node.Id {
+						index = i + 1
+						break
+					}
 				}
-			}
-			handle := ui.Row(c.Key("handle")).Grow(1).MinWidth(0).Gap(7).AlignItems(ui.Center)
-			if !a.busy() {
-				handle.Label("Drag " + title).Cursor(ui.CursorGrab).Drag(paneDrag{tab: tab.Id, pane: node.Id})
-			}
-			handle.Children(func() {
-				text(c, fmt.Sprintf("#%d", index), 11, muted).Font(monoFont)
-				text(c, title, 13, ink).Grow(1).NoWrap().Ellipsis("…")
+				handle := ui.Row(c.Key("handle")).Grow(1).MinWidth(0).AlignItems(ui.Center)
+				if !a.busy() {
+					handle.Label("Drag " + title).Cursor(ui.CursorGrab).Drag(paneDrag{tab: tab.Id, pane: node.Id})
+				}
+				handle.Children(func() {
+					text(c, fmt.Sprintf("#%d", index), 11, muted).Font(monoFont).Width(paneTextInset).Shrink(0).Padding(0, 0, 0, 3)
+					text(c, title, 13, ink).Grow(1).NoWrap().Ellipsis("…")
+				})
+				if row.Hovered() && iconButton(c, closeIcon, "Close pane", a.busy()).Clicked() {
+					a.requestClosePane(tab.Id, node.Id)
+				}
 			})
-			if row.Hovered() && iconButton(c, closeIcon, "Close pane", a.busy()).Clicked() {
-				a.requestClosePane(tab.Id, node.Id)
-			}
-		})
-		row.ContextMenu(func(m *ui.Menu) {
-			if m.Item("Rename pane").Disabled(a.busy()).Chosen() {
-				a.nameEditor = &nameEditor{label: "Rename pane", value: title, save: func(name string) {
-					a.save(func(layout *protocol.Layout) {
-						t := &layout.Tabs[tabIndex(layout, tab.Id)]
-						t.Nodes[nodeIndex(t, node.Id)].Name = &name
-					})
-				}}
-			}
-			if m.Item("Close pane").Disabled(a.busy()).Chosen() {
-				a.requestClosePane(tab.Id, node.Id)
-			}
+			row.ContextMenu(func(m *ui.Menu) {
+				if m.Item("Rename pane").Disabled(a.busy()).Chosen() {
+					a.nameEditor = &nameEditor{label: "Rename pane", value: title, save: func(name string) {
+						a.save(func(layout *protocol.Layout) {
+							t := &layout.Tabs[tabIndex(layout, tab.Id)]
+							t.Nodes[nodeIndex(t, node.Id)].Name = &name
+						})
+					}}
+				}
+				if m.Item("Close pane").Disabled(a.busy()).Chosen() {
+					a.requestClosePane(tab.Id, node.Id)
+				}
+			})
 		})
 	})
 }
@@ -88,34 +91,35 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 			status = string(p.state.Current.Status)
 		}
 	}
-	ui.Row(c).Height(22).FillWidth().Padding(0, paneGutter).Gap(6).AlignItems(ui.Center).Children(func() {
-		button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).MinWidth(0).Padding(2, 5).Radius(4).Disabled(a.busy() || locked)
-		if button.Hovered() && !a.busy() && !locked {
-			button.Background(panel)
-		}
-		button.Children(func() { pathLabel(c, cwd) })
-		if button.Clicked() {
-			a.pathError = ""
-			a.cwdEditor = &editor{id: node.Id, value: cwd}
-		}
-		text(c, "· "+status, 10, muted).Font(monoFont).NoWrap()
-		if usage := p.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
-			pct := 100 * float64(usage.Tokens) / float64(usage.Window)
-			label := fmt.Sprintf("ctx %.0f%%", pct)
-			if pct > 0 && pct < 1 {
-				label = "ctx <1%"
+	paneContent(c, func() {
+		ui.Row(c).Height(26).FillWidth().Padding(0, paneGutter, 0, paneTextInset).Gap(10).AlignItems(ui.Center).Children(func() {
+			button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).Grow(1).MinWidth(0).Padding(2, 0).Radius(4).Disabled(a.busy() || locked)
+			if button.Hovered() && !a.busy() && !locked {
+				button.Background(panel)
 			}
-			text(c, "· "+label, 10, muted).Font(monoFont).NoWrap()
-			ui.Row(c).Gap(1).AlignItems(ui.Center).Tooltip("Context usage").Children(func() {
-				for i := range 10 {
-					color := theme.Border
-					if float64(i)/10 < pct/100 {
-						color = accent
-					}
-					ui.Box(c.Key(i)).Size(3, 3).Background(color)
-				}
-			})
-		}
+			button.Children(func() { pathLabel(c, cwd) })
+			if button.Clicked() {
+				a.pathError = ""
+				a.cwdEditor = &editor{id: node.Id, value: cwd}
+			}
+			text(c, status, 12, ink).Font(monoFont).NoWrap().Shrink(0)
+			if usage := p.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
+				pct := palette.Percent(usage.Tokens, usage.Window)
+				label := "ctx " + palette.PercentLabel(pct)
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Tooltip("Context usage").Children(func() {
+					text(c, label, 12, muted).Font(monoFont).FontFeatures("tnum").NoWrap()
+					ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+						for i := range palette.MeterCells {
+							color := theme.SurfacePressed
+							if float64(i)/palette.MeterCells < pct/100 {
+								color = ui.Hex(palette.MeterColor(i))
+							}
+							ui.Box(c.Key(i)).Size(3, 4).Radius(1).Background(color)
+						}
+					})
+				})
+			}
+		})
 	})
 }
 

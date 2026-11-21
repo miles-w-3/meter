@@ -4,6 +4,9 @@ const opaque = z.string().min(1).max(160);
 export const serverInfo = z.object({
   id: z.uuid(), protocol: z.literal("v1"), ready: z.literal(true),
   capabilities: z.array(z.string()), provider: z.string(),
+  revision: z.string().optional(), dirty: z.boolean().optional(),
+  generation: z.uuid().optional(), transport: z.enum(["unix", "tcp"]).optional(),
+  dictation: z.enum(["ready", "model_missing", "worker_missing"]).optional(),
 });
 const cwd = z.string().min(1).max(4096);
 export const cwdInput = z.strictObject({ cwd });
@@ -19,10 +22,14 @@ export const abortInput = z.strictObject({ target: opaque });
 export const problem = z.object({ code: z.string(), message: z.string() });
 export const entry = z.object({
   id: opaque, kind: z.string(), text: z.string(), toolName: z.string().optional(), toolSucceeded: z.boolean().optional(),
+  toolCallId: z.string().optional(), toolTarget: z.string().optional(), durationMs: z.number().int().nonnegative().optional(),
+  tokens: z.number().int().nonnegative().optional(), added: z.number().int().nonnegative().optional(),
+  removed: z.number().int().nonnegative().optional(), outputClipped: z.boolean().optional(),
 });
+const toolOutput = z.object({ text: z.string() });
 export const page = z.object({ entries: z.array(entry), before: opaque.optional() });
 export const contextUsage = z.object({ tokens: z.number().int().nonnegative(), window: z.number().int().positive() });
-const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional() });
+const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional(), target: z.string().optional() });
 export const view = z.object({
   conversationId: opaque, status: z.enum(["idle", "running", "failed"]),
   partial: z.string().nullable(), failure: z.string().optional(),
@@ -50,7 +57,7 @@ export const layout = z.strictObject({
 });
 export const models = {
   ServerInfo: serverInfo, CreateInput: createInput, CwdInput: cwdInput, Conversation: conversation, SubmitInput: submitInput,
-  Receipt: receipt, AbortInput: abortInput, Problem: problem, Entry: entry, HistoryPage: page,
+  Receipt: receipt, AbortInput: abortInput, Problem: problem, Entry: entry, HistoryPage: page, ToolOutput: toolOutput,
   ContextUsage: contextUsage, ConversationView: view, ConversationSnapshot: snapshot, ConversationUpdate: update,
   ConversationFrame: conversationFrame, ProjectInput: projectInput, ProjectRenameInput: projectRenameInput, Project: projectRecord, Catalog: catalog,
   LayoutNode: layoutNode, LayoutTab: layoutTab, Layout: layout,

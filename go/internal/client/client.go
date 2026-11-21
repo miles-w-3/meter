@@ -233,22 +233,30 @@ func (c *Client) Subscribe(ctx context.Context, id string) <-chan Event {
 	return events
 }
 
-func (c *Client) readStream(ctx context.Context, id string, send func(Event) bool) error {
+func (c *Client) dialStream(ctx context.Context, path string) (*websocket.Conn, error) {
 	address := "workspace"
 	headers := http.Header{}
 	if c.endpointFile != "" {
 		host, token, err := readEndpoint(c.endpointFile)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		address = host
 		headers.Set("Authorization", "Bearer "+token)
 	}
-	ws, response, err := c.dialer.DialContext(ctx, "ws://"+address+"/v1/conversations/"+url.PathEscape(id)+"/stream", headers)
+	ws, response, err := c.dialer.DialContext(ctx, "ws://"+address+path, headers)
 	if err != nil {
 		if response != nil {
 			_ = response.Body.Close()
 		}
+		return nil, err
+	}
+	return ws, nil
+}
+
+func (c *Client) readStream(ctx context.Context, id string, send func(Event) bool) error {
+	ws, err := c.dialStream(ctx, "/v1/conversations/"+url.PathEscape(id)+"/stream")
+	if err != nil {
 		return err
 	}
 	defer ws.Close()

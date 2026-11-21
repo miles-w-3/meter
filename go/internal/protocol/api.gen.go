@@ -102,6 +102,27 @@ func (e LayoutNodeEmpty) Valid() bool {
 	}
 }
 
+// Defines values for ServerInfoDictation.
+const (
+	ModelMissing  ServerInfoDictation = "model_missing"
+	Ready         ServerInfoDictation = "ready"
+	WorkerMissing ServerInfoDictation = "worker_missing"
+)
+
+// Valid indicates whether the value is a known member of the ServerInfoDictation enum.
+func (e ServerInfoDictation) Valid() bool {
+	switch e {
+	case ModelMissing:
+		return true
+	case Ready:
+		return true
+	case WorkerMissing:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ServerInfoProtocol.
 const (
 	V1 ServerInfoProtocol = "v1"
@@ -126,6 +147,24 @@ const (
 func (e ServerInfoReady) Valid() bool {
 	switch e {
 	case ServerInfoReadyTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServerInfoTransport.
+const (
+	Tcp  ServerInfoTransport = "tcp"
+	Unix ServerInfoTransport = "unix"
+)
+
+// Valid indicates whether the value is a known member of the ServerInfoTransport enum.
+func (e ServerInfoTransport) Valid() bool {
+	switch e {
+	case Tcp:
+		return true
+	case Unix:
 		return true
 	default:
 		return false
@@ -223,6 +262,7 @@ type ConversationView struct {
 		Name    string  `json:"name"`
 		Output  *string `json:"output,omitempty"`
 		Status  string  `json:"status"`
+		Target  *string `json:"target,omitempty"`
 		TaskId  *string `json:"taskId,omitempty"`
 	} `json:"tools"`
 }
@@ -243,11 +283,18 @@ type CwdInput struct {
 
 // Entry defines model for Entry.
 type Entry struct {
+	Added         *int    `json:"added,omitempty"`
+	DurationMs    *int    `json:"durationMs,omitempty"`
 	Id            string  `json:"id"`
 	Kind          string  `json:"kind"`
+	OutputClipped *bool   `json:"outputClipped,omitempty"`
+	Removed       *int    `json:"removed,omitempty"`
 	Text          string  `json:"text"`
+	Tokens        *int    `json:"tokens,omitempty"`
+	ToolCallId    *string `json:"toolCallId,omitempty"`
 	ToolName      *string `json:"toolName,omitempty"`
 	ToolSucceeded *bool   `json:"toolSucceeded,omitempty"`
+	ToolTarget    *string `json:"toolTarget,omitempty"`
 }
 
 // HistoryPage defines model for HistoryPage.
@@ -324,18 +371,29 @@ type Receipt struct {
 
 // ServerInfo defines model for ServerInfo.
 type ServerInfo struct {
-	Capabilities []string           `json:"capabilities"`
-	Id           openapi_types.UUID `json:"id"`
-	Protocol     ServerInfoProtocol `json:"protocol"`
-	Provider     string             `json:"provider"`
-	Ready        ServerInfoReady    `json:"ready"`
+	Capabilities []string             `json:"capabilities"`
+	Dictation    *ServerInfoDictation `json:"dictation,omitempty"`
+	Dirty        *bool                `json:"dirty,omitempty"`
+	Generation   *openapi_types.UUID  `json:"generation,omitempty"`
+	Id           openapi_types.UUID   `json:"id"`
+	Protocol     ServerInfoProtocol   `json:"protocol"`
+	Provider     string               `json:"provider"`
+	Ready        ServerInfoReady      `json:"ready"`
+	Revision     *string              `json:"revision,omitempty"`
+	Transport    *ServerInfoTransport `json:"transport,omitempty"`
 }
+
+// ServerInfoDictation defines model for ServerInfo.Dictation.
+type ServerInfoDictation string
 
 // ServerInfoProtocol defines model for ServerInfo.Protocol.
 type ServerInfoProtocol string
 
 // ServerInfoReady defines model for ServerInfo.Ready.
 type ServerInfoReady bool
+
+// ServerInfoTransport defines model for ServerInfo.Transport.
+type ServerInfoTransport string
 
 // SubmitInput defines model for SubmitInput.
 type SubmitInput struct {
@@ -346,6 +404,11 @@ type SubmitInput struct {
 
 // SubmitInputMode defines model for SubmitInput.Mode.
 type SubmitInputMode string
+
+// ToolOutput defines model for ToolOutput.
+type ToolOutput struct {
+	Text string `json:"text"`
+}
 
 // GetEntriesParams defines parameters for GetEntries.
 type GetEntriesParams struct {
@@ -587,6 +650,9 @@ type ClientInterface interface {
 	// GetEntries performs a GET /v1/conversations/{id}/entries (the `GetEntries` operationId) request.
 	GetEntries(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetToolOutput performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
+	GetToolOutput(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SubmitMessageWithBody performs a POST /v1/conversations/{id}/messages (the `SubmitMessage` operationId) request,
 	// with any type of body and a specified content type.
 	SubmitMessageWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -758,6 +824,19 @@ func (c *Client) SetConversationCwd(ctx context.Context, id string, body SetConv
 // GetEntries performs a GET /v1/conversations/{id}/entries (the `GetEntries` operationId) request.
 func (c *Client) GetEntries(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetEntriesRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetToolOutput performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
+func (c *Client) GetToolOutput(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetToolOutputRequest(c.Server, id, entryId)
 	if err != nil {
 		return nil, err
 	}
@@ -1231,6 +1310,47 @@ func NewGetEntriesRequest(server string, id string, params *GetEntriesParams) (*
 	return req, nil
 }
 
+// NewGetToolOutputRequest constructs an http.Request for the GetToolOutput method
+func NewGetToolOutputRequest(server string, id string, entryId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "entryId", entryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/entries/%s/output", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewSubmitMessageRequest calls the generic SubmitMessage builder with application/json body
 func NewSubmitMessageRequest(server string, id string, body SubmitMessageJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1675,6 +1795,11 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetEntriesWithResponse(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*GetEntriesResponse, error)
+
+	// GetToolOutputWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetToolOutputWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetToolOutputResponse, error)
 
 	// SubmitMessageWithBodyWithResponse performs a POST /v1/conversations/{id}/messages (the `SubmitMessage` operationId) request,
 	// with any type of body and a specified content type.
@@ -2153,6 +2278,75 @@ func (r GetEntriesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetToolOutputResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ToolOutput
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetToolOutputResponse) GetJSON200() *ToolOutput {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetToolOutputResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetToolOutputResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetToolOutputResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetToolOutputResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetToolOutputResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetToolOutputResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetToolOutputResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetToolOutputResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2816,6 +3010,17 @@ func (c *ClientWithResponses) GetEntriesWithResponse(ctx context.Context, id str
 	return ParseGetEntriesResponse(rsp)
 }
 
+// GetToolOutputWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetToolOutputWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetToolOutputResponse, error) {
+	rsp, err := c.GetToolOutput(ctx, id, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetToolOutputResponse(rsp)
+}
+
 // SubmitMessageWithBodyWithResponse performs a POST /v1/conversations/{id}/messages (the `SubmitMessage` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -3263,6 +3468,60 @@ func ParseGetEntriesResponse(rsp *http.Response) (*GetEntriesResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest HistoryPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetToolOutputResponse parses an HTTP response from a GetToolOutputWithResponse call
+func ParseGetToolOutputResponse(rsp *http.Response) (*GetToolOutputResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetToolOutputResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ToolOutput
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -26,8 +26,10 @@ func action(c *ui.Context, label string, disabled bool) bool {
 }
 
 const sidebarWidth = 218
+const sidebarIconWidth = 14
 
 func (a *app) view(c *ui.Context) {
+	a.dictationVisible = false
 	c.SetTheme(theme)
 	c.SetMenuPresentation(ui.PopoverMenus)
 	if c.Shortcut(ui.Ctrl, ui.KeyQ) && a.window != nil {
@@ -46,6 +48,13 @@ func (a *app) view(c *ui.Context) {
 			Leading: func() {
 				ui.Image(c, firTitle).Size(23, 23)
 				text(c, "meter", 17, ink).Font(monoFont).FontWeight(600)
+				if project, ok := a.activeProject(); ok {
+					crumb := project.Name
+					if tab := a.activeTab(); tab != nil {
+						crumb += " › " + tabName(*tab)
+					}
+					text(c, clean(crumb), 12, muted).NoWrap().Ellipsis("…").MaxWidth(240)
+				}
 				if a.name != "default" {
 					text(c, a.name, 12, muted)
 				}
@@ -98,18 +107,17 @@ func (a *app) view(c *ui.Context) {
 		})
 	})
 	a.dialogs(c)
+	a.backendPanel(c)
 	a.conversationPalette(c)
+	if !a.dictationVisible || (a.dictation != nil && c.Shortcut(0, ui.KeyEscape)) {
+		a.cancelDictation()
+	}
 }
 
 func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 	ui.Column(c).Width(sidebarWidth).MinWidth(sidebarWidth).MinHeight(0).Background(sidebar).Padding(14, 16).Gap(9).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			sectionLabel(c, "PROJECTS").Grow(1)
-			if project.Id != "" {
-				options := ui.ButtonBase(c).Size(20, 20).Label("Project options").Tooltip("Project options").Disabled(a.busy())
-				options.Children(func() { text(c, "⋯", 16, muted) })
-				options.Menu(func(m *ui.Menu) { a.projectMenu(m, project, true) })
-			}
 			if ghostPlus(c, "Add project", a.busy()).Clicked() {
 				a.pathError = ""
 				a.projectForm = !a.projectForm
@@ -125,7 +133,7 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 					}
 					count := a.runningCount(item)
 					row.Children(func() {
-						ui.Icon(c, folderIcon).Size(14, 14).TextColor(muted).Tooltip(item.Cwd)
+						ui.Icon(c, folderIcon).Size(sidebarIconWidth, sidebarIconWidth).Shrink(0).TextColor(muted).Tooltip(item.Cwd)
 						color := muted
 						if selected {
 							color = ink
@@ -160,10 +168,12 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 					title := a.title(conversation)
 					row := sidebarRow(c.Key(entry.node.Id.String()), title, a.busy()).Tooltip(title)
 					row.Children(func() {
-						if color, ok := conversationLight(a.panes[entry.node.Id]); ok {
-							ui.Box(c).Size(7, 7).Radius(4).Background(color)
-						}
-						ui.Column(c).Gap(3).Grow(1).MinWidth(0).Padding(4, 3).Children(func() {
+						ui.Row(c).Size(sidebarIconWidth, sidebarIconWidth).Shrink(0).Center().Children(func() {
+							if color, ok := conversationLight(a.panes[entry.node.Id]); ok {
+								ui.Box(c).Size(7, 7).Radius(4).Background(color)
+							}
+						})
+						ui.Column(c).Gap(3).Grow(1).MinWidth(0).Padding(4, 0).Children(func() {
 							text(c, title, 13, ink).NoWrap().Ellipsis("…")
 							subtitle := tabName(entry.tab)
 							for _, p := range a.catalog.Projects {
@@ -255,10 +265,17 @@ func (a *app) daemonPill(c *ui.Context) {
 	if a.provider != "" {
 		label += " · " + a.provider
 	}
-	ui.Row(c).Gap(6).Padding(4, 9).Radius(12).Background(panel).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(6, 6).Radius(3).Background(color)
-		text(c, label, 11, muted)
-	})
+	if mygoui.Button(c, mygoui.ButtonOptions{
+		Label: label, Tooltip: "Backend info", Variant: mygoui.ButtonSecondary, Size: uitheme.ButtonExtraSmall,
+		Content: func() {
+			ui.Box(c).Size(6, 6).Radius(3).Background(color)
+			text(c, label, 11, muted)
+		},
+	}).Clicked() {
+		a.backendConfirm = ""
+		a.backendOpen = true
+		a.runBackendAction("Refresh")
+	}
 }
 
 type recentEntry struct {
@@ -337,7 +354,8 @@ func tabName(tab protocol.LayoutTab) string {
 }
 
 func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *protocol.LayoutTab) {
-	ui.Row(c).Height(40).Background(sidebar).Padding(0, 16, 0, 12).Gap(6).AlignItems(ui.Center).Children(func() {
+	closeSize := uitheme.Scale(c, uitheme.ButtonHeight(uitheme.ButtonExtraSmall))
+	ui.Row(c).Height(40).Background(sidebar).Padding(0, 2*paneGutter, 0, paneGutter).Gap(6).AlignItems(ui.Center).Children(func() {
 		ui.ScrollHorizontal(c).Grow(1).MinWidth(0).Children(func() {
 			ui.Row(c).Height(40).Gap(4).AlignItems(ui.Center).Children(func() {
 				for _, tab := range a.layout.Tabs {
@@ -345,13 +363,13 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 						continue
 					}
 					selected := active != nil && active.Id == tab.Id
-					row := ui.Row(c.Key(tab.Id.String())).Height(32).Padding(0, 10).Gap(7).AlignItems(ui.Center).Radius(8)
+					row := ui.Row(c.Key(tab.Id.String())).Height(32).Padding(0, 4, 0, 10).Gap(4).AlignItems(ui.Center).Radius(8)
 					if selected {
 						row.Background(contentSurface)
 					}
 					row.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, tab) })
 					row.Children(func() {
-						chip := ui.ButtonBase(c).Label(tabName(tab)).Height(32).MaxWidth(200).Disabled(a.busy())
+						chip := ui.ButtonBase(c).Label(tabName(tab)).Height(32).MaxWidth(200).Center().Disabled(a.busy())
 						chip.Children(func() {
 							color := muted
 							if selected {
@@ -364,9 +382,11 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 							a.paneScroll.X = 0
 							a.save(func(layout *protocol.Layout) { layout.ActiveTab = &tab.Id })
 						}
-						if row.Hovered() && iconButton(c, closeIcon, "Close tab "+tabName(tab), a.busy()).Clicked() {
-							a.requestCloseTab(tab)
-						}
+						ui.Row(c.Key("close")).Size(closeSize, closeSize).Shrink(0).Center().Children(func() {
+							if row.Hovered() && iconButton(c, closeIcon, "Close tab "+tabName(tab), a.busy()).AlignSelf(ui.Center).Clicked() {
+								a.requestCloseTab(tab)
+							}
+						})
 					})
 				}
 				if ghostPlus(c.Key("new-tab"), "New tab", a.busy() || len(a.layout.Tabs) >= 24).Clicked() {
@@ -375,11 +395,9 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 			})
 		})
 		if active != nil {
-			ui.Row(c).Height(40).AlignItems(ui.Center).Children(func() {
-				if iconButton(c, newPaneIcon, "New pane", a.busy() || len(orderedPanes(active)) >= maxPanes).Clicked() {
-					a.appendPane(active.Id, emptyPane())
-				}
-			})
+			if iconButton(c, newPaneIcon, "New pane", a.busy() || len(orderedPanes(active)) >= maxPanes).AlignSelf(ui.Center).Clicked() {
+				a.appendPane(active.Id, emptyPane())
+			}
 		}
 	})
 }
@@ -426,7 +444,7 @@ func (a *app) tabMenu(m *ui.Menu, tab protocol.LayoutTab) {
 func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.LayoutTab) {
 	panes := orderedPanes(tab)
 	width, _ := c.Size()
-	const gap = 12
+	const gap = paneGutter
 	available := max(minPaneWidth*float32(len(panes)), width-sidebarWidth-1-float32((len(panes)+1)*gap))
 	widths := paneWidths(panes, available)
 	ui.ScrollHorizontal(c.Key(tab.Id.String())).Grow(1).MinHeight(0).MinWidth(0).
@@ -449,7 +467,7 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					if len(panes) > 1 {
 						ui.Box(c).FillWidth().Height(1).Background(highlight)
 					}
-					a.renderPane(c, project, tab, node, accent)
+					a.renderPane(c, project, tab, node)
 				})
 				if a.revealPane == node.Id {
 					column.ScrollIntoView()
@@ -487,7 +505,7 @@ func (a *app) dropGap(c *ui.Context, tab *protocol.LayoutTab, panes []protocol.L
 	}
 }
 
-func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.LayoutTab, node protocol.LayoutNode, tint ui.Color) {
+func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.LayoutTab, node protocol.LayoutNode) {
 	if node.ConversationId == nil {
 		cwd := project.Cwd
 		if node.Cwd != nil {
@@ -507,7 +525,9 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 				ReadOnly:       p.starting,
 				SubmitDisabled: a.busy() || p.starting || (a.cwdEditor != nil && a.cwdEditor.id == node.Id),
 				OnSubmit:       func(string) { a.create(tab.Id, node, cwd, p) },
+				Actions:        func() { a.dictationButton(c, node.Id, p, p.starting) },
 			})
+			a.dictationPreview(c, p)
 			if p.notice != "" {
 				text(c, clean(p.notice), 12, warning)
 			}
@@ -526,7 +546,7 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 	running := p.connected && p.state.Current.Status == "running"
 	a.paneHeader(c, tab, node, title)
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Background(contentSurface).Children(func() {
-		a.transcript(c, p, tint, id)
+		a.transcript(c, p, id)
 	})
 	composerArea(c, func() {
 		composer(c, &p.draft, form.ComposerOptions{
@@ -535,6 +555,7 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 			SubmitDisabled: !p.connected || running,
 			OnSubmit:       func(string) { a.send(p, id, "prompt", false) },
 			Actions: func() {
+				a.dictationButton(c, node.Id, p, p.pendingFirst)
 				empty := strings.TrimSpace(p.draft) == ""
 				if running {
 					if ghost(c, "Queue", empty) {
@@ -549,6 +570,7 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 				}
 			},
 		})
+		a.dictationPreview(c, p)
 		if p.rejected && action(c, "Dismiss rejection", false) {
 			_ = p.submission.Restore()
 			p.rejected, p.notice = false, ""
@@ -570,9 +592,10 @@ func composer(c *ui.Context, draft *string, options form.ComposerOptions) {
 	}
 	ui.Column(c).FillWidth().MinWidth(0).Radius(8).Clip().Background(panel).Children(func() {
 		ui.Box(c).FillWidth().Height(1).Background(highlight)
-		ui.Row(c).Padding(8).Gap(8).AlignItems(ui.End).Children(func() {
+		ui.Row(c).Padding(8, paneGutter, 8, paneTextInset).Gap(8).AlignItems(ui.End).Children(func() {
 			ui.TextAreaBase(c, draft).Grow(1).MinWidth(0).Lines(1, 8).Label(options.Label).
-				Placeholder(options.Placeholder).ReadOnly(options.ReadOnly).FontSize(14).TextColor(ink).
+				Placeholder(options.Placeholder).PlaceholderColor(ui.Hex("#abbcb0")).Padding(0).
+				ReadOnly(options.ReadOnly).FontSize(14).TextColor(ink).
 				OnTextKey(func(k ui.TextKey) bool {
 					if k.Key != ui.KeyEnter || k.Mods != 0 {
 						return false
@@ -600,11 +623,8 @@ func composer(c *ui.Context, draft *string, options form.ComposerOptions) {
 }
 
 func composerArea(c *ui.Context, children func()) {
-	ui.Row(c).FillWidth().Padding(8, paneGutter, 12, paneGutter).Justify(ui.Center).Children(func() {
-		ui.Column(c).Grow(1).MaxWidth(720).MinWidth(0).Gap(5).Children(func() {
-			children()
-			text(c, "⏎ send · ⇧⏎ newline", 10, muted)
-		})
+	paneContent(c, func() {
+		ui.Column(c).FillWidth().MinWidth(0).Padding(8, 0, 4).Gap(5).Children(children)
 	})
 }
 

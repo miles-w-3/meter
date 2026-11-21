@@ -68,6 +68,9 @@ const spec = {
       parameters: [{ in: "query", name: "before", schema: { type: "string" } }],
       responses: { "200": response("Transcript page", "HistoryPage"), ...failures },
     } },
+    "/v1/conversations/{id}/entries/{entryId}/output": { parameters: [id, { ...id, name: "entryId" }], get: {
+      operationId: "GetToolOutput", responses: { "200": response("Stored tool output", "ToolOutput"), ...failures },
+    } },
     "/v1/conversations/{id}/messages": { parameters: [id], post: post("SubmitMessage", "SubmitInput", "202", "Receipt") },
     "/v1/conversations/{id}/abort": { parameters: [id], post: post("AbortRun", "AbortInput", "202") },
   },

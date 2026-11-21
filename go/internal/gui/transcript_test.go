@@ -18,7 +18,7 @@ func TestTranscriptMarkdownAndFade(t *testing.T) {
 	a := &app{}
 	driver := ui.NewTester(func(c *ui.Context) {
 		c.SetTheme(theme)
-		a.transcript(c, p, accent, "1")
+		a.transcript(c, p, "1")
 	}, 500, 300)
 	driver.Frame()
 	if p.transcriptScroll.MaxY <= 0 {

@@ -2,37 +2,89 @@ package tui
 
 import (
 	"context"
-	"fmt"
+	"os"
 	"strings"
+	"time"
 	"unicode"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/colorprofile"
 	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/protocol"
 )
 
-type Model struct {
-	ctx          context.Context
-	api          *client.Client
-	conversation protocol.Conversation
-	events       <-chan client.Event
-	state        client.State
-	width        int
-	height       int
-	offset       int
-	draft        []rune
-	cursor       int
-	submission   client.Submission
-	loading      bool
-	connected    bool
-	mayAbort     bool
-	mayRetry     bool
-	notice       string
+type Options struct {
+	NoMouse, Transparent bool
+	Workspace            string
 }
 
-func New(ctx context.Context, api *client.Client, conversation protocol.Conversation, info protocol.ServerInfo) *Model {
-	m := &Model{ctx: ctx, api: api, conversation: conversation, width: 80, height: 24}
+type session struct {
+	conversation                               protocol.Conversation
+	state                                      client.State
+	draft                                      textarea.Model
+	submission                                 client.Submission
+	loading, connected, reconnecting, rejected bool
+	notice                                     string
+	transcript                                 transcript
+}
+
+type Model struct {
+	*session
+	ctx                           context.Context
+	api                           *client.Client
+	sessions                      map[string]*session
+	info                          protocol.ServerInfo
+	options                       Options
+	cancelStream                  context.CancelFunc
+	streamEpoch                   int
+	events                        <-chan client.Event
+	pending                       []client.Event
+	ticking                       bool
+	width, height                 int
+	plain, dumb                   bool
+	colors                        terminalTheme
+	focused                       bool
+	mayAbort, mayRetry            bool
+	stopUntil, quitUntil          time.Time
+	stopTarget                    string
+	spinner                       spinner.Model
+	help                          help.Model
+	mouseHintUntil                time.Time
+	overlay                       overlay
+	search                        textinput.Model
+	query                         string
+	searchPending, searchBackward bool
+	directory                     map[string]conversationItem
+	catalogEpoch                  int
+	spark                         []float64
+	lastPartial                   int
+	lastDelta                     time.Time
+	runTarget                     string
+	rate                          float64
+}
+
+func New(ctx context.Context, api *client.Client, conversation protocol.Conversation, info protocol.ServerInfo, options Options) *Model {
+	if options.Workspace == "" {
+		options.Workspace = "default"
+	}
+	dumb := os.Getenv("TERM") == "dumb"
+	_, noColor := os.LookupEnv("NO_COLOR")
+	m := &Model{
+		ctx: ctx, api: api, info: info, options: options, dumb: dumb, plain: dumb || noColor,
+		width: 80, height: 24, focused: true,
+		sessions: make(map[string]*session), help: help.New(), search: textinput.New(),
+		spinner: spinner.New(spinner.WithSpinner(spinner.Spinner{
+			Frames: strings.Split("▁▃▄▅▆▇▆▅▄▃", ""), FPS: 100 * time.Millisecond,
+		})),
+	}
+	m.colors.set(m.plain, m.options.Transparent, colorprofile.Env(os.Environ()))
+	m.search.Prompt = "/ "
+	m.search.CharLimit = 256
+	m.search.SetStyles(textinput.Styles{})
 	for _, capability := range info.Capabilities {
 		switch capability {
 		case "abort-target":
@@ -41,151 +93,248 @@ func New(ctx context.Context, api *client.Client, conversation protocol.Conversa
 			m.mayRetry = true
 		}
 	}
-	m.events = api.Subscribe(ctx, conversation.Id)
+	m.open(conversation)
 	return m
 }
 
-type streamMsg client.Event
-type sentMsg struct{ err error }
-type actionMsg struct{ err error }
+type streamMsg struct {
+	epoch int
+	event client.Event
+}
+type frameMsg struct{}
+type sentMsg struct {
+	session *session
+	err     error
+}
+type actionMsg struct {
+	session *session
+	err     error
+}
 type historyMsg struct {
-	cursor *string
-	page   protocol.HistoryPage
-	err    error
+	session *session
+	cursor  *string
+	page    protocol.HistoryPage
+	err     error
+}
+type confirmationExpired struct{}
+
+func (m *Model) Init() tea.Cmd {
+	return tea.Batch(m.listen(), m.fetchCatalog())
 }
 
-func (m *Model) Init() tea.Cmd { return m.listen() }
+func (m *Model) ConversationID() string { return m.conversation.Id }
+
+func (m *Model) open(conversation protocol.Conversation) {
+	if m.cancelStream != nil {
+		m.cancelStream()
+	}
+	if m.session != nil {
+		m.flush(time.Now())
+		m.draft.Blur()
+	}
+	s := m.sessions[conversation.Id]
+	if s == nil {
+		s = &session{transcript: transcript{follow: true}, draft: textarea.New()}
+		s.draft.Prompt = "▎ "
+		s.draft.Placeholder = "Message…"
+		s.draft.ShowLineNumbers = false
+		s.draft.EndOfBufferCharacter = ' '
+		s.draft.CharLimit = 16_000
+		s.draft.DynamicHeight = true
+		s.draft.MaxHeight = 6
+		s.draft.MaxContentHeight = s.draft.CharLimit
+		s.draft.MaxWidth = 0
+		s.draft.SetVirtualCursor(false)
+		m.sessions[conversation.Id] = s
+	}
+	m.session = s
+	m.conversation = conversation
+	m.connected, m.reconnecting = false, false
+	m.streamEpoch++
+	m.pending = nil
+	m.spark, m.lastPartial, m.lastDelta, m.rate, m.runTarget = nil, 0, time.Time{}, 0, ""
+	m.stopUntil, m.quitUntil, m.stopTarget = time.Time{}, time.Time{}, ""
+	m.query, m.searchPending = "", false
+	m.focusComposer()
+	m.resizeComposer()
+	m.refresh()
+	if m.api != nil {
+		ctx, cancel := context.WithCancel(m.ctx)
+		m.cancelStream = cancel
+		m.events = m.api.Subscribe(ctx, conversation.Id)
+	}
+}
 
 func (m *Model) listen() tea.Cmd {
+	events, epoch := m.events, m.streamEpoch
+	if events == nil {
+		return nil
+	}
 	return func() tea.Msg {
-		event, open := <-m.events
+		event, open := <-events
 		if !open {
 			return nil
 		}
-		return streamMsg(event)
+		return streamMsg{epoch, event}
 	}
+}
+
+func (m *Model) running() bool {
+	return m.connected && m.state.Current.Status == protocol.Running
 }
 
 func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.resizeComposer()
+		m.refresh()
+		m.resizeOverlay()
+	case tea.ColorProfileMsg:
+		m.colors.set(m.plain, m.options.Transparent, msg.Profile)
+		m.resizeComposer()
+		m.refresh()
+		m.styleSwitcher()
 	case streamMsg:
-		m.connected = msg.View != nil
-		m.state.Apply(client.Event(msg))
-		return m, m.listen()
-	case sentMsg:
-		m.submission.Resolve(msg.err)
-		if msg.err == nil {
-			m.notice = "Input accepted"
+		if msg.epoch != m.streamEpoch {
 			break
 		}
-		m.notice = msg.err.Error()
-		if m.submission.Uncertain() {
-			m.notice = "Submission outcome unknown"
-			if m.mayRetry {
-				m.notice += " · Ctrl+R retries the same request"
-			}
-		} else {
-			if len(m.draft) == 0 {
-				m.draft = []rune(m.submission.Restore())
-				m.cursor = len(m.draft)
-			} else {
-				m.notice += " · Esc discards the rejected input"
-			}
+		m.pending = append(m.pending, msg.event)
+		cmd = m.listen()
+		if !m.ticking {
+			m.ticking = true
+			cmd = tea.Batch(cmd, tea.Tick(time.Second/30, func(time.Time) tea.Msg { return frameMsg{} }))
 		}
+	case frameMsg:
+		m.ticking = false
+		wasRunning := m.running()
+		m.flush(time.Now())
+		if !wasRunning && m.running() {
+			cmd = m.spinner.Tick
+		}
+	case spinner.TickMsg:
+		if m.running() {
+			m.spinner, cmd = m.spinner.Update(msg)
+			m.addSpark(time.Now())
+		}
+	case sentMsg:
+		msg.session.handleSent(msg.err, m.mayRetry)
+		m.resizeComposer()
+		m.transcript.clamp(m.frame().rows)
 	case actionMsg:
+		msg.session.notice = "Abort requested"
 		if msg.err != nil {
-			m.notice = msg.err.Error()
-		} else {
-			m.notice = "Abort requested"
+			msg.session.notice = clean(msg.err.Error())
 		}
 	case historyMsg:
-		m.loading = false
+		msg.session.loading = false
 		if msg.err != nil {
-			m.notice = msg.err.Error()
+			msg.session.notice = clean(msg.err.Error())
+			if msg.session == m.session {
+				m.searchPending = false
+			}
 			break
 		}
-		m.state.Prepend(msg.cursor, msg.page)
-	case tea.PasteMsg:
-		m.insert(clean(msg.Content))
+		msg.session.state.Prepend(msg.cursor, msg.page)
+		if msg.session == m.session {
+			m.refresh()
+			if m.searchPending {
+				cmd = m.finishSearch()
+			}
+		}
+	case catalogMsg:
+		cmd = m.receiveCatalog(msg)
+	case toolOutputMsg:
+		m.receiveOutput(msg)
 	case tea.KeyPressMsg:
-		return m, m.key(msg)
-	}
-	return m, nil
-}
-
-func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
-	switch msg.String() {
-	case "ctrl+c", "ctrl+q":
-		return tea.Quit
-	case "enter":
-		return m.submit("prompt")
-	case "ctrl+f":
-		return m.submit("followup")
-	case "ctrl+s":
-		return m.submit("steer")
-	case "ctrl+r":
-		if m.submission.Uncertain() && m.mayRetry && m.connected {
-			return m.send()
-		}
-	case "esc":
-		if m.submission.Restore() != "" {
-			m.notice = ""
-		}
-	case "ctrl+x":
-		if m.connected && m.mayAbort && m.state.Current.AbortTarget != nil {
-			target := *m.state.Current.AbortTarget
-			return func() tea.Msg { return actionMsg{m.api.Abort(m.ctx, m.conversation.Id, target)} }
-		}
-	case "pgup":
-		m.offset = min(m.offset+max(1, m.height-8), max(0, len(m.transcript())-1))
-		if m.offset >= max(0, len(m.transcript())-max(1, m.height-8)) {
-			return m.loadHistory()
-		}
-	case "pgdown":
-		m.offset = max(0, m.offset-max(1, m.height-8))
-	case "left":
-		m.cursor = max(0, m.cursor-1)
-	case "right":
-		m.cursor = min(len(m.draft), m.cursor+1)
-	case "home":
-		m.cursor = 0
-	case "end":
-		m.cursor = len(m.draft)
-	case "backspace":
-		if m.cursor > 0 {
-			m.draft = append(m.draft[:m.cursor-1], m.draft[m.cursor:]...)
-			m.cursor--
-		}
-	case "delete":
-		if m.cursor < len(m.draft) {
-			m.draft = append(m.draft[:m.cursor], m.draft[m.cursor+1:]...)
+		cmd = m.key(msg)
+	case tea.MouseWheelMsg, tea.MouseClickMsg:
+		cmd = m.mouse(message)
+	case confirmationExpired:
+		// One redraw clears the expired confirmation or mouse hint.
+	case tea.PasteMsg:
+		if m.overlay.kind == overlaySearch || m.overlay.kind == overlaySwitch || m.overlay.pagerFind {
+			cmd = m.updateOverlay(tea.PasteMsg{Content: clean(msg.Content)})
+		} else if m.overlay.kind == overlayNone {
+			m.focusComposer()
+			m.draft.InsertString(clean(msg.Content))
+			m.resizeComposer()
+			m.transcript.clamp(m.frame().rows)
 		}
 	default:
-		if text := msg.Key().Text; text != "" {
-			m.insert(clean(text))
+		if m.overlay.kind != overlayNone {
+			cmd = m.updateOverlay(message)
 		}
 	}
-	return nil
+	return m, cmd
 }
 
-func (m *Model) insert(text string) {
-	runes := []rune(text)
-	if len(runes)+len(m.draft) > 16_000 {
-		m.notice = "Draft limit reached"
+func (m *Model) flush(now time.Time) {
+	if len(m.pending) == 0 {
 		return
 	}
-	tail := append([]rune{}, m.draft[m.cursor:]...)
-	m.draft = append(append(m.draft[:m.cursor], runes...), tail...)
-	m.cursor += len(runes)
+	for _, event := range m.pending {
+		m.connected = event.View != nil
+		m.reconnecting = !m.connected && event.Err != nil
+		m.state.Apply(event)
+	}
+	m.pending = nil
+	m.trackDelta(now)
+	m.refresh()
+}
+
+func (m *Model) trackDelta(now time.Time) {
+	target := value(m.state.Current.AbortTarget)
+	if target != m.runTarget || !m.running() {
+		m.runTarget, m.spark, m.rate, m.lastPartial, m.lastDelta = target, nil, 0, 0, time.Time{}
+	}
+	length := len([]rune(value(m.state.Current.Partial)))
+	if m.running() && length != m.lastPartial {
+		if elapsed := now.Sub(m.lastDelta).Seconds(); !m.lastDelta.IsZero() && elapsed > 0 && length > m.lastPartial {
+			m.rate = float64(length-m.lastPartial) / elapsed / 4
+		}
+		m.lastPartial, m.lastDelta = length, now
+	}
+}
+
+func (m *Model) addSpark(now time.Time) {
+	if now.Sub(m.lastDelta) > 350*time.Millisecond {
+		m.rate = 0
+	}
+	m.spark = append(m.spark, m.rate)
+	if len(m.spark) > 8 {
+		m.spark = m.spark[1:]
+	}
+}
+
+func (s *session) handleSent(err error, mayRetry bool) {
+	s.submission.Resolve(err)
+	s.notice = "Input accepted"
+	if err == nil {
+		return
+	}
+	s.notice = clean(err.Error())
+	if s.submission.Uncertain() {
+		s.notice = "Submission outcome unknown"
+		if mayRetry {
+			s.notice += " · ctrl+r retries"
+		}
+	} else if s.draft.Value() == "" {
+		s.draft.SetValue(s.submission.Restore())
+	} else {
+		s.rejected = true
+		s.notice += " · ctrl+r restores rejected input"
+	}
 }
 
 func (m *Model) submit(mode protocol.SubmitInputMode) tea.Cmd {
-	if !m.connected || !m.submission.Begin(mode, string(m.draft)) {
+	if !m.connected || (mode == "steer" && !m.running()) || !m.submission.Begin(mode, m.draft.Value()) {
 		return nil
 	}
-	m.draft, m.cursor, m.offset = nil, 0, 0
+	m.draft.Reset()
+	m.resizeComposer()
+	m.transcript.toBottom(m.frame().rows)
 	return m.send()
 }
 
@@ -194,22 +343,31 @@ func (m *Model) send() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	m.notice = "Submitting…"
+	s, id := m.session, m.conversation.Id
+	s.notice = "Submitting…"
 	return func() tea.Msg {
-		_, err := m.api.Submit(m.ctx, m.conversation.Id, input)
-		return sentMsg{err}
+		_, err := m.api.Submit(m.ctx, id, input)
+		return sentMsg{s, err}
 	}
 }
 
-func (m *Model) loadHistory() tea.Cmd {
-	if m.loading || m.state.Before == nil {
+func (m *Model) abort() tea.Cmd {
+	if !m.running() || !m.mayAbort || m.state.Current.AbortTarget == nil {
 		return nil
 	}
-	m.loading = true
-	cursor := m.state.Before
+	s, id, target := m.session, m.conversation.Id, *m.state.Current.AbortTarget
+	return func() tea.Msg { return actionMsg{s, m.api.Abort(m.ctx, id, target)} }
+}
+
+func (m *Model) loadHistory() tea.Cmd {
+	if m.api == nil || m.loading || m.state.Before == nil {
+		return nil
+	}
+	s, id, cursor := m.session, m.conversation.Id, m.state.Before
+	s.loading = true
 	return func() tea.Msg {
-		page, err := m.api.History(m.ctx, m.conversation.Id, cursor)
-		return historyMsg{cursor, page, err}
+		page, err := m.api.History(m.ctx, id, cursor)
+		return historyMsg{s, cursor, page, err}
 	}
 }
 
@@ -222,56 +380,9 @@ func clean(text string) string {
 	}, text)
 }
 
-func (m *Model) transcript() []string {
-	var text strings.Builder
-	for _, entry := range m.state.Entries() {
-		if entry.Text == "" {
-			continue
-		}
-		label := strings.TrimPrefix(entry.Kind, "pi.")
-		if entry.ToolName != nil {
-			label = "tool · " + *entry.ToolName
-		}
-		fmt.Fprintf(&text, "%s\n%s\n\n", clean(label), clean(entry.Text))
+func value[T any](p *T) (v T) {
+	if p != nil {
+		return *p
 	}
-	for _, tool := range m.state.Current.Tools {
-		fmt.Fprintf(&text, "%s · %s\n", clean(tool.Name), clean(tool.Status))
-		if tool.Output != nil {
-			fmt.Fprintln(&text, clean(*tool.Output))
-		}
-	}
-	if partial := m.state.Current.Partial; partial != nil {
-		fmt.Fprintf(&text, "assistant · streaming\n%s", clean(*partial))
-	}
-	return strings.Split(ansi.Hardwrap(strings.TrimRight(text.String(), "\n"), max(1, m.width), true), "\n")
-}
-
-func (m *Model) View() tea.View {
-	width := max(1, m.width)
-	status := string(m.state.Current.Status)
-	if !m.connected {
-		status = "connecting or reconnecting"
-	} else if failure := m.state.Current.Failure; failure != nil && status == "failed" {
-		status += " (" + clean(*failure) + ")"
-	}
-	lines := m.transcript()
-	bottom := max(1, len(lines)-m.offset)
-	start := max(0, bottom-max(1, m.height-7))
-	help := "Enter send · Ctrl+F queue · Ctrl+S steer · PgUp/PgDn history · Ctrl+C detach"
-	if m.mayAbort {
-		help = "Ctrl+X abort · " + help
-	}
-	draftBefore := strings.ReplaceAll(string(m.draft[:m.cursor]), "\n", "↵")
-	draftAfter := strings.ReplaceAll(string(m.draft[m.cursor:]), "\n", "↵")
-	draftLine := ansi.TruncateLeft(draftBefore, max(0, ansi.StringWidth(draftBefore)-max(0, width-4)), "") + "▏" + draftAfter
-	header := fmt.Sprintf("Workspace  #%s · %s · %s", m.conversation.Id, status, clean(m.conversation.Model))
-	content := []string{header, clean(m.conversation.Cwd), ""}
-	content = append(content, lines[start:bottom]...)
-	content = append(content, "", "> "+draftLine, clean(m.notice), help)
-	for i, line := range content {
-		content[i] = ansi.Truncate(strings.ReplaceAll(line, "\t", "    "), width, "…")
-	}
-	view := tea.NewView(strings.Join(content, "\n"))
-	view.AltScreen = true
-	return view
+	return v
 }

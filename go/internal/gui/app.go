@@ -92,13 +92,23 @@ type app struct {
 	saving, creating     bool
 	conflict             bool
 	mayRetry, mayAbort   bool
+	mayDictate           bool
+	dictation            *dictationRecording
+	dictationVisible     bool
+	backend              BackendControls
+	backendInfo          protocol.ServerInfo
+	backendOpen          bool
+	backendPending       string
+	backendConfirm       string
+	backendNotice        string
+	backendOnline        bool
 }
 
 type geometry struct {
 	Width, Height int
 }
 
-func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, data, name, cwd string) error {
+func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, data, name, cwd string, backend BackendControls) error {
 	if err := registerFonts(); err != nil {
 		return err
 	}
@@ -106,11 +116,12 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 	defer cancel()
 	a := &app{
 		ctx: ctx, api: api, name: name, provider: info.Provider, projectPath: cwd,
-		panes: make(map[uuid.UUID]*pane),
+		panes: make(map[uuid.UUID]*pane), backend: backend,
 	}
-	for _, capability := range info.Capabilities {
-		a.mayRetry = a.mayRetry || capability == "retry-submit"
-		a.mayAbort = a.mayAbort || capability == "abort-target"
+	a.applyBackendInfo(info)
+	if backend.StartupError != nil {
+		a.backendNotice = backend.StartupError.Error()
+		a.backendOpen = true
 	}
 	path := filepath.Join(data, "desktop-window.json")
 	size := geometry{Width: 1190, Height: 780}
@@ -149,6 +160,7 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 				saveGeometry(path, geometry{Width: bounds.Width, Height: bounds.Height})
 			}
 		})
+		a.window.OnBlur(a.cancelDictation)
 		a.window.OnClosed(func() { cancel(); mygo.App.Quit() })
 		a.reload()
 	})

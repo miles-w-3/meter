@@ -10,6 +10,7 @@ import (
 	"github.com/Cyenoch/mygoui"
 	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo/ui"
+	palette "pi-workspace.local/workspace/internal/theme"
 )
 
 const monoFont = "JetBrains Mono"
@@ -49,10 +50,10 @@ var (
 	accent         = theme.Accent
 	warning        = theme.Warning
 	idleStatus     = ui.Hex("#6b7b70")
-	faint          = ui.Hex("#647568")
-	runningColor   = ui.Hex("#d2a85f")
+	faint          = ui.Hex("#7e9183")
+	runningColor   = ui.Hex(palette.Chanterelle)
 	rain           = ui.Hex("#7f9fb0")
-	selectedFill   = ui.RGBA(143, 174, 122, .10)
+	selectedFill   = ui.RGBA(143, 174, 122, .17)
 	highlight      = ui.RGBA(255, 255, 255, .04)
 )
 
@@ -78,14 +79,14 @@ func init() {
 
 func meterTheme() *ui.Theme {
 	t := ui.DarkTheme()
-	t.Background, t.Surface, t.SurfaceHover = ui.Hex("#0e1511"), ui.Hex("#141d18"), ui.Hex("#1a251f")
+	t.Background, t.Surface, t.SurfaceHover = ui.Hex(palette.Background), ui.Hex(palette.Surface), ui.Hex(palette.Panel)
 	t.SurfacePressed = ui.Hex("#222f27")
 	t.Border = ui.RGBA(200, 220, 205, .08)
-	t.Text, t.TextMuted = ui.Hex("#d3dcd0"), ui.Hex("#8e9f92")
-	t.Accent, t.AccentText = ui.Hex("#8fae7a"), ui.Hex("#0e1511")
+	t.Text, t.TextMuted = ui.Hex(palette.Fog), ui.Hex(palette.Muted)
+	t.Accent, t.AccentText = ui.Hex(palette.Moss), ui.Hex(palette.Background)
 	t.AccentHover, t.AccentPressed = ui.Hex("#a3bf8e"), ui.Hex("#7a9966")
-	t.Danger, t.Warning, t.Success = ui.Hex("#c8705a"), ui.Hex("#d2a85f"), ui.Hex("#86a878")
-	t.Focus, t.InactiveAccent = ui.Hex("#86a5b5"), t.Accent
+	t.Danger, t.Warning, t.Success = ui.Hex(palette.Madrone), ui.Hex(palette.Chanterelle), ui.Hex("#86a878")
+	t.Focus, t.InactiveAccent = ui.Hex(palette.Rain), t.Accent
 	t.Selection = ui.RGBA(143, 174, 122, .18)
 	t.Scrollbar = ui.RGBA(190, 210, 195, .22)
 	t.ScrollbarStyle.Hover = ui.RGBA(190, 210, 195, .38)
@@ -104,8 +105,8 @@ func pathLabel(c *ui.Context, path string) ui.Element {
 			prefix = "…" + string(filepath.Separator) + filepath.Base(dir) + string(filepath.Separator)
 		}
 	}
-	return ui.RichText(c, ui.Span{Text: prefix, Color: faint}, ui.Span{Text: last, Color: muted}).
-		Font(monoFont).FontSize(11).MinWidth(0).Grow(1).NoWrap().Ellipsis("…").Tooltip(path)
+	return ui.RichText(c, ui.Span{Text: prefix, Color: faint}, ui.Span{Text: last, Color: ink}).
+		Font(monoFont).FontSize(12).MinWidth(0).Grow(1).NoWrap().Ellipsis("…").Tooltip(path)
 }
 
 func firstLine(s string) string {
@@ -117,7 +118,16 @@ func firstLine(s string) string {
 	return ""
 }
 
-const paneGutter = 12
+const (
+	paneGutter    = 12
+	paneTextInset = 24
+)
+
+func paneContent(c *ui.Context, children func()) {
+	ui.Row(c).FillWidth().MinWidth(0).Padding(0, paneGutter).Justify(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MaxWidth(720).MinWidth(0).Children(children)
+	})
+}
 
 var (
 	newPaneIcon = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="2.5" width="14" height="19" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v8M8 12h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`))

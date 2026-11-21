@@ -163,7 +163,13 @@ async function regular() {
   assert.equal(active.type, "update");
   firstWatch.ws.close();
   const finished = await waitFor(secondWatch, (f) => f.view.status === "idle" && text(f).includes("Fixture completed"), "second viewer finishes");
-  assert.ok(entries(finished).some((entry) => entry.toolName === "write" && entry.toolSucceeded === true));
+  const write = entries(finished).find((entry) => entry.toolName === "write" && entry.toolSucceeded === true);
+  assert.ok(write);
+  assert.equal(write.toolTarget, "result.txt");
+  assert.ok(Number.isInteger(write.durationMs));
+  const stored = await request(pathOf(conversation) + "/entries/" + write.id + "/output");
+  assert.equal(stored.status, 200);
+  assert.match(stored.value.text, /Successfully wrote to result\.txt/);
   assert.ok(finished.view.contextUsage.tokens > 0);
   assert.ok(finished.view.contextUsage.window > finished.view.contextUsage.tokens);
   assert.equal(await readFile(join(project, "result.txt"), "utf8"), "written by Durable\n");

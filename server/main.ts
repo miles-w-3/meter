@@ -1,9 +1,10 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { existsSync } from "node:fs";
 import { chmod, lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { LiveDoc } from "@earendil-works/pi-durable";
@@ -11,9 +12,10 @@ import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-wo
 import { WebSocket, WebSocketServer } from "ws";
 import { abortInput, conversationFrame, createInput, cwdInput, layout, projectInput, projectRenameInput, submitInput } from "../contracts/schemas.ts";
 import type { ZodType } from "zod";
-import { abortTarget, admit, contextTokens, historyCursor, openHarness, project, projectEntry, RequestConflict } from "./durable.ts";
+import { abortTarget, admit, contextTokens, entryText, historyCursor, openHarness, project, projectEntries, RequestConflict } from "./durable.ts";
 import type { Provider } from "./durable.ts";
 
+import { dictation } from "./dictation.ts";
 import { InvalidLayout, LayoutConflict, Workspaces } from "./workspaces.ts";
 
 process.umask(0o077);
@@ -67,6 +69,13 @@ const { harness, model, models } = await openHarness(join(data, "durable.sqlite"
 const workspaces = new Workspaces(join(data, "app.sqlite"));
 const generation = randomUUID();
 const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts"];
+const dictationDir = process.env.PI_DICTATION_DIR ||
+  (existsSync(join(data, "meter-dictation")) ? data : dirname(process.execPath));
+const voice = dictation(dictationDir, data);
+declare const METER_GIT_REVISION: string;
+declare const METER_GIT_DIRTY: boolean;
+const revision = typeof METER_GIT_REVISION === "string" ? METER_GIT_REVISION : undefined;
+const dirty = typeof METER_GIT_DIRTY === "boolean" ? METER_GIT_DIRTY : undefined;
 harness.resume();
 
 function reply(res: ServerResponse, status: number, body?: unknown) {
@@ -158,7 +167,7 @@ async function history(conversation: Conversation, before: string | null) {
   }
   const page = await conversation.entries({ maxEntryId, order: "descending" }, 24, undefined, context);
   const entries = [...page.items].reverse();
-  return { entries: entries.map(projectEntry), before: page.next && entries.length ? historyCursor(entries[0].id) : undefined };
+  return { entries: projectEntries(entries).projected, before: page.next && entries.length ? historyCursor(entries[0].id) : undefined };
 }
 
 // Serialize cwd changes with input admission for the same conversation.
@@ -176,8 +185,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (!allowed(req)) throw new Problem(401, "unauthorized", "Unauthorized local endpoint");
   const url = new URL(req.url ?? "/", "http://workspace");
   if (url.pathname === "/v1/server" && req.method === "GET") {
-    return reply(res, 200, { id, protocol: "v1", ready: true, capabilities, provider });
+    const status = voice.status;
+    return reply(res, 200, {
+      id, protocol: "v1", ready: true, provider, revision, dirty, generation, transport, dictation: status,
+      capabilities: status === "ready" ? [...capabilities, "dictation"] : capabilities,
+    });
   }
+  if (stopping) throw new Problem(503, "server_stopping", "Backend is shutting down");
   if (url.pathname === "/v1/server/stop" && req.method === "POST") {
     res.once("finish", shutdown);
     return reply(res, 202);
@@ -236,6 +250,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     workspaces.renameConversation(titlePath[1], name);
     return reply(res, 200, await metadata(conversation));
   }
+  const outputPath = url.pathname.match(/^\/v1\/conversations\/([^/]+)\/entries\/([1-9][0-9]*)\/output$/);
+  if (req.method === "GET" && outputPath) {
+    const id = Number(outputPath[2]) as EntryId;
+    if (!Number.isSafeInteger(id)) throw new Problem(400, "invalid_entry", "Invalid entry ID");
+    const conversation = await conversationFor(outputPath[1]);
+    const page = await conversation.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, context);
+    const result = page.items.find((entry) => entry.id === id && entry.model?.some((message) => message.role === "toolResult"));
+    if (!result) throw new Problem(404, "not_found", "Tool result not found");
+    return reply(res, 200, { text: entryText(result) });
+  }
   const match = url.pathname.match(/^\/v1\/conversations\/([^/]+)(?:\/(entries|messages|abort|cwd))?$/);
   if (match) {
     const conversation = await conversationFor(match[1]);
@@ -281,6 +305,7 @@ const server = createServer({ requestTimeout: 7000 }, (req, res) => {
   });
 });
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 512 });
+const voiceSockets = new WebSocketServer({ noServer: true, maxPayload: voice.maxAudioFrame });
 const responsive = new WeakSet<WebSocket>();
 const heartbeat = setInterval(() => {
   for (const ws of sockets.clients) {
@@ -291,8 +316,13 @@ const heartbeat = setInterval(() => {
 heartbeat.unref();
 
 server.on("upgrade", (req, socket, head) => {
+  if (!allowed(req) || stopping) return socket.destroy();
+  if (req.url === "/v1/dictation") {
+    voiceSockets.handleUpgrade(req, socket, head, voice.attach);
+    return;
+  }
   const match = req.url?.match(/^\/v1\/conversations\/([1-9][0-9]*)\/stream$/);
-  if (!match || !allowed(req) || stopping) return socket.destroy();
+  if (!match) return socket.destroy();
   sockets.handleUpgrade(req, socket, head, (ws) => {
     ws.on("error", () => ws.terminate());
     ws.on("pong", () => responsive.add(ws));
@@ -342,13 +372,14 @@ function shutdown() {
   stopping = true;
   clearInterval(heartbeat);
   for (const ws of sockets.clients) ws.terminate();
-  server.close();
+  voice.close();
   void harness.close(context).then(async () => {
+    workspaces.db.close();
+    lock.close();
     if (tcp) await unlink(endpointPath).catch((error) => {
       if (error.code !== "ENOENT") console.error(error);
     });
-    workspaces.db.close();
-    lock.close();
+    server.close();
     process.exit(0);
   }, (error) => {
     console.error(error);

@@ -10,6 +10,7 @@ import (
 	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo/ui"
 	mmd "github.com/egoist/mygo/ui/markdown"
+	palette "pi-workspace.local/workspace/internal/theme"
 )
 
 func ghost(c *ui.Context, label string, disabled bool) bool {
@@ -44,12 +45,12 @@ func (p *pane) updateMeter(now time.Time) {
 }
 
 type message struct {
-	id, label, text string
-	tool, user      bool
-	succeeded       bool
+	id, label, text, target, stats string
+	tool, user                     bool
+	succeeded                      bool
 }
 
-func (a *app) transcript(c *ui.Context, p *pane, tint ui.Color, conversationID string) {
+func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 	entries := p.state.Entries()
 	messages := make([]message, 0, len(entries)+len(p.state.Current.Tools)+1)
 	completed := make(map[string]bool)
@@ -59,12 +60,17 @@ func (a *app) transcript(c *ui.Context, p *pane, tint ui.Color, conversationID s
 		}
 		label := strings.TrimPrefix(entry.Kind, "pi.")
 		if entry.ToolName == nil {
-			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), user: label == "user"})
+			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), user: label == "user",
+				stats: palette.Stats(entry.DurationMs, entry.Tokens)})
 			continue
 		}
 		completed[entry.Id] = true
+		target := ""
+		if entry.ToolTarget != nil {
+			target = clean(*entry.ToolTarget)
+		}
 		messages = append(messages, message{id: entry.Id, label: *entry.ToolName, text: clean(entry.Text), tool: true,
-			succeeded: entry.ToolSucceeded != nil && *entry.ToolSucceeded})
+			target: target, stats: palette.Stats(entry.DurationMs, nil), succeeded: entry.ToolSucceeded != nil && *entry.ToolSucceeded})
 	}
 	for i, tool := range p.state.Current.Tools {
 		key := fmt.Sprintf("live:%s:%d", tool.Name, i)
@@ -121,23 +127,12 @@ func (a *app) transcript(c *ui.Context, p *pane, tint ui.Color, conversationID s
 				return
 			}
 			msg := messages[i-offset]
-			ui.Row(c).FillWidth().MinWidth(0).Padding(0, paneGutter).Justify(ui.Center).Children(func() {
-				ui.Column(c).Grow(1).MaxWidth(720).MinWidth(0).Children(func() {
-					if msg.tool {
-						toolRow(c, p, msg)
-						return
-					}
-					row := ui.Row(c).MinWidth(0).AlignItems(ui.Stretch)
-					if msg.user {
-						row.Background(panel).Radius(8)
-					}
-					row.Children(func() {
-						if msg.user {
-							ui.Box(c).Width(2).MinWidth(2).Background(accent)
-						}
-						messageBody(c, msg)
-					})
-				})
+			paneContent(c, func() {
+				if msg.tool {
+					toolRow(c, p, msg)
+					return
+				}
+				messageBody(c, msg)
 			})
 		}).Grow(1).MinHeight(0).MinWidth(0).Padding(12, 0).Gap(20).TrackScroll(&p.transcriptScroll)
 		mygoui.ScrollFade(c, viewport, &p.transcriptScroll, mygoui.ScrollFadeOptions{
@@ -147,12 +142,21 @@ func (a *app) transcript(c *ui.Context, p *pane, tint ui.Color, conversationID s
 }
 
 func messageBody(c *ui.Context, msg message) {
-	ui.Column(c).Grow(1).MinWidth(0).Padding(8, paneGutter).Children(func() {
+	bodyView := ui.Column(c).FillWidth().MinWidth(0).Padding(8, paneGutter, 8, paneTextInset)
+	if msg.user {
+		bodyView.Background(panel).Radius(8)
+	}
+	bodyView.Children(func() {
 		if body := strings.TrimSpace(msg.text); body != "" {
 			if msg.user {
 				text(c, body, 14, ink).Selectable().LineHeight(1.5)
 			} else {
 				prose(c, body)
+				if msg.stats != "" {
+					ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
+						text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum")
+					})
+				}
 			}
 		}
 	})
@@ -175,7 +179,7 @@ func prose(c *ui.Context, body string) {
 		return s
 	})
 	st.theme = mmd.Theme{Font: "Source Serif 4", CodeFont: monoFont, FontSize: 15, LineHeight: 1.6,
-		Text: ink, Muted: muted, Link: rain, Strong: ink, Code: ink, CodeBackground: panel,
+		Text: ui.Hex("#e0e9dc"), Muted: muted, Link: rain, Strong: ui.Hex("#e0e9dc"), Code: ink, CodeBackground: panel,
 		QuoteBar: theme.Border, QuoteText: muted, Rule: theme.Border, TableBorder: theme.Border,
 		TableHeader: panel, Checkbox: accent, BlockSpacing: .6}
 	root.Children(func() { mmd.View(c, body, &st.options) })
@@ -185,6 +189,9 @@ func toolRow(c *ui.Context, p *pane, msg message) {
 	expanded := p.expandedTools[msg.id]
 	kind, status, _ := strings.Cut(clean(msg.label), " · ")
 	detail := firstLine(msg.text)
+	if msg.target != "" {
+		detail = firstLine(msg.target)
+	}
 	if chars := []rune(detail); len(chars) > 72 {
 		detail = string(chars[:71]) + "…"
 	}
@@ -201,23 +208,27 @@ func toolRow(c *ui.Context, p *pane, msg message) {
 	if expanded {
 		glyph = "⌄"
 	}
-	color := rain
 	ui.Column(c).MinWidth(0).Children(func() {
 		button := ui.ButtonBase(c).Label(summary).AlignSelf(ui.Stretch).MinWidth(0).MinHeight(26).
-			Justify(ui.Start).AlignItems(ui.Center).Padding(0, paneGutter).Gap(6).Radius(6).Disabled(msg.text == "")
+			Justify(ui.Start).AlignItems(ui.Center).Padding(0, paneGutter, 0, 0).Radius(6).Disabled(msg.text == "")
 		if button.Hovered() {
 			button.Background(sidebar)
 		}
 		button.Children(func() {
-			if msg.text != "" {
-				text(c, glyph, 13, muted).Width(8)
-			}
-			text(c, kind, 11, color).Font(monoFont)
+			ui.Row(c).Width(paneTextInset).Shrink(0).Center().Children(func() {
+				if msg.text != "" {
+					text(c, glyph, 13, muted)
+				}
+			})
+			text(c, kind, 11, muted).Font(monoFont).Margin(0, 6, 0, 0)
 			if status != "" {
 				text(c, status, 11, muted).Font(monoFont).Grow(1).NoWrap().Ellipsis("…")
 			}
 			if msg.succeeded {
 				text(c, "✓", 12, muted).Tooltip("Succeeded")
+			}
+			if msg.stats != "" {
+				text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum").Shrink(0).Margin(0, 0, 0, 6)
 			}
 		})
 		if button.Clicked() {
@@ -231,10 +242,7 @@ func toolRow(c *ui.Context, p *pane, msg message) {
 			}
 		}
 		if expanded && msg.text != "" {
-			ui.Row(c).Padding(0, paneGutter, 0, paneGutter).AlignItems(ui.Stretch).Gap(8).Children(func() {
-				ui.Box(c).Width(2).Background(color)
-				text(c, msg.text, 12, ink).Font(monoFont).Selectable().Grow(1).Padding(4, 0, 7)
-			})
+			text(c, msg.text, 12, ink).Font(monoFont).Selectable().Padding(4, paneGutter, 7, paneTextInset+paneGutter)
 		}
 	})
 }

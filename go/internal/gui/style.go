@@ -95,18 +95,17 @@ func meterTheme() *ui.Theme {
 }
 
 func pathLabel(c *ui.Context, path string) ui.Element {
-	last := filepath.Base(path)
-	prefix := ""
-	if path == "" {
-		last = ""
-	} else if dir := filepath.Dir(path); dir != "." && dir != path {
-		prefix = strings.TrimSuffix(dir, string(filepath.Separator)) + string(filepath.Separator)
-		if parent := filepath.Dir(dir); parent != "." && parent != dir {
-			prefix = "…" + string(filepath.Separator) + filepath.Base(dir) + string(filepath.Separator)
+	last, prefix := "", ""
+	if path != "" {
+		last = filepath.Base(path)
+		if strings.HasSuffix(path, last) {
+			prefix = strings.TrimSuffix(path, last)
+		} else {
+			last = path
 		}
 	}
 	return ui.RichText(c, ui.Span{Text: prefix, Color: faint}, ui.Span{Text: last, Color: ink}).
-		Font(monoFont).FontSize(12).MinWidth(0).Grow(1).NoWrap().Ellipsis("…").Tooltip(path)
+		Font(monoFont).FontSize(12).MinWidth(0).Grow(1).SingleLine().TruncateStart().Tooltip(path)
 }
 
 func firstLine(s string) string {

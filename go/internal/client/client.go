@@ -227,6 +227,28 @@ func (c *Client) Submit(ctx context.Context, id string, input protocol.SubmitInp
 	return protocol.Receipt{}, responseError(res.StatusCode(), res.GetBody())
 }
 
+func (c *Client) RecallQueued(ctx context.Context, id, submission string) (protocol.RecalledMessage, error) {
+	res, err := c.api.RecallQueuedWithResponse(ctx, id, submission)
+	if err != nil {
+		return protocol.RecalledMessage{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.RecalledMessage{}, responseError(res.StatusCode(), res.GetBody())
+}
+
+func (c *Client) SteerQueued(ctx context.Context, id, submission string) error {
+	res, err := c.api.SteerQueuedWithResponse(ctx, id, submission)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode() != 202 {
+		return responseError(res.StatusCode(), res.GetBody())
+	}
+	return nil
+}
+
 func (c *Client) Abort(ctx context.Context, id, target string) error {
 	res, err := c.api.AbortRunWithResponse(ctx, id, protocol.AbortInput{Target: target})
 	if err != nil {
@@ -358,4 +380,16 @@ func (o *frameOrder) accept(raw protocol.ConversationFrame, id string) (Event, e
 		}
 	}
 	return Event{}, errors.New("conversation stream revision changed")
+}
+
+// EntryImages retrieves stored image blocks separately from streaming updates.
+func (c *Client) EntryImages(ctx context.Context, conversation, entry string) ([]protocol.ImageAttachment, error) {
+	res, err := c.api.GetEntryImagesWithResponse(ctx, conversation, entry)
+	if err != nil {
+		return nil, err
+	}
+	if res.JSON200 == nil {
+		return nil, responseError(res.StatusCode(), res.Body)
+	}
+	return res.JSON200.Images, nil
 }

@@ -147,6 +147,8 @@ export class Workspaces {
     if (active?.projectId && active.projectId !== current.activeProject) throw new InvalidLayout("Active tab belongs to another project");
     const projects = new Set(current.tabs.map((tab) => tab.projectId));
     projects.add(current.activeProject);
+    for (const id of current.closedProjects ?? []) projects.add(id);
+    if (current.activeProject && current.closedProjects?.includes(current.activeProject)) throw new InvalidLayout("Active project is closed");
     for (const id of projects) {
       if (id && !this.projectExists(id)) throw new InvalidLayout("Unknown project");
     }

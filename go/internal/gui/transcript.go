@@ -48,6 +48,7 @@ type message struct {
 	id, label, text, target, stats string
 	tool, user                     bool
 	succeeded                      bool
+	imageCount                     int
 }
 
 func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
@@ -55,12 +56,16 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 	messages := make([]message, 0, len(entries)+len(p.state.Current.Tools)+1)
 	completed := make(map[string]bool)
 	for _, entry := range entries {
-		if entry.Text == "" && entry.ToolName == nil {
+		if entry.Text == "" && entry.ToolName == nil && (entry.ImageCount == nil || *entry.ImageCount == 0) {
 			continue
 		}
 		label := strings.TrimPrefix(entry.Kind, "pi.")
 		if entry.ToolName == nil {
-			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), user: label == "user",
+			imageCount := 0
+			if entry.ImageCount != nil {
+				imageCount = *entry.ImageCount
+			}
+			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), user: label == "user", imageCount: imageCount,
 				stats: palette.Stats(entry.DurationMs, entry.Tokens)})
 			continue
 		}
@@ -132,7 +137,7 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 					toolRow(c, p, msg)
 					return
 				}
-				messageBody(c, msg)
+				a.messageBody(c, p, conversationID, msg)
 			})
 		}).Grow(1).MinHeight(0).MinWidth(0).Padding(12, 0).Gap(20).TrackScroll(&p.transcriptScroll)
 		mygoui.ScrollFade(c, viewport, &p.transcriptScroll, mygoui.ScrollFadeOptions{
@@ -141,12 +146,15 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 	})
 }
 
-func messageBody(c *ui.Context, msg message) {
+func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg message) {
 	bodyView := ui.Column(c).FillWidth().MinWidth(0).Padding(8, paneGutter, 8, paneTextInset)
 	if msg.user {
 		bodyView.Background(panel).Radius(8)
 	}
 	bodyView.Children(func() {
+		if msg.user && msg.imageCount > 0 {
+			a.messageImages(c, p, conversationID, msg.id, msg.imageCount)
+		}
 		if body := strings.TrimSpace(msg.text); body != "" {
 			if msg.user {
 				text(c, body, 14, ink).Selectable().LineHeight(1.5)

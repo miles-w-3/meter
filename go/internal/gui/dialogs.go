@@ -223,6 +223,9 @@ func (a *app) jumpTo(conversation protocol.Conversation) {
 			}
 			a.revealPane = node.Id
 			a.save(func(layout *protocol.Layout) {
+				if tab.ProjectId != nil {
+					selectProject(layout, *tab.ProjectId)
+				}
 				layout.ActiveProject, layout.ActiveTab = tab.ProjectId, &tab.Id
 			})
 			return

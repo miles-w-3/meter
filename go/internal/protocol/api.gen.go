@@ -120,6 +120,21 @@ func (e DefaultSettingsThinkingLevel) Valid() bool {
 	}
 }
 
+// Defines values for ImageAttachmentMimeType.
+const (
+	Imagepng ImageAttachmentMimeType = "image/png"
+)
+
+// Valid indicates whether the value is a known member of the ImageAttachmentMimeType enum.
+func (e ImageAttachmentMimeType) Valid() bool {
+	switch e {
+	case Imagepng:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LayoutNodeAxis.
 const (
 	Horizontal LayoutNodeAxis = "horizontal"
@@ -201,6 +216,24 @@ func (e ProviderInfoStatus) Valid() bool {
 	case ProviderInfoStatusUnconfigured:
 		return true
 	case ProviderInfoStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueuedMessageMode.
+const (
+	QueuedMessageModeFollowUp QueuedMessageMode = "followUp"
+	QueuedMessageModeSteer    QueuedMessageMode = "steer"
+)
+
+// Valid indicates whether the value is a known member of the QueuedMessageMode enum.
+func (e QueuedMessageMode) Valid() bool {
+	switch e {
+	case QueuedMessageModeFollowUp:
+		return true
+	case QueuedMessageModeSteer:
 		return true
 	default:
 		return false
@@ -434,19 +467,19 @@ func (e SettingsThinkingLevel) Valid() bool {
 
 // Defines values for SubmitInputMode.
 const (
-	Followup SubmitInputMode = "followup"
-	Prompt   SubmitInputMode = "prompt"
-	Steer    SubmitInputMode = "steer"
+	SubmitInputModeFollowup SubmitInputMode = "followup"
+	SubmitInputModePrompt   SubmitInputMode = "prompt"
+	SubmitInputModeSteer    SubmitInputMode = "steer"
 )
 
 // Valid indicates whether the value is a known member of the SubmitInputMode enum.
 func (e SubmitInputMode) Valid() bool {
 	switch e {
-	case Followup:
+	case SubmitInputModeFollowup:
 		return true
-	case Prompt:
+	case SubmitInputModePrompt:
 		return true
-	case Steer:
+	case SubmitInputModeSteer:
 		return true
 	default:
 		return false
@@ -527,6 +560,7 @@ type ConversationView struct {
 	Entries        []Entry                `json:"entries"`
 	Failure        *string                `json:"failure,omitempty"`
 	Partial        *string                `json:"partial"`
+	Queued         *[]QueuedMessage       `json:"queued,omitempty"`
 	Selection      *Selection             `json:"selection,omitempty"`
 	Status         ConversationViewStatus `json:"status"`
 	Tools          []struct {
@@ -572,6 +606,7 @@ type Entry struct {
 	Added         *int    `json:"added,omitempty"`
 	DurationMs    *int    `json:"durationMs,omitempty"`
 	Id            string  `json:"id"`
+	ImageCount    *int    `json:"imageCount,omitempty"`
 	Kind          string  `json:"kind"`
 	OutputClipped *bool   `json:"outputClipped,omitempty"`
 	Removed       *int    `json:"removed,omitempty"`
@@ -583,18 +618,33 @@ type Entry struct {
 	ToolTarget    *string `json:"toolTarget,omitempty"`
 }
 
+// EntryImages defines model for EntryImages.
+type EntryImages struct {
+	Images []ImageAttachment `json:"images"`
+}
+
 // HistoryPage defines model for HistoryPage.
 type HistoryPage struct {
 	Before  *string `json:"before,omitempty"`
 	Entries []Entry `json:"entries"`
 }
 
+// ImageAttachment defines model for ImageAttachment.
+type ImageAttachment struct {
+	Data     string                  `json:"data"`
+	MimeType ImageAttachmentMimeType `json:"mimeType"`
+}
+
+// ImageAttachmentMimeType defines model for ImageAttachment.MimeType.
+type ImageAttachmentMimeType string
+
 // Layout defines model for Layout.
 type Layout struct {
-	ActiveProject *openapi_types.UUID `json:"activeProject,omitempty"`
-	ActiveTab     *openapi_types.UUID `json:"activeTab,omitempty"`
-	Revision      int                 `json:"revision"`
-	Tabs          []LayoutTab         `json:"tabs"`
+	ActiveProject  *openapi_types.UUID   `json:"activeProject,omitempty"`
+	ActiveTab      *openapi_types.UUID   `json:"activeTab,omitempty"`
+	ClosedProjects *[]openapi_types.UUID `json:"closedProjects,omitempty"`
+	Revision       int                   `json:"revision"`
+	Tabs           []LayoutTab           `json:"tabs"`
 }
 
 // LayoutNode defines model for LayoutNode.
@@ -687,6 +737,24 @@ type ProviderInfo struct {
 // ProviderInfoStatus defines model for ProviderInfo.Status.
 type ProviderInfoStatus string
 
+// QueuedMessage defines model for QueuedMessage.
+type QueuedMessage struct {
+	Id     string            `json:"id"`
+	Images int               `json:"images"`
+	Mode   QueuedMessageMode `json:"mode"`
+	Text   string            `json:"text"`
+}
+
+// QueuedMessageMode defines model for QueuedMessage.Mode.
+type QueuedMessageMode string
+
+// RecalledMessage defines model for RecalledMessage.
+type RecalledMessage struct {
+	ClearedAfter int               `json:"clearedAfter"`
+	Content      string            `json:"content"`
+	Images       []ImageAttachment `json:"images"`
+}
+
 // Receipt defines model for Receipt.
 type Receipt struct {
 	SubmissionId string `json:"submissionId"`
@@ -773,9 +841,10 @@ type SettingsThinkingLevel string
 
 // SubmitInput defines model for SubmitInput.
 type SubmitInput struct {
-	Content   string          `json:"content"`
-	Mode      SubmitInputMode `json:"mode"`
-	RequestId string          `json:"requestId"`
+	Content   string             `json:"content"`
+	Images    *[]ImageAttachment `json:"images,omitempty"`
+	Mode      SubmitInputMode    `json:"mode"`
+	RequestId string             `json:"requestId"`
 }
 
 // SubmitInputMode defines model for SubmitInput.Mode.
@@ -1032,6 +1101,9 @@ type ClientInterface interface {
 	// GetEntries performs a GET /v1/conversations/{id}/entries (the `GetEntries` operationId) request.
 	GetEntries(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetEntryImages performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
+	GetEntryImages(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetToolOutput performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 	GetToolOutput(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1050,6 +1122,12 @@ type ClientInterface interface {
 	// SetConversationModel performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
 	// Takes a body of the `application/json` content type.
 	SetConversationModel(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RecallQueued performs a POST /v1/conversations/{id}/queue/{submission}/recall (the `RecallQueued` operationId) request.
+	RecallQueued(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SteerQueued performs a POST /v1/conversations/{id}/queue/{submission}/steer (the `SteerQueued` operationId) request.
+	SteerQueued(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RenameConversationWithBody performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
 	// with any type of body and a specified content type.
@@ -1238,6 +1316,19 @@ func (c *Client) GetEntries(ctx context.Context, id string, params *GetEntriesPa
 	return c.Client.Do(req)
 }
 
+// GetEntryImages performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
+func (c *Client) GetEntryImages(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEntryImagesRequest(c.Server, id, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetToolOutput performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 func (c *Client) GetToolOutput(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetToolOutputRequest(c.Server, id, entryId)
@@ -1297,6 +1388,32 @@ func (c *Client) SetConversationModelWithBody(ctx context.Context, id string, co
 // Takes a body of the `application/json` content type.
 func (c *Client) SetConversationModel(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetConversationModelRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RecallQueued performs a POST /v1/conversations/{id}/queue/{submission}/recall (the `RecallQueued` operationId) request.
+func (c *Client) RecallQueued(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRecallQueuedRequest(c.Server, id, submission)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SteerQueued performs a POST /v1/conversations/{id}/queue/{submission}/steer (the `SteerQueued` operationId) request.
+func (c *Client) SteerQueued(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSteerQueuedRequest(c.Server, id, submission)
 	if err != nil {
 		return nil, err
 	}
@@ -1796,6 +1913,47 @@ func NewGetEntriesRequest(server string, id string, params *GetEntriesParams) (*
 	return req, nil
 }
 
+// NewGetEntryImagesRequest constructs an http.Request for the GetEntryImages method
+func NewGetEntryImagesRequest(server string, id string, entryId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "entryId", entryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/entries/%s/images", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetToolOutputRequest constructs an http.Request for the GetToolOutput method
 func NewGetToolOutputRequest(server string, id string, entryId string) (*http.Request, error) {
 	var err error
@@ -1927,6 +2085,88 @@ func NewSetConversationModelRequestWithBody(server string, id string, contentTyp
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRecallQueuedRequest constructs an http.Request for the RecallQueued method
+func NewRecallQueuedRequest(server string, id string, submission string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "submission", submission, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/queue/%s/recall", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSteerQueuedRequest constructs an http.Request for the SteerQueued method
+func NewSteerQueuedRequest(server string, id string, submission string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "submission", submission, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/queue/%s/steer", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2423,6 +2663,11 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetEntriesWithResponse(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*GetEntriesResponse, error)
 
+	// GetEntryImagesWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetEntryImagesWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetEntryImagesResponse, error)
+
 	// GetToolOutputWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2447,6 +2692,16 @@ type ClientWithResponsesInterface interface {
 	// SetConversationModelWithResponse performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	SetConversationModelWithResponse(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*SetConversationModelResponse, error)
+
+	// RecallQueuedWithResponse performs a POST /v1/conversations/{id}/queue/{submission}/recall (the `RecallQueued` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	RecallQueuedWithResponse(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*RecallQueuedResponse, error)
+
+	// SteerQueuedWithResponse performs a POST /v1/conversations/{id}/queue/{submission}/steer (the `SteerQueued` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	SteerQueuedWithResponse(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*SteerQueuedResponse, error)
 
 	// RenameConversationWithBodyWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
 	// with any type of body and a specified content type.
@@ -2941,6 +3196,75 @@ func (r GetEntriesResponse) ContentType() string {
 	return ""
 }
 
+type GetEntryImagesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *EntryImages
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetEntryImagesResponse) GetJSON200() *EntryImages {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetEntryImagesResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetEntryImagesResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetEntryImagesResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetEntryImagesResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetEntryImagesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetEntryImagesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetEntryImagesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetEntryImagesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetToolOutputResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3142,6 +3466,137 @@ func (r SetConversationModelResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetConversationModelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RecallQueuedResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RecalledMessage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RecallQueuedResponse) GetJSON200() *RecalledMessage {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RecallQueuedResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RecallQueuedResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RecallQueuedResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RecallQueuedResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RecallQueuedResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RecallQueuedResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RecallQueuedResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RecallQueuedResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SteerQueuedResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SteerQueuedResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SteerQueuedResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r SteerQueuedResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r SteerQueuedResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SteerQueuedResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SteerQueuedResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SteerQueuedResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SteerQueuedResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3943,6 +4398,17 @@ func (c *ClientWithResponses) GetEntriesWithResponse(ctx context.Context, id str
 	return ParseGetEntriesResponse(rsp)
 }
 
+// GetEntryImagesWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetEntryImagesWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetEntryImagesResponse, error) {
+	rsp, err := c.GetEntryImages(ctx, id, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetEntryImagesResponse(rsp)
+}
+
 // GetToolOutputWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3996,6 +4462,28 @@ func (c *ClientWithResponses) SetConversationModelWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseSetConversationModelResponse(rsp)
+}
+
+// RecallQueuedWithResponse performs a POST /v1/conversations/{id}/queue/{submission}/recall (the `RecallQueued` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) RecallQueuedWithResponse(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*RecallQueuedResponse, error) {
+	rsp, err := c.RecallQueued(ctx, id, submission, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRecallQueuedResponse(rsp)
+}
+
+// SteerQueuedWithResponse performs a POST /v1/conversations/{id}/queue/{submission}/steer (the `SteerQueued` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SteerQueuedWithResponse(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*SteerQueuedResponse, error) {
+	rsp, err := c.SteerQueued(ctx, id, submission, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSteerQueuedResponse(rsp)
 }
 
 // RenameConversationWithBodyWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
@@ -4505,6 +4993,60 @@ func ParseGetEntriesResponse(rsp *http.Response) (*GetEntriesResponse, error) {
 	return response, nil
 }
 
+// ParseGetEntryImagesResponse parses an HTTP response from a GetEntryImagesWithResponse call
+func ParseGetEntryImagesResponse(rsp *http.Response) (*GetEntryImagesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetEntryImagesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EntryImages
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetToolOutputResponse parses an HTTP response from a GetToolOutputWithResponse call
 func ParseGetToolOutputResponse(rsp *http.Response) (*GetToolOutputResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4633,6 +5175,110 @@ func ParseSetConversationModelResponse(rsp *http.Response) (*SetConversationMode
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRecallQueuedResponse parses an HTTP response from a RecallQueuedWithResponse call
+func ParseRecallQueuedResponse(rsp *http.Response) (*RecallQueuedResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RecallQueuedResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RecalledMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSteerQueuedResponse parses an HTTP response from a SteerQueuedWithResponse call
+func ParseSteerQueuedResponse(rsp *http.Response) (*SteerQueuedResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SteerQueuedResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Problem

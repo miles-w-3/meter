@@ -29,6 +29,10 @@ func nodeIndex(tab *protocol.LayoutTab, id uuid.UUID) int {
 }
 
 func copyLayout(layout protocol.Layout) protocol.Layout {
+	if layout.ClosedProjects != nil {
+		closed := slices.Clone(*layout.ClosedProjects)
+		layout.ClosedProjects = &closed
+	}
 	layout.Tabs = append(make([]protocol.LayoutTab, 0, len(layout.Tabs)), layout.Tabs...)
 	for i := range layout.Tabs {
 		layout.Tabs[i].Nodes = slices.Clone(layout.Tabs[i].Nodes)
@@ -98,7 +102,15 @@ func reorder(panes []protocol.LayoutNode, id uuid.UUID, gap int) []protocol.Layo
 	return slices.Insert(next, gap, panes[from])
 }
 
+func projectClosed(layout protocol.Layout, project *uuid.UUID) bool {
+	return project != nil && layout.ClosedProjects != nil && slices.Contains(*layout.ClosedProjects, *project)
+}
+
 func selectProject(layout *protocol.Layout, project uuid.UUID) {
+	if layout.ClosedProjects != nil {
+		closed := slices.DeleteFunc(*layout.ClosedProjects, func(id uuid.UUID) bool { return id == project })
+		layout.ClosedProjects = &closed
+	}
 	layout.ActiveProject = &project
 	layout.ActiveTab = nil
 	for _, tab := range layout.Tabs {

@@ -18,6 +18,7 @@ type dictationRecording struct {
 	live     bool
 	preview  string
 	base     string
+	paneOnly bool
 }
 
 const dictationHold = 350 * time.Millisecond
@@ -153,7 +154,7 @@ func (a *app) cancelDictation() {
 
 func (a *app) startDictation(id uuid.UUID, p *pane) {
 	ctx, cancel := context.WithCancel(a.ctx)
-	recording := &dictationRecording{pane: p, base: p.draft, release: make(chan struct{}), cancel: cancel}
+	recording := &dictationRecording{pane: p, base: p.draft, release: make(chan struct{}), cancel: cancel, paneOnly: a.spaceHold != nil && a.spaceHold.paneOnly}
 	a.dictation = recording
 	captured := make(chan []byte, 100)
 	micErr := make(chan error, 1)
@@ -202,23 +203,33 @@ func (a *app) startDictation(id uuid.UUID, p *pane) {
 			}
 		}()
 		a.update(func() {
-			if a.dictation != recording || a.panes[id] != p {
-				return
-			}
-			a.dictation = nil
-			if captureErr != nil {
-				p.draft = recording.base
-				p.notice = captureErr.Error()
-				return
-			}
-			if err != nil {
-				p.draft = recording.base
-				p.notice = fmt.Sprintf("Dictation failed: %v", err)
-				return
-			}
-			p.draft = dictationDraft(recording.base, result)
+			a.finishDictation(id, recording, result, err, captureErr)
 		})
 	}()
+}
+
+func (a *app) finishDictation(id uuid.UUID, recording *dictationRecording, result string, err, captureErr error) {
+	p := recording.pane
+	if a.dictation != recording || a.panes[id] != p {
+		return
+	}
+	a.dictation = nil
+	if captureErr != nil {
+		p.draft = recording.base
+		p.notice = captureErr.Error()
+		return
+	}
+	if err != nil {
+		p.draft = recording.base
+		p.notice = fmt.Sprintf("Dictation failed: %v", err)
+		return
+	}
+	p.draft = dictationDraft(recording.base, result)
+	// Only move focus for pane-initiated dictation, and don't steal it from
+	// another text field the user chose while transcription was in flight.
+	if recording.paneOnly && strings.TrimSpace(result) != "" && a.selectedPane == id && !a.dictationTextFocused {
+		p.focusDictatedDraft = true
+	}
 }
 
 func dictationDraft(base, spoken string) string {

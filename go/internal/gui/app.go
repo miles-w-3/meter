@@ -27,25 +27,29 @@ var appIcon []byte
 var menuIcon []byte
 
 type pane struct {
-	conversation     string
-	expandedTools    map[string]bool
-	transcriptScroll ui.ScrollState
-	rejected         bool
-	cancel           context.CancelFunc
-	state            client.State
-	submission       client.Submission
-	list             ui.ListState
-	draft            string
-	notice           string
-	connected        bool
-	starting         bool
-	pendingFirst     bool
-	loading          bool
-	meterLevel       float32
-	meterAt          time.Time
-	partialLength    int
-	modelDraft       *protocol.SelectionInput
-	modelPicker      modelPickerState
+	conversation       string
+	expandedTools      map[string]bool
+	transcriptScroll   ui.ScrollState
+	rejected           bool
+	cancel             context.CancelFunc
+	state              client.State
+	submission         client.Submission
+	list               ui.ListState
+	draft              string
+	focusDictatedDraft bool
+	images             []draftImage
+	transcriptImages   map[string]*transcriptImageState
+	notice             string
+	connected          bool
+	starting           bool
+	pendingFirst       bool
+	loading            bool
+	meterLevel         float32
+	meterAt            time.Time
+	partialLength      int
+	modelDraft         *protocol.SelectionInput
+	modelPicker        modelPickerState
+	queuePending       string
 }
 
 type editor struct {
@@ -243,6 +247,9 @@ func (a *app) refreshCatalog() {
 func (a *app) syncPanes() {
 	active := make(map[uuid.UUID]bool)
 	for _, tab := range a.layout.Tabs {
+		if projectClosed(a.layout, tab.ProjectId) {
+			continue
+		}
 		for _, node := range tab.Nodes {
 			active[node.Id] = true
 			p := a.panes[node.Id]
@@ -262,6 +269,7 @@ func (a *app) syncPanes() {
 			if !p.pendingFirst {
 				p.draft = ""
 			}
+			p.transcriptImages = nil
 			if p.cancel != nil {
 				p.cancel()
 			}
@@ -518,7 +526,7 @@ func (a *app) register() {
 }
 
 func (a *app) create(tabID uuid.UUID, node protocol.LayoutNode, cwd string, p *pane) {
-	if a.busy() || p.starting || strings.TrimSpace(p.draft) == "" {
+	if a.busy() || p.starting || strings.TrimSpace(p.draft) == "" && len(p.images) == 0 {
 		return
 	}
 	input := protocol.CreateInput{Cwd: cwd, ProjectId: a.layout.ActiveProject, Selection: p.modelDraft}
@@ -632,10 +640,15 @@ func (a *app) send(p *pane, id string, mode protocol.SubmitInputMode, retry bool
 			return
 		}
 	} else {
-		if !p.submission.Begin(mode, p.draft) {
+		images := make([]protocol.ImageAttachment, len(p.images))
+		for i, image := range p.images {
+			images[i] = image.attachment
+		}
+		if !p.submission.Begin(mode, p.draft, images...) {
 			return
 		}
 		p.draft = ""
+		p.images = nil
 		p.list.ScrollToEnd()
 	}
 	input, ok := p.submission.Take()
@@ -654,8 +667,8 @@ func (a *app) send(p *pane, id string, mode protocol.SubmitInputMode, retry bool
 			p.notice = err.Error()
 			if p.submission.Uncertain() {
 				p.notice = "Submission outcome unknown"
-			} else if p.draft == "" {
-				p.draft = p.submission.Restore()
+			} else if p.draft == "" && len(p.images) == 0 {
+				p.restoreSubmission()
 			} else {
 				p.rejected = true
 			}

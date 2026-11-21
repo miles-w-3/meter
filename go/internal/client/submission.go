@@ -14,11 +14,15 @@ type Submission struct {
 	unknown  bool
 }
 
-func (s *Submission) Begin(mode protocol.SubmitInputMode, content string) bool {
-	if s.input != nil || strings.TrimSpace(content) == "" {
+func (s *Submission) Begin(mode protocol.SubmitInputMode, content string, images ...protocol.ImageAttachment) bool {
+	if s.input != nil || (strings.TrimSpace(content) == "" && len(images) == 0) {
 		return false
 	}
 	s.input = &protocol.SubmitInput{RequestId: uuid.NewString(), Mode: mode, Content: content}
+	if len(images) > 0 {
+		copied := append([]protocol.ImageAttachment(nil), images...)
+		s.input.Images = &copied
+	}
 	return true
 }
 
@@ -43,10 +47,14 @@ func (s *Submission) Uncertain() bool { return s.unknown }
 // Restore returns a rejected input to the editor and clears the pending item.
 // An ambiguous input keeps its request ID until it can be reconciled.
 func (s *Submission) Restore() string {
+	return s.RestoreInput().Content
+}
+
+func (s *Submission) RestoreInput() protocol.SubmitInput {
 	if s.input == nil || s.inFlight || s.unknown {
-		return ""
+		return protocol.SubmitInput{}
 	}
-	content := s.input.Content
+	input := *s.input
 	s.input = nil
-	return content
+	return input
 }

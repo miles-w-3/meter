@@ -29,29 +29,38 @@ export const selectionInput = z.strictObject({ model: modelRef, thinkingLevel })
 export const selectionChange = selectionInput.extend({ expected: selection });
 export const createInput = z.strictObject({ cwd, projectId: z.uuid().optional(), selection: selectionInput.optional() });
 export const conversation = z.object({ id: opaque, cwd: z.string(), model: z.string(), selection: selection.optional(), title: z.string().optional(), lastActivity: z.number().int().nonnegative().optional(), projectId: z.uuid().optional() });
+export const imageAttachment = z.strictObject({
+  data: z.string().min(4).max(2_796_204).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  mimeType: z.literal("image/png"),
+});
+
 export const submitInput = z.strictObject({
   requestId: opaque,
   mode: z.enum(["prompt", "followup", "steer"]),
-  content: z.string().min(1).max(32_000).refine((s) => s.trim().length > 0),
-});
+  content: z.string().max(32_000),
+  images: z.array(imageAttachment).max(4).optional(),
+}).refine((value) => value.content.trim().length > 0 || (value.images?.length ?? 0) > 0);
+export const recalledMessage = z.object({ content: z.string(), images: z.array(imageAttachment), clearedAfter: z.number().int().nonnegative() });
 export const receipt = z.object({ submissionId: opaque });
 export const abortInput = z.strictObject({ target: opaque });
 export const problem = z.object({ code: z.string(), message: z.string() });
 export const entry = z.object({
-  id: opaque, kind: z.string(), text: z.string(), toolName: z.string().optional(), toolSucceeded: z.boolean().optional(),
+  id: opaque, kind: z.string(), text: z.string(), imageCount: z.number().int().positive().optional(), toolName: z.string().optional(), toolSucceeded: z.boolean().optional(),
   toolCallId: z.string().optional(), toolTarget: z.string().optional(), durationMs: z.number().int().nonnegative().optional(),
   tokens: z.number().int().nonnegative().optional(), added: z.number().int().nonnegative().optional(),
   removed: z.number().int().nonnegative().optional(), outputClipped: z.boolean().optional(),
 });
 const toolOutput = z.object({ text: z.string() });
+const entryImages = z.object({ images: z.array(imageAttachment) });
 export const page = z.object({ entries: z.array(entry), before: opaque.optional() });
 export const contextUsage = z.object({ tokens: z.number().int().nonnegative(), window: z.number().int().positive() });
 const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional(), target: z.string().optional() });
+export const queuedMessage = z.object({ id: opaque, text: z.string(), images: z.number().int().nonnegative(), mode: z.enum(["followUp", "steer"]) });
 export const view = z.object({
   conversationId: opaque, status: z.enum(["idle", "running", "failed"]),
   partial: z.string().nullable(), failure: z.string().optional(),
   abortTarget: opaque.optional(), before: opaque.optional(),
-  entries: z.array(entry), tools: z.array(tool),
+  entries: z.array(entry), tools: z.array(tool), queued: z.array(queuedMessage).optional(),
   contextUsage: contextUsage.optional(), selection: selection.optional(),
 });
 const version = { revision: z.number().int().min(0), generation: z.uuid() };
@@ -70,11 +79,11 @@ export const layoutNode = z.strictObject({
 export const layoutTab = z.strictObject({ id: z.uuid(), name: z.string().trim().min(1).max(80).optional(), projectId: z.uuid().optional(), root: z.uuid(), nodes: z.array(layoutNode).min(1).max(31) });
 export const layout = z.strictObject({
   revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-  activeTab: z.uuid().optional(), activeProject: z.uuid().optional(), tabs: z.array(layoutTab).max(24),
+  activeTab: z.uuid().optional(), activeProject: z.uuid().optional(), closedProjects: z.array(z.uuid()).optional(), tabs: z.array(layoutTab).max(24),
 });
 export const models = {
-  ServerInfo: serverInfo, CreateInput: createInput, CwdInput: cwdInput, Conversation: conversation, SubmitInput: submitInput,
-  Receipt: receipt, AbortInput: abortInput, Problem: problem, Entry: entry, HistoryPage: page, ToolOutput: toolOutput,
+  ImageAttachment: imageAttachment, ServerInfo: serverInfo, CreateInput: createInput, CwdInput: cwdInput, Conversation: conversation, SubmitInput: submitInput,
+  QueuedMessage: queuedMessage, RecalledMessage: recalledMessage, Receipt: receipt, AbortInput: abortInput, Problem: problem, Entry: entry, HistoryPage: page, ToolOutput: toolOutput, EntryImages: entryImages,
   ContextUsage: contextUsage, ConversationView: view, ConversationSnapshot: snapshot, ConversationUpdate: update,
   ConversationFrame: conversationFrame, ProjectInput: projectInput, ProjectRenameInput: projectRenameInput, Project: projectRecord, Catalog: catalog,
   LayoutNode: layoutNode, LayoutTab: layoutTab, Layout: layout,

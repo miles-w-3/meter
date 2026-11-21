@@ -182,6 +182,26 @@ async function regular() {
   await recovered(conversation, active.generation, replay.value.submissionId, prompt, "Fixture completed");
   assert.equal((await submit(conversation, { ...prompt, content: "different" })).value.code, "request_conflict");
 
+  // Sent images stay in Durable and are fetched separately from live frames.
+  const imageConversation = await create();
+  const imageWatch = await watch(imageConversation);
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=";
+  assert.equal((await submit(imageConversation, { ...input("", "image-only"), images: [{ data: png, mimeType: "image/png" }] })).status, 202);
+  const imageFrame = await waitFor(imageWatch, (f) => entries(f).some((e) => e.imageCount === 1), "image message");
+  const imageEntry = entries(imageFrame).find((e) => e.imageCount === 1);
+  assert.equal(imageEntry.kind, "pi.user");
+  assert.ok(!JSON.stringify(imageFrame).includes(png), "live updates must not contain image data");
+  assert.deepEqual((await request(pathOf(imageConversation) + "/entries/" + imageEntry.id + "/images")).value.images, [{ data: png, mimeType: "image/png" }]);
+  await waitFor(imageWatch, (f) => f.view.status === "idle" && entries(f).some((e) => e.imageCount === 1), "image turn finishes");
+  imageWatch.ws.close();
+  await stop(server);
+  server = start();
+  await server.ready;
+  const imageReload = await watch(imageConversation);
+  assert.ok(entries(imageReload.frames[0]).some((e) => e.id === imageEntry.id && e.imageCount === 1));
+  assert.deepEqual((await request(pathOf(imageConversation) + "/entries/" + imageEntry.id + "/images")).value.images, [{ data: png, mimeType: "image/png" }]);
+  imageReload.ws.close();
+
   const control = await create();
   const controlWatch = await watch(control);
   assert.equal((await submit(control, input("fixture:slow", "first-run"))).status, 202);

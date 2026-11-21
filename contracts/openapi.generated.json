@@ -1052,6 +1052,81 @@
         }
       }
     },
+    "/v1/conversations/{id}/entries/{entryId}/images": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "entryId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "GetEntryImages",
+        "responses": {
+          "200": {
+            "description": "Stored message images",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryImages"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/conversations/{id}/entries/{entryId}/output": {
       "parameters": [
         {
@@ -1204,6 +1279,149 @@
         }
       }
     },
+    "/v1/conversations/{id}/queue/{submission}/recall": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "submission",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "RecallQueued",
+        "responses": {
+          "200": {
+            "description": "Recalled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecalledMessage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/queue/{submission}/steer": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "submission",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "SteerQueued",
+        "responses": {
+          "202": {
+            "description": "Steering"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/conversations/{id}/abort": {
       "parameters": [
         {
@@ -1277,6 +1495,26 @@
   },
   "components": {
     "schemas": {
+      "ImageAttachment": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 2796204,
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          },
+          "mimeType": {
+            "type": "string",
+            "const": "image/png"
+          }
+        },
+        "required": [
+          "data",
+          "mimeType"
+        ],
+        "additionalProperties": false
+      },
       "ServerInfo": {
         "type": "object",
         "properties": {
@@ -1430,14 +1668,77 @@
           },
           "content": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 32000
+          },
+          "images": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageAttachment"
+            }
           }
         },
         "required": [
           "requestId",
           "mode",
           "content"
+        ],
+        "additionalProperties": false
+      },
+      "QueuedMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "text": {
+            "type": "string"
+          },
+          "images": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "followUp",
+              "steer"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "images",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "RecalledMessage": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageAttachment"
+            }
+          },
+          "clearedAfter": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "content",
+          "images",
+          "clearedAfter"
         ],
         "additionalProperties": false
       },
@@ -1498,6 +1799,11 @@
           },
           "text": {
             "type": "string"
+          },
+          "imageCount": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
           "toolName": {
             "type": "string"
@@ -1571,6 +1877,21 @@
         },
         "required": [
           "text"
+        ],
+        "additionalProperties": false
+      },
+      "EntryImages": {
+        "type": "object",
+        "properties": {
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImageAttachment"
+            }
+          }
+        },
+        "required": [
+          "images"
         ],
         "additionalProperties": false
       },
@@ -1671,6 +1992,12 @@
                 "status"
               ],
               "additionalProperties": false
+            }
+          },
+          "queued": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueuedMessage"
             }
           },
           "contextUsage": {
@@ -1958,6 +2285,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "closedProjects": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
           },
           "tabs": {
             "maxItems": 24,

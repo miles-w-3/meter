@@ -81,20 +81,10 @@ func (a *app) closePane(tab, node uuid.UUID) {
 }
 
 func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, cwd string, locked bool, p *pane) {
-	status := "idle"
-	if p.starting {
-		status = "connecting"
-	} else if node.ConversationId != nil {
-		if !p.connected {
-			status = "connecting"
-		} else {
-			status = string(p.state.Current.Status)
-		}
-	}
 	paneContent(c, func() {
-		ui.Row(c).Height(26).FillWidth().Padding(0, paneGutter, 0, paneTextInset).Gap(10).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(26).FillWidth().MinWidth(0).Clip().Padding(0, paneGutter, 0, paneTextInset).Gap(8).AlignItems(ui.Center).Children(func() {
 			a.modelChip(c, node, p, locked || a.busy())
-			button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).Grow(1).MinWidth(0).Padding(2, 0).Radius(4).Disabled(a.busy() || locked)
+			button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).Grow(1).Shrink(1).MinWidth(0).Clip().Padding(2, 0).Radius(4).Disabled(a.busy() || locked)
 			if button.Hovered() && !a.busy() && !locked {
 				button.Background(panel)
 			}
@@ -103,25 +93,32 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 				a.pathError = ""
 				a.cwdEditor = &editor{id: node.Id, value: cwd}
 			}
-			text(c, status, 12, ink).Font(monoFont).NoWrap().Shrink(0)
 			if usage := p.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
 				pct := palette.Percent(usage.Tokens, usage.Window)
-				label := "ctx " + palette.PercentLabel(pct)
-				ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Tooltip("Context usage").Children(func() {
-					text(c, label, 12, muted).Font(monoFont).FontFeatures("tnum").NoWrap()
-					ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-						for i := range palette.MeterCells {
-							color := theme.SurfacePressed
-							if float64(i)/palette.MeterCells < pct/100 {
-								color = ui.Hex(palette.MeterColor(i))
-							}
-							ui.Box(c.Key(i)).Size(3, 4).Radius(1).Background(color)
+				ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))).Children(func() {
+					for i := range palette.MeterCells {
+						color := theme.SurfacePressed
+						if float64(i)/palette.MeterCells < pct/100 {
+							color = ui.Hex(palette.MeterColor(i))
 						}
-					})
+						ui.Box(c.Key(i)).Size(3, 4).Radius(1).Background(color)
+					}
 				})
 			}
 		})
 	})
+}
+
+func formatCount(n int) string {
+	value := fmt.Sprint(n)
+	start := 0
+	if n < 0 {
+		start = 1
+	}
+	for i := len(value) - 3; i > start; i -= 3 {
+		value = value[:i] + "," + value[i:]
+	}
+	return value
 }
 
 func (a *app) directoryDialog(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, locked bool) {

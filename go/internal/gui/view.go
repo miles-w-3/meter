@@ -139,6 +139,10 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 		ui.Scroll(c).MaxHeight(155).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(4).Children(func() {
 				for _, item := range a.catalog.Projects {
+					id, err := uuid.Parse(item.Id)
+					if err == nil && a.layout.ClosedProjects != nil && slices.Contains(*a.layout.ClosedProjects, id) {
+						continue
+					}
 					selected := item.Id == project.Id
 					row := sidebarRow(c.Key(item.Id), item.Name, a.busy())
 					if selected {
@@ -164,6 +168,16 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 				}
 			})
 		})
+		if a.layout.ClosedProjects != nil && len(*a.layout.ClosedProjects) > 0 {
+			ui.MenuButton(c, "Reopen project", func(m *ui.Menu) {
+				for _, project := range a.catalog.Projects {
+					id, err := uuid.Parse(project.Id)
+					if err == nil && slices.Contains(*a.layout.ClosedProjects, id) && m.Item(project.Name).Chosen() {
+						a.selectProject(id)
+					}
+				}
+			})
+		}
 		ui.Box(c).Height(1).Background(theme.Border)
 		sectionLabel(c, "RECENT")
 		filter := ui.TextInputBase(c, &a.filter).Placeholder("Filter conversations").Label("Filter conversations").Padding(7, 9).Radius(6).Background(panel)
@@ -220,9 +234,25 @@ func (a *app) projectMenu(m *ui.Menu, project protocol.Project, selected bool) {
 	if m.Item("Rename project").Disabled(a.busy()).Chosen() {
 		a.nameEditor = &nameEditor{label: "Rename project", value: project.Name, save: func(name string) { a.renameProject(project, name) }}
 	}
-	if m.Item("Close project").Disabled(a.busy() || !selected).Chosen() {
+	if m.Item("Close project").Disabled(a.busy()).Chosen() {
 		a.tabEditor, a.cwdEditor = nil, nil
-		a.save(func(layout *protocol.Layout) { layout.ActiveProject, layout.ActiveTab = nil, nil })
+		a.save(func(layout *protocol.Layout) {
+			id, err := uuid.Parse(project.Id)
+			if err != nil {
+				return
+			}
+			closed := []uuid.UUID{}
+			if layout.ClosedProjects != nil {
+				closed = slices.Clone(*layout.ClosedProjects)
+			}
+			if !slices.Contains(closed, id) {
+				closed = append(closed, id)
+			}
+			layout.ClosedProjects = &closed
+			if layout.ActiveProject != nil && *layout.ActiveProject == id {
+				layout.ActiveProject, layout.ActiveTab = nil, nil
+			}
+		})
 	}
 }
 
@@ -319,6 +349,9 @@ func (a *app) recentConversations() []recentEntry {
 	var recent []recentEntry
 	needle := strings.ToLower(strings.TrimSpace(a.filter))
 	for _, tab := range a.layout.Tabs {
+		if projectClosed(a.layout, tab.ProjectId) {
+			continue
+		}
 		if tab.ProjectId == nil {
 			continue
 		}
@@ -594,29 +627,31 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		a.transcript(c, p, id)
 	})
 	composerArea(c, func() {
-		a.composer(c, node.Id, p, form.ComposerOptions{
+		queuedMessages(c, a, p, id)
+		mode := protocol.SubmitInputMode("prompt")
+		if running {
+			mode = "followup"
+		}
+		a.composerWithStop(c, node.Id, p, form.ComposerOptions{
 			Label: "Message " + id, Placeholder: "Message…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
-			ReadOnly:       p.pendingFirst,
-			SubmitDisabled: !p.connected || running || p.modelPicker.pending,
-			OnSubmit:       func(string) { a.send(p, id, "prompt", false) },
-			Actions: func() {
-				empty := strings.TrimSpace(p.draft) == ""
-				if running {
-					if ghost(c, "Queue", empty) {
-						a.send(p, id, "followup", false)
-					}
-					if ghost(c, "Steer", empty) {
-						a.send(p, id, "steer", false)
-					}
-					if a.mayAbort && mygoui.Button(c, mygoui.ButtonOptions{Label: "Stop", Variant: mygoui.ButtonDanger, Size: uitheme.ButtonExtraSmall, Disabled: p.state.Current.AbortTarget == nil}).Clicked() {
-						a.abort(p, id, *p.state.Current.AbortTarget)
-					}
-				}
-			},
+			ReadOnly: p.pendingFirst || p.queuePending != "", SubmitDisabled: !p.connected || p.modelPicker.pending,
+			OnSubmit: func(string) { a.send(p, id, mode, false) },
+		}, running, func() {
+			if a.mayAbort && p.state.Current.AbortTarget != nil {
+				a.abort(p, id, *p.state.Current.AbortTarget)
+			}
+		}, !a.mayAbort || p.state.Current.AbortTarget == nil, func() bool {
+			if a.dictation != nil || p.queuePending != "" || p.state.Current.Queued == nil || len(*p.state.Current.Queued) == 0 {
+				return false
+			}
+			items := *p.state.Current.Queued
+			a.recallQueued(p, id, items[len(items)-1], false)
+			return true
 		})
+
 		a.dictationPreview(c, p)
 		if p.rejected && action(c, "Dismiss rejection", false) {
-			_ = p.submission.Restore()
+			p.restoreSubmission()
 			p.rejected, p.notice = false, ""
 		}
 		if a.mayRetry && p.submission.Uncertain() && action(c, "Retry", !p.connected) {
@@ -631,10 +666,15 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 }
 
 func (a *app) composer(c *ui.Context, id uuid.UUID, p *pane, options form.ComposerOptions) {
+	a.composerWithStop(c, id, p, options, false, nil, false)
+}
+
+func (a *app) composerWithStop(c *ui.Context, id uuid.UUID, p *pane, options form.ComposerOptions, running bool, stop func(), stopDisabled bool, recall ...func() bool) {
 	draft := &p.draft
+	services := c.Services()
 	recording := a.dictation != nil && a.dictation.pane == p
 	canSend := func(value string) bool {
-		return !recording && !options.ReadOnly && !options.Disabled && !options.SubmitDisabled && strings.TrimSpace(value) != ""
+		return !recording && !options.ReadOnly && !options.Disabled && !options.SubmitDisabled && (strings.TrimSpace(value) != "" || len(p.images) > 0)
 	}
 	border := ui.Transparent
 	status := ""
@@ -643,11 +683,16 @@ func (a *app) composer(c *ui.Context, id uuid.UUID, p *pane, options form.Compos
 	}
 	ui.Column(c).FillWidth().MinWidth(0).Radius(8).Clip().Background(panel).Border(1, border).Children(func() {
 		ui.Box(c).FillWidth().Height(1).Background(highlight)
-		ui.Row(c).Padding(8, paneGutter, 8, paneTextInset).Gap(8).AlignItems(ui.End).Children(func() {
+		imagePreviews(c, p)
+		ui.Row(c).Padding(8, paneGutter, 8, paneTextInset).Gap(8).AlignItems(ui.Start).Children(func() {
 			input := ui.TextAreaBase(c, draft).Grow(1).MinWidth(0).Lines(1, 8).Label(options.Label).
 				Placeholder(options.Placeholder).PlaceholderColor(ui.Hex("#abbcb0")).Padding(0).
 				ReadOnly(options.ReadOnly || recording).FontSize(14).TextColor(ink).
+				OnPaste(func(text string) bool { return !recording && p.pasteImage(services, text) }).
 				OnTextKey(func(k ui.TextKey) bool {
+					if k.Key == ui.KeyEscape && k.Mods == 0 && len(recall) > 0 && recall[0]() {
+						return true
+					}
 					if k.Key != ui.KeyEnter || k.Mods != 0 {
 						return false
 					}
@@ -661,6 +706,12 @@ func (a *app) composer(c *ui.Context, id uuid.UUID, p *pane, options form.Compos
 					}
 					return true
 				})
+			if p.focusDictatedDraft {
+				p.focusDictatedDraft = false
+				input.Focus(ui.FocusOptions{PreventScroll: true})
+				end := len([]rune(p.draft))
+				input.SetTextSelection(end, end)
+			}
 			if input.Focused() {
 				a.dictationTextFocused = true
 			}
@@ -675,7 +726,15 @@ func (a *app) composer(c *ui.Context, id uuid.UUID, p *pane, options form.Compos
 			if recording {
 				text(c, status, 11, muted).NoWrap()
 			}
-			button := ui.ButtonBase(c).Label(options.SubmitLabel).Size(32, 32).Radius(16).Background(accent).Center().Disabled(!canSend(*draft)).KeepFocus()
+			if running {
+				button := ui.ButtonBase(c).Label("Stop").Size(32, 32).AlignSelf(ui.End).Radius(16).Background(accent).Center().Disabled(stopDisabled).KeepFocus()
+				button.Children(func() { ui.Box(c).Size(10, 10).Radius(1).Background(background) })
+				if button.Clicked() && !stopDisabled {
+					stop()
+				}
+				return
+			}
+			button := ui.ButtonBase(c).Label(options.SubmitLabel).Size(32, 32).AlignSelf(ui.End).Radius(16).Background(accent).Center().Disabled(!canSend(*draft)).KeepFocus()
 			button.Children(func() { text(c, "↑", 18, background).FontWeight(650) })
 			if button.Clicked() && canSend(*draft) {
 				options.OnSubmit(*draft)

@@ -253,3 +253,45 @@ func TestSelectedPaneRecordingSurvivesFirstViewFrame(t *testing.T) {
 		t.Fatal("recording was canceled before transcription")
 	}
 }
+
+func TestPaneDictationPlacesCaretAfterResult(t *testing.T) {
+	id := uuid.New()
+	p := &pane{draft: "héllo"}
+	a := &app{selectedPane: id, panes: map[uuid.UUID]*pane{id: p}}
+	driver := ui.NewTester(func(c *ui.Context) {
+		root := ui.Column(c).Fill().Focusable()
+		root.Children(func() {
+			a.composer(c, id, p, form.ComposerOptions{Label: "Message", SubmitLabel: "Send"})
+		})
+	}, 400, 160)
+	if err := driver.Click("Message"); err != nil {
+		t.Fatal(err)
+	}
+	driver.Key(0, ui.KeyHome)
+	driver.Press(10, 140)
+	driver.Release(10, 140)
+	a.dictationTextFocused = false
+	recording := &dictationRecording{pane: p, base: p.draft, paneOnly: true}
+	a.dictation = recording
+	a.finishDictation(id, recording, "世界", nil, nil)
+	driver.Frame()
+	if !driver.Focused("Message") {
+		t.Fatal("composer was not focused after pane dictation")
+	}
+	driver.Type("!")
+	if p.draft != "héllo 世界!" {
+		t.Fatalf("typing did not continue after dictated text: %q", p.draft)
+	}
+}
+
+func TestPaneDictationDoesNotStealAnotherTextField(t *testing.T) {
+	id := uuid.New()
+	p := &pane{draft: "base"}
+	a := &app{selectedPane: id, panes: map[uuid.UUID]*pane{id: p}, dictationTextFocused: true}
+	recording := &dictationRecording{pane: p, base: p.draft, paneOnly: true}
+	a.dictation = recording
+	a.finishDictation(id, recording, "spoken", nil, nil)
+	if p.focusDictatedDraft || p.draft != "base spoken" {
+		t.Fatalf("unexpected focus request or draft: %v %q", p.focusDictatedDraft, p.draft)
+	}
+}

@@ -14,7 +14,7 @@ import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-wo
 import { WebSocket, WebSocketServer } from "ws";
 import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, layout, projectInput, projectRenameInput, selectionChange, submitInput } from "../contracts/schemas.ts";
 import type { z, ZodType } from "zod";
-import { abortTarget, admit, contextTokens, entryText, historyCursor, openHarness, project, projectEntries, RequestConflict } from "./durable.ts";
+import { abortTarget, admit, contextTokens, entryText, entryImages, historyCursor, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
 import type { Provider } from "./durable.ts";
 
 import { dictation } from "./dictation.ts";
@@ -94,7 +94,7 @@ class Problem extends Error {
     this.code = code;
   }
 }
-async function parseBody<T>(req: IncomingMessage, schema: ZodType<T>): Promise<T> {
+async function parseBody<T>(req: IncomingMessage, schema: ZodType<T>, maxBytes = 224_000): Promise<T> {
   if (req.headers["content-type"]?.split(";")[0] !== "application/json") {
     throw new Problem(400, "invalid_request", "Expected a JSON body");
   }
@@ -102,7 +102,7 @@ async function parseBody<T>(req: IncomingMessage, schema: ZodType<T>): Promise<T
   let size = 0;
   for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     size += chunk.length;
-    if (size > 224_000) throw new Problem(400, "invalid_request", "Request body too large");
+    if (size > maxBytes) throw new Problem(400, "invalid_request", "Request body too large");
     chunks.push(chunk);
   }
   try { return schema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
@@ -302,6 +302,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     workspaces.renameConversation(titlePath[1], name);
     return reply(res, 200, await metadata(conversation));
   }
+  const imagePath = url.pathname.match(/^\/v1\/conversations\/([^/]+)\/entries\/([1-9][0-9]*)\/images$/);
+  if (req.method === "GET" && imagePath) {
+    const id = Number(imagePath[2]) as EntryId;
+    if (!Number.isSafeInteger(id)) throw new Problem(400, "invalid_entry", "Invalid entry ID");
+    const conversation = await conversationFor(imagePath[1]);
+    const page = await conversation.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, context);
+    const entry = page.items.find((item) => item.id === id);
+    if (!entry) throw new Problem(404, "not_found", "Message not found");
+    return reply(res, 200, { images: entryImages(entry) });
+  }
   const outputPath = url.pathname.match(/^\/v1\/conversations\/([^/]+)\/entries\/([1-9][0-9]*)\/output$/);
   if (req.method === "GET" && outputPath) {
     const id = Number(outputPath[2]) as EntryId;
@@ -311,6 +321,19 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const result = page.items.find((entry) => entry.id === id && entry.model?.some((message) => message.role === "toolResult"));
     if (!result) throw new Problem(404, "not_found", "Tool result not found");
     return reply(res, 200, { text: entryText(result) });
+  }
+  const queued = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/queue\/([1-9][0-9]*)\/(steer|recall)$/);
+  if (queued && req.method === "POST") {
+    const conversation = await conversationFor(queued[1]);
+    if (queued[3] === "recall") {
+      const result = await control(queued[1], () => recallQueued(conversation, queued[2]));
+      if (!result) throw new Problem(409, "stale_queue", "Message is no longer queued");
+      return reply(res, 200, result);
+    }
+    if (!await control(queued[1], () => steerQueued(conversation, queued[2]))) {
+      throw new Problem(409, "stale_queue", "Message is no longer queued on an active run");
+    }
+    return reply(res, 202);
   }
   const match = url.pathname.match(/^\/v1\/conversations\/([^/]+)(?:\/(entries|messages|abort|cwd|model))?$/);
   if (match) {
@@ -352,7 +375,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return reply(res, 200, updated);
     }
     if (req.method === "POST" && match[2] === "messages") {
-      const input = await parseBody(req, submitInput);
+      const input = await parseBody(req, submitInput, 11_300_000);
       const submissionId = await control(match[1], async () => {
         const agent = await conversation.agent(context);
         return admit(conversation, input, async () => {

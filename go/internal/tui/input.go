@@ -23,12 +23,12 @@ func (m *Model) focusTranscript() {
 
 func (m *Model) resizeComposer() {
 	m.draft.SetStyles(textarea.Styles{
-		Focused: textarea.StyleState{Prompt: m.colors.moss, Text: m.colors.fog, Placeholder: m.colors.muted, Selection: m.colors.moss.Reverse(!m.plain)},
+		Focused: textarea.StyleState{Prompt: m.colors.moss, Text: m.colors.fog, Placeholder: m.colors.faint, Selection: m.colors.moss.Reverse(!m.plain)},
 		Blurred: textarea.StyleState{Prompt: m.colors.faint, Text: m.colors.fog, Placeholder: m.colors.faint},
 	})
 	capacity, _, _ := composerLayout(m.height)
-	m.draft.MinHeight, m.draft.MaxHeight = min(2, capacity), capacity
-	m.draft.SetWidth(max(3, m.frame().width))
+	m.draft.MinHeight, m.draft.MaxHeight = 1, capacity
+	m.draft.SetWidth(max(3, m.frame().width-3))
 }
 
 func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {

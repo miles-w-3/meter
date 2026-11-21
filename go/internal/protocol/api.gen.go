@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -240,6 +241,84 @@ func (e QueuedMessageMode) Valid() bool {
 	}
 }
 
+// Defines values for SearchProviderChangeId.
+const (
+	SearchProviderChangeIdBrave     SearchProviderChangeId = "brave"
+	SearchProviderChangeIdExa       SearchProviderChangeId = "exa"
+	SearchProviderChangeIdFirecrawl SearchProviderChangeId = "firecrawl"
+)
+
+// Valid indicates whether the value is a known member of the SearchProviderChangeId enum.
+func (e SearchProviderChangeId) Valid() bool {
+	switch e {
+	case SearchProviderChangeIdBrave:
+		return true
+	case SearchProviderChangeIdExa:
+		return true
+	case SearchProviderChangeIdFirecrawl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SearchProviderStatusId.
+const (
+	SearchProviderStatusIdBrave     SearchProviderStatusId = "brave"
+	SearchProviderStatusIdExa       SearchProviderStatusId = "exa"
+	SearchProviderStatusIdFirecrawl SearchProviderStatusId = "firecrawl"
+)
+
+// Valid indicates whether the value is a known member of the SearchProviderStatusId enum.
+func (e SearchProviderStatusId) Valid() bool {
+	switch e {
+	case SearchProviderStatusIdBrave:
+		return true
+	case SearchProviderStatusIdExa:
+		return true
+	case SearchProviderStatusIdFirecrawl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SearchProviderStatusStatus.
+const (
+	SearchProviderStatusStatusAuthError             SearchProviderStatusStatus = "auth_error"
+	SearchProviderStatusStatusDisabled              SearchProviderStatusStatus = "disabled"
+	SearchProviderStatusStatusMissingKey            SearchProviderStatusStatus = "missing_key"
+	SearchProviderStatusStatusQuotaExhausted        SearchProviderStatusStatus = "quota_exhausted"
+	SearchProviderStatusStatusRateLimited           SearchProviderStatusStatus = "rate_limited"
+	SearchProviderStatusStatusReady                 SearchProviderStatusStatus = "ready"
+	SearchProviderStatusStatusStorageRightsRequired SearchProviderStatusStatus = "storage_rights_required"
+	SearchProviderStatusStatusUnavailable           SearchProviderStatusStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the SearchProviderStatusStatus enum.
+func (e SearchProviderStatusStatus) Valid() bool {
+	switch e {
+	case SearchProviderStatusStatusAuthError:
+		return true
+	case SearchProviderStatusStatusDisabled:
+		return true
+	case SearchProviderStatusStatusMissingKey:
+		return true
+	case SearchProviderStatusStatusQuotaExhausted:
+		return true
+	case SearchProviderStatusStatusRateLimited:
+		return true
+	case SearchProviderStatusStatusReady:
+		return true
+	case SearchProviderStatusStatusStorageRightsRequired:
+		return true
+	case SearchProviderStatusStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SelectionThinkingLevel.
 const (
 	SelectionThinkingLevelHigh    SelectionThinkingLevel = "high"
@@ -341,19 +420,19 @@ func (e SelectionInputThinkingLevel) Valid() bool {
 
 // Defines values for ServerInfoDictation.
 const (
-	ModelMissing  ServerInfoDictation = "model_missing"
-	Ready         ServerInfoDictation = "ready"
-	WorkerMissing ServerInfoDictation = "worker_missing"
+	ServerInfoDictationModelMissing  ServerInfoDictation = "model_missing"
+	ServerInfoDictationReady         ServerInfoDictation = "ready"
+	ServerInfoDictationWorkerMissing ServerInfoDictation = "worker_missing"
 )
 
 // Valid indicates whether the value is a known member of the ServerInfoDictation enum.
 func (e ServerInfoDictation) Valid() bool {
 	switch e {
-	case ModelMissing:
+	case ServerInfoDictationModelMissing:
 		return true
-	case Ready:
+	case ServerInfoDictationReady:
 		return true
-	case WorkerMissing:
+	case ServerInfoDictationWorkerMissing:
 		return true
 	default:
 		return false
@@ -760,6 +839,30 @@ type Receipt struct {
 	SubmissionId string `json:"submissionId"`
 }
 
+// SearchProviderChange defines model for SearchProviderChange.
+type SearchProviderChange struct {
+	Enabled bool                   `json:"enabled"`
+	Id      SearchProviderChangeId `json:"id"`
+}
+
+// SearchProviderChangeId defines model for SearchProviderChange.Id.
+type SearchProviderChangeId string
+
+// SearchProviderStatus defines model for SearchProviderStatus.
+type SearchProviderStatus struct {
+	Configured bool                       `json:"configured"`
+	Enabled    bool                       `json:"enabled"`
+	Id         SearchProviderStatusId     `json:"id"`
+	RetryAt    *time.Time                 `json:"retryAt,omitempty"`
+	Status     SearchProviderStatusStatus `json:"status"`
+}
+
+// SearchProviderStatusId defines model for SearchProviderStatus.Id.
+type SearchProviderStatusId string
+
+// SearchProviderStatusStatus defines model for SearchProviderStatus.Status.
+type SearchProviderStatusStatus string
+
 // Selection defines model for Selection.
 type Selection struct {
 	Model *struct {
@@ -855,6 +958,22 @@ type ToolOutput struct {
 	Text string `json:"text"`
 }
 
+// ToolSettingsChange defines model for ToolSettingsChange.
+type ToolSettingsChange struct {
+	WebSearch struct {
+		Enabled  *bool                 `json:"enabled,omitempty"`
+		Provider *SearchProviderChange `json:"provider,omitempty"`
+	} `json:"webSearch"`
+}
+
+// ToolsStatus defines model for ToolsStatus.
+type ToolsStatus struct {
+	WebSearch struct {
+		Enabled   bool                   `json:"enabled"`
+		Providers []SearchProviderStatus `json:"providers"`
+	} `json:"webSearch"`
+}
+
 // GetEntriesParams defines parameters for GetEntries.
 type GetEntriesParams struct {
 	Before *string `form:"before,omitempty" json:"before,omitempty"`
@@ -889,6 +1008,9 @@ type RenameProjectJSONRequestBody = ProjectRenameInput
 
 // SetDefaultsJSONRequestBody defines body for SetDefaults for application/json ContentType.
 type SetDefaultsJSONRequestBody = DefaultSettings
+
+// UpdateToolsJSONRequestBody defines body for UpdateTools for application/json ContentType.
+type UpdateToolsJSONRequestBody = ToolSettingsChange
 
 // SaveLayoutJSONRequestBody defines body for SaveLayout for application/json ContentType.
 type SaveLayoutJSONRequestBody = Layout
@@ -1180,6 +1302,17 @@ type ClientInterface interface {
 	// SetDefaults performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request.
 	// Takes a body of the `application/json` content type.
 	SetDefaults(ctx context.Context, body SetDefaultsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTools performs a GET /v1/settings/tools (the `GetTools` operationId) request.
+	GetTools(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateToolsWithBody performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request,
+	// with any type of body and a specified content type.
+	UpdateToolsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateTools performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request.
+	// Takes a body of the `application/json` content type.
+	UpdateTools(ctx context.Context, body UpdateToolsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLayout performs a GET /v1/workspaces/{id} (the `GetLayout` operationId) request.
 	GetLayout(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1606,6 +1739,47 @@ func (c *Client) SetDefaultsWithBody(ctx context.Context, contentType string, bo
 // Takes a body of the `application/json` content type.
 func (c *Client) SetDefaults(ctx context.Context, body SetDefaultsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetDefaultsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTools performs a GET /v1/settings/tools (the `GetTools` operationId) request.
+func (c *Client) GetTools(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetToolsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateToolsWithBody performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request,
+// with any type of body and a specified content type.
+func (c *Client) UpdateToolsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateToolsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateTools performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request.
+// Takes a body of the `application/json` content type.
+func (c *Client) UpdateTools(ctx context.Context, body UpdateToolsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateToolsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2493,6 +2667,73 @@ func NewSetDefaultsRequestWithBody(server string, contentType string, body io.Re
 	return req, nil
 }
 
+// NewGetToolsRequest constructs an http.Request for the GetTools method
+func NewGetToolsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/settings/tools")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateToolsRequest calls the generic UpdateTools builder with application/json body
+func NewUpdateToolsRequest(server string, body UpdateToolsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateToolsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateToolsRequestWithBody constructs an http.Request for the UpdateTools method, with any body, and a specified content type
+func NewUpdateToolsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/settings/tools")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetLayoutRequest constructs an http.Request for the GetLayout method
 func NewGetLayoutRequest(server string, id string) (*http.Request, error) {
 	var err error
@@ -2772,6 +3013,21 @@ type ClientWithResponsesInterface interface {
 	// SetDefaultsWithResponse performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	SetDefaultsWithResponse(ctx context.Context, body SetDefaultsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetDefaultsResponse, error)
+
+	// GetToolsWithResponse performs a GET /v1/settings/tools (the `GetTools` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetToolsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetToolsResponse, error)
+
+	// UpdateToolsWithBodyWithResponse performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	UpdateToolsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateToolsResponse, error)
+
+	// UpdateToolsWithResponse performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	UpdateToolsWithResponse(ctx context.Context, body UpdateToolsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateToolsResponse, error)
 
 	// GetLayoutWithResponse performs a GET /v1/workspaces/{id} (the `GetLayout` operationId) request.
 	//
@@ -4161,6 +4417,144 @@ func (r SetDefaultsResponse) ContentType() string {
 	return ""
 }
 
+type GetToolsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ToolsStatus
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetToolsResponse) GetJSON200() *ToolsStatus {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetToolsResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetToolsResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetToolsResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetToolsResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetToolsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetToolsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetToolsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetToolsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateToolsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ToolsStatus
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateToolsResponse) GetJSON200() *ToolsStatus {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateToolsResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateToolsResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateToolsResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UpdateToolsResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateToolsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateToolsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateToolsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateToolsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetLayoutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4638,6 +5032,39 @@ func (c *ClientWithResponses) SetDefaultsWithResponse(ctx context.Context, body 
 		return nil, err
 	}
 	return ParseSetDefaultsResponse(rsp)
+}
+
+// GetToolsWithResponse performs a GET /v1/settings/tools (the `GetTools` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetToolsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetToolsResponse, error) {
+	rsp, err := c.GetTools(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetToolsResponse(rsp)
+}
+
+// UpdateToolsWithBodyWithResponse performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request,
+// with any type of body and a specified content type.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateToolsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateToolsResponse, error) {
+	rsp, err := c.UpdateToolsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateToolsResponse(rsp)
+}
+
+// UpdateToolsWithResponse performs a PATCH /v1/settings/tools (the `UpdateTools` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) UpdateToolsWithResponse(ctx context.Context, body UpdateToolsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateToolsResponse, error) {
+	rsp, err := c.UpdateTools(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateToolsResponse(rsp)
 }
 
 // GetLayoutWithResponse performs a GET /v1/workspaces/{id} (the `GetLayout` operationId) request.
@@ -5695,6 +6122,114 @@ func ParseSetDefaultsResponse(rsp *http.Response) (*SetDefaultsResponse, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Settings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetToolsResponse parses an HTTP response from a GetToolsWithResponse call
+func ParseGetToolsResponse(rsp *http.Response) (*GetToolsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetToolsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ToolsStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateToolsResponse parses an HTTP response from a UpdateToolsWithResponse call
+func ParseUpdateToolsResponse(rsp *http.Response) (*UpdateToolsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateToolsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ToolsStatus
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

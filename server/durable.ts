@@ -14,6 +14,8 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { contextUsage, submitInput, view } from "../contracts/schemas.ts";
 
+import type { WebSearch } from "./tools/web-search.ts";
+
 const answer = () => fauxAssistantMessage([fauxText("Fixture completed after running the coding tools.")]);
 const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
   fauxAssistantMessage([fauxToolCall(name, args, { id: "fixture_" + name })], { stopReason: "toolUse" });
@@ -28,6 +30,9 @@ function fixtureProvider() {
     const results = messages.filter((message) => message.role === "toolResult");
     if (prompt.includes("fixture:demo")) return fauxAssistantMessage([fauxText("desktop reconnect output ".repeat(200))]);
     if (prompt.includes("fixture:slow")) return fauxAssistantMessage([fauxText("streamed model output ".repeat(45))]);
+    if (prompt === "fixture:web-search" && !results.length) {
+      return tool("web_search", { query: "Meter search fixture", limit: 2 });
+    }
     if (prompt.includes("fixture:tools")) {
       if (!results.length) return tool("read", { path: "notes.txt" });
       if (results.length === 1) return tool("write", { path: "result.txt", content: "written by Durable\n" });
@@ -69,7 +74,7 @@ class LiveProbeEnv extends NodeExecutionEnv {
 
 export type Provider = string;
 
-export async function openHarness(db: string, provider: Provider) {
+export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch) {
   const useOpenAI = provider !== "fixture";
   const modelId = useOpenAI ? process.env.PI_MODEL : "faux-1";
   const providerId = provider === "openai-smoke" ? "openai" : provider;
@@ -82,17 +87,29 @@ export async function openHarness(db: string, provider: Provider) {
   registry.install(provider === "openai-smoke"
     ? defineExtension({ name: "live-probe-tools", tools: [createReadTool(), createWriteTool()] })
     : CodingTools);
+  const searchExtension = webSearch && defineExtension({ name: "web-search", tools: [webSearch.tool()] });
+  let searchInstalled = false;
+  function refreshTools() {
+    if (!webSearch || !searchExtension) return;
+    const available = provider !== "openai-smoke" && webSearch.available();
+    if (available === searchInstalled) return;
+    searchInstalled = available;
+    if (available) registry.install(searchExtension);
+    else registry.uninstall(searchExtension);
+  }
+  refreshTools();
+  const shellEnv = { BRAVE_SEARCH_API_KEY: undefined, BRAVE_API_KEY: undefined, EXA_API_KEY: undefined, FIRECRAWL_API_KEY: undefined };
   const storage = await openNodeSqliteStorage(db);
   const harness = await Harness.open(storage, {
     models, registry,
     env: ({ cwd }) => {
       if (!cwd) throw new Error("Conversation has no working directory");
-      if (provider === "openai-smoke") return new LiveProbeEnv({ cwd });
-      if (provider === "fixture") return new CrashProbeEnv({ cwd });
-      return new NodeExecutionEnv({ cwd });
+      if (provider === "openai-smoke") return new LiveProbeEnv({ cwd, shellEnv });
+      if (provider === "fixture") return new CrashProbeEnv({ cwd, shellEnv });
+      return new NodeExecutionEnv({ cwd, shellEnv });
     },
   }, context);
-  return { harness, models, model: modelId ? { provider: useOpenAI ? providerId : "faux", modelId } : undefined };
+  return { harness, models, refreshTools, model: modelId ? { provider: useOpenAI ? providerId : "faux", modelId } : undefined };
 }
 
 export class RequestConflict extends Error {}

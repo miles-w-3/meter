@@ -19,5 +19,6 @@ mkdir -p .bin
 )
 node scripts/auth-test.mjs
 node scripts/models-test.mjs
+node scripts/search-test.mjs
 node scripts/integration.mjs
 python3 scripts/tui-smoke.py

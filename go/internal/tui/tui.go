@@ -54,6 +54,7 @@ type Model struct {
 	spinner                       spinner.Model
 	help                          help.Model
 	mouseHintUntil                time.Time
+	scrollbarUntil                time.Time
 	overlay                       overlay
 	search                        textinput.Model
 	query                         string
@@ -102,6 +103,7 @@ type streamMsg struct {
 	event client.Event
 }
 type frameMsg struct{}
+type scrollbarFadeMsg struct{}
 type sentMsg struct {
 	session *session
 	err     error
@@ -135,7 +137,7 @@ func (m *Model) open(conversation protocol.Conversation) {
 	s := m.sessions[conversation.Id]
 	if s == nil {
 		s = &session{transcript: transcript{follow: true}, draft: textarea.New()}
-		s.draft.Prompt = "▎ "
+		s.draft.Prompt = ""
 		s.draft.Placeholder = "Message…"
 		s.draft.ShowLineNumbers = false
 		s.draft.EndOfBufferCharacter = ' '

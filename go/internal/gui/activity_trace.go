@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const activityPeriod = 2 * time.Second
+const activityPeriod = 5 * time.Second
 
 // activityRanges returns one or two normalized path intervals for a short
 // segment moving clockwise around a rounded rectangle. Split at the seam so
@@ -17,7 +17,7 @@ func activityRanges(phase, perimeter float32) [][2]float32 {
 		return nil
 	}
 	phase -= float32(math.Floor(float64(phase)))
-	length := min(float32(72)/perimeter, float32(0.25))
+	length := min(float32(108)/perimeter, float32(0.25))
 	end := phase + length
 	if end <= 1 {
 		return [][2]float32{{phase, end}}

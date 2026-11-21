@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/protocol"
+	"pi-workspace.local/workspace/internal/theme"
 )
 
 func testModel() *Model {
@@ -89,7 +90,7 @@ func TestToolPreviewAndSearch(t *testing.T) {
 	m.focusTranscript()
 	m.toggleTool(tool.start)
 	lines := m.transcript.blocks[1].lines
-	if len(lines) != 22 || !strings.Contains(lines[len(lines)-1], "13 more") {
+	if len(lines) != 23 || !strings.Contains(lines[len(lines)-1], "13 more") {
 		t.Fatalf("unexpected preview length: %v", lines)
 	}
 	m.query, m.searchPending = "searchable output", true
@@ -137,32 +138,28 @@ func TestGridAndBottomAnchoredToolSelection(t *testing.T) {
 	m.refresh()
 	f := m.frame()
 	lines := strings.Split(ansi.Strip(m.View().Content), "\n")
-	if f.width != 88 || !strings.HasPrefix(lines[0], "  meter") || strings.TrimSpace(lines[1]) != "" {
-		t.Fatalf("unexpected grid or header: %#v %q", f, lines[:2])
+	if f.width != 80 || f.left != 15 || !strings.HasPrefix(lines[1], strings.Repeat(" ", 15)+"meter") || strings.TrimSpace(lines[0]+lines[2]+lines[3]) != "" {
+		t.Fatalf("unexpected centered grid or header: %#v %q", f, lines[:4])
 	}
-	if !strings.HasPrefix(lines[f.transcriptEnd()-2], "    Answer") || !strings.HasPrefix(lines[f.transcriptEnd()-1], "    0.2s") {
-		t.Fatal("answer and stats should share a column at the bottom of the transcript")
+	if f.composerRows != 1 || f.composerGap != 1 {
+		t.Fatalf("unexpected composer layout: %#v", f)
 	}
-	if f.composerRows != 2 || f.composerGap != 2 || strings.TrimSpace(strings.Join(lines[f.transcriptEnd():f.composerStart()], "")) != "" {
-		t.Fatal("expected two blank rows above a two-line composer")
-	}
-	if !strings.Contains(strings.Join(lines, "\n"), "    Question") || strings.Contains(strings.Join(lines[:f.transcriptEnd()], "\n"), "▎") {
-		t.Fatal("user text should stay aligned without a side accent")
-	}
-	toolRow := frameTop + f.transcriptPad(m.transcript.total) + m.transcript.blocks[1].start
-	if !strings.HasPrefix(lines[toolRow], "  ✓ read   notes.txt") || !strings.HasPrefix(lines[toolRow+1], "  ✓ write  result.txt") {
+	first := frameTop + f.transcriptPad(m.transcript.total)
+	toolRow := first + m.transcript.blocks[1].start
+	if !strings.HasPrefix(lines[toolRow], strings.Repeat(" ", 16)+"✓ read   notes.txt") || !strings.HasPrefix(lines[toolRow+1], strings.Repeat(" ", 16)+"✓ write  result.txt") {
 		t.Fatalf("unaligned tool rows: %q %q", lines[toolRow], lines[toolRow+1])
 	}
-	if got := ansi.StringWidth(strings.TrimRight(lines[toolRow], " ")); got != 90 {
-		t.Fatalf("tool duration ends at column %d, want 90", got)
+	if got := ansi.StringWidth(strings.TrimRight(lines[toolRow], " ")); got != f.left+f.width {
+		t.Fatalf("tool duration ends at %d", got)
 	}
-	m.mouse(tea.MouseClickMsg{X: 5, Y: toolRow, Button: tea.MouseLeft})
-	if !m.transcript.expanded["r"] || !strings.Contains(ansi.Strip(m.View().Content), "✓▾read") {
-		t.Fatal("clicking the bottom-anchored tool should expand it and mark the selected row")
+	m.mouse(tea.MouseClickMsg{X: f.left + 2, Y: toolRow, Button: tea.MouseLeft})
+	if !m.transcript.expanded["r"] || strings.Contains(ansi.Strip(m.View().Content), "▾") {
+		t.Fatal("click should expand without a chevron")
 	}
-	if !strings.Contains(ansi.Strip(m.View().Content), "      Note body") {
-		t.Fatal("expanded tool text should be indented without a side accent")
+	if !strings.Contains(ansi.Strip(m.View().Content), strings.Repeat(" ", f.left+5)+"Note body") {
+		t.Fatal("expanded body should be indented")
 	}
+
 }
 
 func TestForestBackgroundFallbackAndMouseHint(t *testing.T) {
@@ -172,7 +169,7 @@ func TestForestBackgroundFallbackAndMouseHint(t *testing.T) {
 	m.Update(tea.ColorProfileMsg{Profile: colorprofile.TrueColor})
 	lines := strings.Split(m.View().Content, "\n")
 	f := m.frame()
-	for y, bg := range map[int]string{0: background("#0e1511"), frameTop: background("#141d18"), f.composerStart(): background("#1a251f")} {
+	for y, bg := range map[int]string{0: background("#0e1511"), frameTop: background("#141d18")} {
 		if !strings.HasPrefix(lines[y], bg) || ansi.StringWidth(lines[y]) != m.width {
 			t.Fatalf("row %d should be painted across the terminal: %q", y, lines[y])
 		}
@@ -186,7 +183,7 @@ func TestForestBackgroundFallbackAndMouseHint(t *testing.T) {
 	m.refresh()
 	lines = strings.Split(m.View().Content, "\n")
 	first := frameTop + f.transcriptPad(m.transcript.total)
-	for i, bg := range []string{"#212c23", "#19252c", "#141d18"} {
+	for i, bg := range []string{"#1a251f", "#141d18", "#141d18"} {
 		row := lines[first+m.transcript.blocks[i].start]
 		if !strings.Contains(row, background(bg)) || ansi.StringWidth(row) != m.width {
 			t.Fatalf("block %d should use surface %s: %q", i, bg, row)
@@ -213,5 +210,69 @@ func TestForestBackgroundFallbackAndMouseHint(t *testing.T) {
 	m.mouse(tea.MouseWheelMsg{Y: frameTop, Button: tea.MouseWheelDown})
 	if strings.Contains(m.status(f.width), "Hold Shift") {
 		t.Fatal("selection notice should not repeat")
+	}
+}
+
+func TestLayoutRhythmAndMeter(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	m := testModel()
+	m.plain = false
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(tea.ColorProfileMsg{Profile: colorprofile.TrueColor})
+	tool, ok := "read", true
+	duration := 100
+	m.state.Current.Entries = []protocol.Entry{
+		{Id: "u", Kind: "pi.user", Text: "Question"},
+		{Id: "t", ToolName: &tool, ToolSucceeded: &ok, Text: "Output"},
+		{Id: "a", Kind: "pi.assistant", Text: "Answer", DurationMs: &duration},
+	}
+	m.transcript.expanded["t"] = true
+	m.refresh()
+	f := m.frame()
+	lines := strings.Split(m.View().Content, "\n")
+	first := frameTop + f.transcriptPad(m.transcript.total)
+	user := first + m.transcript.blocks[0].start
+	toolRow := first + m.transcript.blocks[1].start
+	answer := first + m.transcript.blocks[2].start
+	for _, row := range []int{user, user + 1, user + 2} {
+		if !strings.Contains(lines[row], background(theme.Panel)) {
+			t.Fatalf("user row %d has no band: %q", row, lines[row])
+		}
+	}
+	if strings.TrimSpace(ansi.Strip(lines[toolRow+1])) != "" || !strings.Contains(ansi.Strip(lines[toolRow+2]), "Output") || strings.TrimSpace(ansi.Strip(lines[answer-1])) != "" {
+		t.Fatal("expanded tool spacing is incorrect")
+	}
+	for row := f.composerStart(); row < f.composerStart()+3; row++ {
+		if !strings.Contains(lines[row], background(theme.Panel)) {
+			t.Fatalf("composer row %d has no band", row)
+		}
+	}
+	if strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) != "" || strings.Contains(ansi.Strip(lines[len(lines)-2]), "? help") {
+		t.Fatal("status row or bottom padding incorrect")
+	}
+	for _, test := range []struct {
+		percent float64
+		fill    string
+	}{{0, ""}, {1, theme.Muted}, {71, theme.Chanterelle}, {91, theme.Madrone}} {
+		meter := m.colors.contextMeter(test.percent)
+		if ansi.StringWidth(meter) != 10 {
+			t.Fatalf("meter width: %q", meter)
+		}
+		if test.fill != "" && !strings.Contains(meter, m.colors.fg(test.fill).Render("━")) {
+			t.Fatalf("wrong fill for %v", test.percent)
+		}
+	}
+}
+
+func TestStatusNoticeTakesPriorityOverHints(t *testing.T) {
+	for _, width := range []int{96, 55, 24} {
+		m := testModel()
+		m.connected = true
+		m.notice = "Input accepted"
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+		view := ansi.Strip(m.View().Content)
+		if !strings.Contains(view, m.notice) {
+			t.Errorf("width %d: notice missing from view:\n%s", width, view)
+		}
 	}
 }

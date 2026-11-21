@@ -146,6 +146,128 @@
         }
       }
     },
+    "/v1/settings/tools": {
+      "get": {
+        "operationId": "GetTools",
+        "responses": {
+          "200": {
+            "description": "Tool settings and status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolsStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "UpdateTools",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolSettingsChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolsStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/settings/defaults": {
       "get": {
         "operationId": "GetDefaults",
@@ -2584,6 +2706,120 @@
           "model",
           "thinkingLevel",
           "source"
+        ],
+        "additionalProperties": false
+      },
+      "ToolSettingsChange": {
+        "type": "object",
+        "properties": {
+          "webSearch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "provider": {
+                "$ref": "#/components/schemas/SearchProviderChange"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "webSearch"
+        ],
+        "additionalProperties": false
+      },
+      "SearchProviderChange": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "brave",
+              "exa",
+              "firecrawl"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
+      "ToolsStatus": {
+        "type": "object",
+        "properties": {
+          "webSearch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "providers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SearchProviderStatus"
+                }
+              }
+            },
+            "required": [
+              "enabled",
+              "providers"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "webSearch"
+        ],
+        "additionalProperties": false
+      },
+      "SearchProviderStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "brave",
+              "exa",
+              "firecrawl"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "retryAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "disabled",
+              "missing_key",
+              "storage_rights_required",
+              "rate_limited",
+              "unavailable",
+              "auth_error",
+              "quota_exhausted"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "enabled",
+          "configured",
+          "status"
         ],
         "additionalProperties": false
       },

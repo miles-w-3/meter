@@ -18,6 +18,9 @@ type BackendControls struct {
 }
 
 func (a *app) applyBackendInfo(info protocol.ServerInfo) {
+	if info.Generation != nil && (a.backendInfo.Generation == nil || *info.Generation != *a.backendInfo.Generation) {
+		a.toolsLoaded = false
+	}
 	a.backendInfo = info
 	a.backendOnline = bool(info.Ready)
 	if a.backendOnline {
@@ -49,12 +52,16 @@ func (a *app) backendPanel(c *ui.Context) {
 				ui.Column(c).Width(145).Gap(4).Children(func() {
 					a.settingsItem(c, "backend", "Backend status")
 					a.settingsItem(c, "models", "Models")
+					a.settingsItem(c, "tools", "Tools")
 				})
 				ui.Box(c).Width(1).Background(theme.Border)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					if a.settingsSection == "models" {
+					switch a.settingsSection {
+					case "models":
 						a.modelsPanel(c)
-					} else {
+					case "tools":
+						a.toolsPanel(c)
+					default:
 						a.backendStatus(c)
 					}
 				})
@@ -77,6 +84,9 @@ func (a *app) settingsItem(c *ui.Context, section, label string) {
 	row.Children(func() { text(c, label, 13, ink) })
 	if row.Clicked() {
 		a.settingsSection = section
+		if section == "tools" {
+			a.refreshTools()
+		}
 		if section == "models" && !a.modelsLoaded && !a.modelsLoading {
 			a.refreshModels()
 		}

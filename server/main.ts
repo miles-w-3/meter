@@ -12,11 +12,12 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-works/pi-durable";
 import { WebSocket, WebSocketServer } from "ws";
-import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, layout, projectInput, projectRenameInput, selectionChange, submitInput } from "../contracts/schemas.ts";
+import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, layout, projectInput, projectRenameInput, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
 import type { z, ZodType } from "zod";
 import { abortTarget, admit, contextTokens, entryText, entryImages, historyCursor, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
 import type { Provider } from "./durable.ts";
 
+import { WebSearch } from "./tools/web-search.ts";
 import { dictation } from "./dictation.ts";
 import { InvalidLayout, LayoutConflict, Workspaces } from "./workspaces.ts";
 
@@ -67,10 +68,11 @@ if (!id) {
   await writeFile(temp, id + "\n", { flag: "wx" });
   await rename(temp, idPath);
 }
-const { harness, model, models } = await openHarness(join(data, "durable.sqlite"), provider as Provider);
 const workspaces = new Workspaces(join(data, "app.sqlite"));
+const webSearch = new WebSearch(() => workspaces.toolSettings());
+const { harness, model, models, refreshTools } = await openHarness(join(data, "durable.sqlite"), provider as Provider, webSearch);
 const generation = randomUUID();
-const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts", "model-inventory", "model-defaults", "conversation-models"];
+const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts", "model-inventory", "model-defaults", "conversation-models", "tool-settings"];
 const dictationDir = process.env.PI_DICTATION_DIR ||
   (existsSync(join(data, "meter-dictation")) ? data : dirname(process.execPath));
 const voice = dictation(dictationDir, data);
@@ -230,6 +232,14 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return reply(res, 202);
   }
   if (url.pathname === "/v1/models" && req.method === "GET") return reply(res, 200, await inventory());
+  if (url.pathname === "/v1/settings/tools") {
+    if (req.method === "GET") return reply(res, 200, webSearch.status());
+    if (req.method === "PATCH") {
+      workspaces.updateToolSettings(await parseBody(req, toolSettingsChange));
+      refreshTools();
+      return reply(res, 200, webSearch.status());
+    }
+  }
   if (url.pathname === "/v1/settings/defaults") {
     if (req.method === "GET") return reply(res, 200, currentDefaults());
     if (req.method === "PUT") {

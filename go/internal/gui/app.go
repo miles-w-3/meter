@@ -113,6 +113,10 @@ type app struct {
 	backendNotice        string
 	backendOnline        bool
 	settingsSection      string
+	toolsStatus          protocol.ToolsStatus
+	toolsLoaded          bool
+	toolsPending         bool
+	toolsError           string
 	modelsInventory      protocol.ModelInventory
 	modelDefaults        protocol.Settings
 	modelsFilter         string

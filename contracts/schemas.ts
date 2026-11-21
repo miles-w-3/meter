@@ -12,6 +12,27 @@ export const modelRef = z.strictObject({ provider: opaque, modelId: opaque });
 export const thinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 export const defaultSettings = z.strictObject({ model: modelRef.nullable(), thinkingLevel: thinkingLevel.nullable() });
 export const settings = defaultSettings.extend({ source: z.enum(["saved", "environment", "fixture", "unconfigured"]) });
+export const searchProvider = z.enum(["brave", "exa", "firecrawl"]);
+export const toolSettings = z.strictObject({
+  webSearch: z.strictObject({
+    enabled: z.boolean(), providers: z.record(searchProvider, z.boolean()),
+  }),
+});
+export type ToolSettings = z.infer<typeof toolSettings>;
+export const searchProviderChange = z.strictObject({ id: searchProvider, enabled: z.boolean() });
+export const toolSettingsChange = z.strictObject({
+  webSearch: z.strictObject({
+    enabled: z.boolean().optional(),
+    provider: searchProviderChange.optional(),
+  }),
+});
+export const searchProviderStatus = z.object({
+  id: searchProvider, enabled: z.boolean(), configured: z.boolean(), retryAt: z.iso.datetime().optional(),
+  status: z.enum(["ready", "disabled", "missing_key", "storage_rights_required", "rate_limited", "unavailable", "auth_error", "quota_exhausted"]),
+});
+export const toolsStatus = z.object({
+  webSearch: z.object({ enabled: z.boolean(), providers: z.array(searchProviderStatus) }),
+});
 const authMethod = z.object({ type: z.enum(["api_key", "oauth"]), name: z.string(), interactive: z.boolean() });
 const providerInfo = z.object({
   id: z.string(), name: z.string(), methods: z.array(authMethod),
@@ -88,5 +109,6 @@ export const models = {
   ConversationFrame: conversationFrame, ProjectInput: projectInput, ProjectRenameInput: projectRenameInput, Project: projectRecord, Catalog: catalog,
   LayoutNode: layoutNode, LayoutTab: layoutTab, Layout: layout,
   ModelRef: modelRef, Selection: selection, SelectionInput: selectionInput, SelectionChange: selectionChange, DefaultSettings: defaultSettings, Settings: settings,
+  ToolSettingsChange: toolSettingsChange, SearchProviderChange: searchProviderChange, ToolsStatus: toolsStatus, SearchProviderStatus: searchProviderStatus,
   AuthMethod: authMethod, ProviderInfo: providerInfo, ModelInfo: modelInfo, ModelInventory: modelInventory,
 };

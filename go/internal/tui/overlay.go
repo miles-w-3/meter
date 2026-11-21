@@ -327,6 +327,7 @@ var helpRows = [][2]string{
 	{"Mouse wheel", "Scroll three lines"},
 	{"Shift / Option + drag", "Select text, or start with --no-mouse"},
 	{"Ctrl+K", "Switch conversations"},
+	{"?", "Open or close help"},
 }
 
 func (m *Model) helpContent(width, height int) []string {

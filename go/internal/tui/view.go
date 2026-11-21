@@ -41,8 +41,8 @@ func (t *terminalTheme) set(plain, transparent bool, profile colorprofile.Profil
 		t.frameBackground = background(theme.Background)
 		t.transcriptBackground = background(theme.Surface)
 		t.composerBackground = background(theme.Panel)
-		t.userBackground = background(theme.UserSurface)
-		t.toolBackground = background(theme.ToolSurface)
+		t.userBackground = background(theme.Panel)
+		t.toolBackground = ""
 	}
 }
 
@@ -136,7 +136,7 @@ func (t terminalTheme) markdown(width int) *glamour.TermRenderer {
 	return renderer
 }
 
-const frameTop = 2 // Header and one blank row.
+const frameTop = 4
 
 type frame struct {
 	left, width, rows, composerRows, composerGap int
@@ -145,29 +145,30 @@ type frame struct {
 
 func composerLayout(height int) (capacity, gap int, hint bool) {
 	hint = height >= 20
-	available := height - frameTop - 1 // Leave room for the status row.
-	if hint {
-		available--
+	available := height - frameTop - 2
+	if height >= 12 {
+		available -= 3
 	}
-	gap = min(2, max(0, available-3)) // Two input rows and one transcript row take priority.
+	gap = min(1, max(0, available-2))
 	return min(6, max(1, available-gap-1)), gap, hint
 }
 
 func (m *Model) frame() frame {
 	w, h := max(1, m.width), max(1, m.height)
-	body := min(max(1, w-4), 88)
+	body := min(max(1, w-4), 80)
 	capacity, gap, hint := composerLayout(h)
 	composerRows := min(max(1, m.draft.Height()), capacity)
-	rows := h - frameTop - 1 - composerRows - gap
-	if hint {
-		rows--
+	padding := 0
+	if h >= 12 {
+		padding = 3
 	}
-	return frame{min(2, (w-body)/2), body, max(0, rows), composerRows, gap, w >= 60, hint}
+	rows := h - frameTop - 2 - composerRows - gap - padding
+	return frame{(w - body) / 2, body, max(0, rows), composerRows, gap, w >= 60, hint}
 }
 
 func (f frame) transcriptEnd() int          { return frameTop + f.rows }
 func (f frame) composerStart() int          { return f.transcriptEnd() + f.composerGap }
-func (f frame) bodyWidth() int              { return max(1, f.width-2) }
+func (f frame) bodyWidth() int              { return max(1, f.width-3) }
 func (f frame) transcriptPad(total int) int { return max(0, f.rows-total) }
 
 func (f frame) row(body string) string {
@@ -177,21 +178,29 @@ func (f frame) row(body string) string {
 func (m *Model) View() tea.View {
 	f, w := m.frame(), max(1, m.width)
 	c := m.colors
-	lines := []string{f.row(m.header(f.width)), ""}
+	lines := []string{"", f.row(m.header(f.width)), "", ""}
 	lines = append(lines, m.viewport(f)...)
 	lines = append(lines, make([]string, f.composerGap)...)
+	if m.height >= 12 {
+		lines = append(lines, f.row(""))
+	}
 	composer := strings.Split(m.draft.View(), "\n")
 	for i := range f.composerRows {
 		line := ""
 		if i < len(composer) {
 			line = composer[i]
 		}
-		lines = append(lines, f.row(line))
+		lines = append(lines, f.row("   "+line))
 	}
-	if f.hint {
-		lines = append(lines, f.row(m.hintLine(f.width)))
+	if m.height >= 12 {
+		lines = append(lines, f.row(""), "")
 	}
-	lines = append(lines, f.row(m.status(f.width)))
+	status := m.status(f.width)
+	if f.hint && m.notice == "" && !time.Now().Before(m.mouseHintUntil) && !time.Now().Before(m.stopUntil) && !time.Now().Before(m.quitUntil) {
+		hint := m.hintLine(f.width)
+		status = columns(m.status(max(0, f.width-ansi.StringWidth(hint)-2)), hint, f.width)
+	}
+	lines = append(lines, f.row(status), "")
 	if m.overlay.kind != overlayNone {
 		m.drawOverlay(lines, f)
 	}
@@ -200,8 +209,11 @@ func (m *Model) View() tea.View {
 		bg := c.frameBackground
 		if i >= frameTop && i < f.composerStart() {
 			bg = c.transcriptBackground
-		} else if i >= f.composerStart() && i < f.composerStart()+f.composerRows {
-			bg = c.composerBackground
+		}
+		if i >= f.composerStart() && i < f.composerStart()+f.composerRows+2 && m.height >= 12 {
+			body := ansi.Cut(line, f.left, f.left+f.width)
+			body += strings.Repeat(" ", max(0, f.width-ansi.StringWidth(body)))
+			line = strings.Repeat(" ", f.left) + paintBackground(body, c.composerBackground)
 		}
 		if m.plain {
 			line = ansi.Strip(line)
@@ -224,8 +236,12 @@ func (m *Model) View() tea.View {
 	}
 	if m.overlay.kind == overlayNone && m.draft.Focused() && f.composerStart() < len(lines) {
 		if cursor := m.draft.Cursor(); cursor != nil {
-			cursor.X = min(w-1, cursor.X+f.left)
+			cursor.X = min(w-1, cursor.X+f.left+3)
+			cursor.Shape = tea.CursorBlock
 			cursor.Y += f.composerStart()
+			if m.height >= 12 {
+				cursor.Y++
+			}
 			view.Cursor = cursor
 		}
 	}
@@ -259,11 +275,12 @@ func (m *Model) viewport(f frame) []string {
 		if b, ok := t.at(line); ok {
 			bg = c.blockBackground(b.block.kind)
 			selected := !m.focused && line == t.cursor
-			gutter := "  "
+			gutter := "   "
 			if b.block.kind == toolBlock && line == b.start {
 				gutter = m.toolGutter(b.block, selected)
-			} else if selected {
-				gutter = c.moss.Render("›") + " "
+			}
+			if selected {
+				bg = c.userBackground
 			}
 			body = gutter + b.lines[line-b.start]
 		} else if t.total == 0 && i == f.rows/2 {
@@ -277,7 +294,7 @@ func (m *Model) viewport(f frame) []string {
 			body = paintBackground(body+strings.Repeat(" ", f.width-ansi.StringWidth(body)), bg)
 		}
 		lines[i] = f.row(body)
-		if f.scrollbar && thumbSize > 0 {
+		if f.scrollbar && thumbSize > 0 && time.Now().Before(m.scrollbarUntil) {
 			glyph := c.faint.Render("▏")
 			if i >= thumbStart && i < thumbStart+thumbSize {
 				glyph = c.muted.Render("▎")
@@ -293,7 +310,7 @@ func (m *Model) toolGutter(b Block, selected bool) string {
 	state := " "
 	switch b.status {
 	case "✓":
-		state = c.moss.Render("✓")
+		state = c.faint.Render("✓")
 	case "✗":
 		state = c.errorStyle.Render("✗")
 	case "running":
@@ -301,13 +318,7 @@ func (m *Model) toolGutter(b Block, selected bool) string {
 	case "pending":
 		state = c.faint.Render("○")
 	}
-	if !selected {
-		return state + " "
-	}
-	if m.transcript.expanded[b.id] {
-		return state + c.moss.Render("▾")
-	}
-	return state + c.moss.Render("▸")
+	return " " + state + " "
 }
 
 type shortHelp []key.Binding
@@ -338,7 +349,7 @@ func (m *Model) hintLine(width int) string {
 		action = "queue"
 	}
 	h.ShortSeparator = "  "
-	return h.View(shortHelp{keys("⏎", action), keys("esc", "scroll"), keys("^k", "switch"), keys("?", "help")})
+	return h.View(shortHelp{keys("⏎", action), keys("esc", "scroll"), keys("^k", "switch")})
 }
 
 func (m *Model) status(width int) string {
@@ -366,7 +377,7 @@ func (m *Model) status(width int) string {
 	tail := ""
 	if usage := m.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
 		pct := theme.Percent(usage.Tokens, usage.Window)
-		tail = c.muted.Render("ctx ") + c.contextMeter(pct) + " " + c.muted.Render(theme.PercentLabel(pct))
+		tail = c.muted.Render("ctx ") + c.contextMeter(pct) + " " + c.muted.Render(fmt.Sprintf("%.0f%%", math.Ceil(pct)))
 	}
 	if m.running() && width >= 60 && len(m.spark) > 0 {
 		glyphs := []rune("▁▂▃▄▅▆▇█")
@@ -396,16 +407,14 @@ func (m *Model) status(width int) string {
 		parts = append(parts, tail)
 	}
 	status = strings.Join(parts, " · ")
-	if notice != "" && width >= 60 {
+	if notice != "" {
+		if ansi.StringWidth(notice)+2 >= width {
+			return ansi.Truncate(c.muted.Render(notice), width, "…")
+		}
 		if ansi.StringWidth(status)+ansi.StringWidth(notice)+3 > width {
 			return columns(ansi.Truncate(status, max(0, width-ansi.StringWidth(notice)-2), "…"), c.muted.Render(notice), width)
 		}
 		status = columns(status, c.muted.Render(notice), width)
-	} else if notice != "" {
-		if status != "" {
-			status += " · "
-		}
-		status += c.muted.Render(notice)
 	}
 	return ansi.Truncate(status, width, "…")
 }
@@ -432,17 +441,18 @@ func columns(left, right string, width int) string {
 }
 
 func (t terminalTheme) contextMeter(percent float64) string {
-	steps := int(math.Ceil(percent * theme.MeterCells * 8 / 100))
-	fractional := []rune("─▏▎▍▌▋▊▉")
+	steps := int(math.Ceil(percent * theme.MeterCells / 100))
+	fill := t.muted
+	if percent > 90 {
+		fill = t.errorStyle
+	} else if percent > 70 {
+		fill = t.warning
+	}
 	var meter strings.Builder
 	for i := range theme.MeterCells {
-		fill := steps - i*8
-		switch {
-		case fill >= 8:
-			meter.WriteString(t.moss.Render("━"))
-		case fill > 0:
-			meter.WriteString(t.moss.Render(string(fractional[fill])))
-		default:
+		if i < steps {
+			meter.WriteString(fill.Render("━"))
+		} else {
 			meter.WriteString(t.faint.Render("─"))
 		}
 	}

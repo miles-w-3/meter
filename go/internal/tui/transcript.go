@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
@@ -147,7 +148,7 @@ func (m *Model) refresh() {
 			cached = renderedBlock{block, expanded, m.renderBlock(block, expanded)}
 			t.cache[block.id] = cached
 		}
-		if i > 0 && (block.kind == userBlock || blocks[i-1].kind != block.kind) {
+		if i > 0 && (block.kind != toolBlock || blocks[i-1].kind != toolBlock || t.expanded[blocks[i-1].id] && blocks[i-1].text != "") {
 			t.total++
 		}
 		t.blocks = append(t.blocks, blockRange{block, t.total, cached.lines})
@@ -223,6 +224,8 @@ func (t *transcript) clamp(rows int) {
 func (m *Model) scroll(delta int, wheel bool) tea.Cmd {
 	t := &m.transcript
 	rows := m.frame().rows
+	m.scrollbarUntil = time.Now().Add(time.Second)
+	fade := tea.Tick(time.Second, func(time.Time) tea.Msg { return scrollbarFadeMsg{} })
 	if delta < 0 {
 		t.follow = false
 	}
@@ -236,9 +239,9 @@ func (m *Model) scroll(delta int, wheel bool) tea.Cmd {
 		t.follow, t.unseen = true, false
 	}
 	if delta < 0 && t.top == 0 {
-		return m.loadHistory()
+		return tea.Batch(m.loadHistory(), fade)
 	}
-	return nil
+	return fade
 }
 
 func (m *Model) moveTo(line int) {
@@ -261,7 +264,7 @@ func (m *Model) renderBlock(block Block, expanded bool) []string {
 		for i, line := range lines {
 			lines[i] = c.user.Render(line)
 		}
-		return lines
+		return append(append([]string{""}, lines...), "")
 	case assistantBlock:
 		if block.id == streamingID {
 			prefix, last := lastParagraph(block.text)
@@ -354,9 +357,10 @@ func (m *Model) renderTool(b Block, expanded bool) []string {
 	if !expanded || b.text == "" {
 		return lines
 	}
+	lines = append(lines, "")
 	output := wrap(b.text, width-2)
 	for _, line := range output[:min(toolPreviewLines, len(output))] {
-		lines = append(lines, "  "+c.tool.Render(line))
+		lines = append(lines, "  "+c.muted.Render(line))
 	}
 	hint := ""
 	if b.clipped {

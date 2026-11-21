@@ -2,9 +2,23 @@ package gui
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"image"
 	"image/color"
 	"image/png"
+	"pi-workspace.local/workspace/internal/client"
 	"testing"
 
 	"github.com/Cyenoch/mygoui/form"
@@ -115,5 +129,47 @@ func TestComposerStartsAtTopAndButtonStaysAtBottom(t *testing.T) {
 	button, _ = driver.Find("Send")
 	if input.Y+input.H > button.Y+button.H+1 {
 		t.Fatalf("button is not bottom aligned with multiline input: input=%+v button=%+v", input, button)
+	}
+}
+
+func TestTranscriptImagesLoadAsync(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 3, 3))); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/conversations/1/entries/123/images" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"images": []protocol.ImageAttachment{{Data: base64.StdEncoding.EncodeToString(encoded.Bytes()), MimeType: "image/png"}}})
+	}))
+	defer server.Close()
+	addr, _ := url.Parse(server.URL)
+	_, port, _ := net.SplitHostPort(addr.Host)
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "endpoint.json"), []byte(fmt.Sprintf(`{"port":%s,"token":%q}`, port, strings.Repeat("a", 64))), 0600)
+	api, err := client.New(dir, "tcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates := make(chan func(), 1)
+	a := &app{api: api, ctx: context.Background(), update: func(f func()) { updates <- f }}
+	count := 1
+	p := &pane{}
+	p.state.Current.Entries = []protocol.Entry{{Id: "123", Kind: "pi.user", ImageCount: &count}}
+	driver := ui.NewTester(func(c *ui.Context) { a.transcript(c, p, "1") }, 500, 300)
+	driver.Frame()
+	select {
+	case f := <-updates:
+		f()
+	case <-time.After(3 * time.Second):
+		t.Fatal("image load timed out")
+	}
+	driver.Frame()
+	if _, ok := driver.Find("Sent image"); !ok {
+		t.Fatalf("image missing after async load: texts=%v state=%+v", driver.Texts(), p.transcriptImages["123"])
 	}
 }

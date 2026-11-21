@@ -28,6 +28,10 @@ for (const [model, property, item] of [
 ] as const) {
   Object.assign(schemas[model].properties![property] as object, { items: ref(item) });
 }
+const webSearchProperties = (schemas.ToolsStatus.properties!.webSearch as unknown as { properties: Record<string, object> }).properties;
+Object.assign(webSearchProperties.providers!, { items: ref("SearchProviderStatus") });
+const toolChangeProperties = (schemas.ToolSettingsChange.properties!.webSearch as unknown as { properties: Record<string, object> }).properties;
+toolChangeProperties.provider = ref("SearchProviderChange");
 const body = (name: keyof typeof models) => ({ "application/json": { schema: ref(name) } });
 const response = (description: string, name: keyof typeof models) => ({ description, content: body(name) });
 Object.assign(schemas, {
@@ -59,6 +63,10 @@ const spec = {
     "/v1/server/stop": { post: { operationId: "StopServer", responses: { "202": { description: "Stopping" } } } },
     "/v1/catalog": { get: { operationId: "GetCatalog", responses: { "200": response("Catalog", "Catalog"), ...failures } } },
     "/v1/models": { get: { operationId: "GetModels", responses: { "200": response("Provider and model inventory", "ModelInventory"), ...failures } } },
+    "/v1/settings/tools": {
+      get: { operationId: "GetTools", responses: { "200": response("Tool settings and status", "ToolsStatus"), ...failures } },
+      patch: post("UpdateTools", "ToolSettingsChange", "200", "ToolsStatus"),
+    },
     "/v1/settings/defaults": {
       get: { operationId: "GetDefaults", responses: { "200": response("Default model settings", "Settings"), ...failures } },
       put: post("SetDefaults", "DefaultSettings", "200", "Settings"),

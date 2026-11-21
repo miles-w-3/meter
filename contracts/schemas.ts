@@ -66,7 +66,7 @@ export const receipt = z.object({ submissionId: opaque });
 export const abortInput = z.strictObject({ target: opaque });
 export const problem = z.object({ code: z.string(), message: z.string() });
 export const entry = z.object({
-  id: opaque, kind: z.string(), text: z.string(), imageCount: z.number().int().positive().optional(), toolName: z.string().optional(), toolSucceeded: z.boolean().optional(),
+  id: opaque, kind: z.string(), text: z.string(), error: z.string().optional(), imageCount: z.number().int().positive().optional(), toolName: z.string().optional(), toolSucceeded: z.boolean().optional(),
   toolCallId: z.string().optional(), toolTarget: z.string().optional(), durationMs: z.number().int().nonnegative().optional(),
   tokens: z.number().int().nonnegative().optional(), added: z.number().int().nonnegative().optional(),
   removed: z.number().int().nonnegative().optional(), outputClipped: z.boolean().optional(),
@@ -74,6 +74,8 @@ export const entry = z.object({
 const toolOutput = z.object({ text: z.string() });
 const entryImages = z.object({ images: z.array(imageAttachment) });
 export const page = z.object({ entries: z.array(entry), before: opaque.optional() });
+export const historyBranch = z.object({ conversationId: opaque, parentConversationId: opaque.optional(), at: opaque.optional() });
+export const historyTree = z.object({ rootConversationId: opaque, branches: z.array(historyBranch) });
 export const contextUsage = z.object({ tokens: z.number().int().nonnegative(), window: z.number().int().positive() });
 const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional(), target: z.string().optional() });
 export const queuedMessage = z.object({ id: opaque, text: z.string(), images: z.number().int().nonnegative(), mode: z.enum(["followUp", "steer"]) });
@@ -105,6 +107,7 @@ export const layout = z.strictObject({
 export const models = {
   ImageAttachment: imageAttachment, ServerInfo: serverInfo, CreateInput: createInput, CwdInput: cwdInput, Conversation: conversation, SubmitInput: submitInput,
   QueuedMessage: queuedMessage, RecalledMessage: recalledMessage, Receipt: receipt, AbortInput: abortInput, Problem: problem, Entry: entry, HistoryPage: page, ToolOutput: toolOutput, EntryImages: entryImages,
+  HistoryBranch: historyBranch, HistoryTree: historyTree,
   ContextUsage: contextUsage, ConversationView: view, ConversationSnapshot: snapshot, ConversationUpdate: update,
   ConversationFrame: conversationFrame, ProjectInput: projectInput, ProjectRenameInput: projectRenameInput, Project: projectRecord, Catalog: catalog,
   LayoutNode: layoutNode, LayoutTab: layoutTab, Layout: layout,

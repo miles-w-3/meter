@@ -18,6 +18,7 @@ import { abortTarget, admit, contextTokens, entryText, entryImages, historyCurso
 import type { Provider } from "./durable.ts";
 
 import { WebSearch } from "./tools/web-search.ts";
+import { discoverHistoryTree } from "./tree.ts";
 import { dictation } from "./dictation.ts";
 import { InvalidLayout, LayoutConflict, Workspaces } from "./workspaces.ts";
 
@@ -169,7 +170,7 @@ async function history(conversation: Conversation, before: string | null) {
     if (value === 1) return { entries: [] };
     maxEntryId = (value - 1) as EntryId;
   }
-  const page = await conversation.entries({ maxEntryId, order: "descending" }, 24, undefined, context);
+  const page = await conversation.entries({ maxEntryId, order: "descending" }, 48, undefined, context);
   const entries = [...page.items].reverse();
   return { entries: projectEntries(entries).projected, before: page.next && entries.length ? historyCursor(entries[0].id) : undefined };
 }
@@ -231,7 +232,14 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     res.once("finish", shutdown);
     return reply(res, 202);
   }
-  if (url.pathname === "/v1/models" && req.method === "GET") return reply(res, 200, await inventory());
+  if (url.pathname === "/v1/models" && req.method === "GET") {
+    if (models instanceof ModelRuntime) {
+      await models.refresh({ allowNetwork: false });
+      const error = models.getError();
+      if (error) throw new Problem(500, "model_refresh_failed", error);
+    }
+    return reply(res, 200, await inventory());
+  }
   if (url.pathname === "/v1/settings/tools") {
     if (req.method === "GET") return reply(res, 200, webSearch.status());
     if (req.method === "PATCH") {
@@ -304,6 +312,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }, context);
     if (projectId) workspaces.associate(String(conversation.id), projectId);
     return reply(res, 201, await metadata(conversation));
+  }
+  const treePath = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/tree$/);
+  if (treePath && req.method === "GET") {
+    const conversation = await conversationFor(treePath[1]);
+    const tree = await discoverHistoryTree(harness, conversation.id);
+    if (!tree) throw new Problem(404, "not_found", "Conversation not found");
+    return reply(res, 200, tree);
   }
   const titlePath = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/title$/);
   if (titlePath && req.method === "PUT") {
@@ -449,7 +464,7 @@ server.on("upgrade", (req, socket, head) => {
 async function attach(ws: WebSocket, id: string) {
   const conversation = await conversationFor(id);
   if (ws.readyState !== WebSocket.OPEN) return;
-  const watch = await conversation.watch(context, { min: 12, max: 24 });
+  const watch = await conversation.watch(context, { min: 48, max: 96 });
   ws.once("close", () => { void watch.stop(); });
   if (ws.readyState !== WebSocket.OPEN) return watch.stop();
   let revision = 0;

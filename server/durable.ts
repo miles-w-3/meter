@@ -1,3 +1,4 @@
+import { mermaidCatalogTool } from "./tools/mermaid-catalog.ts";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
@@ -87,6 +88,7 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
   registry.install(provider === "openai-smoke"
     ? defineExtension({ name: "live-probe-tools", tools: [createReadTool(), createWriteTool()] })
     : CodingTools);
+  registry.install(defineExtension({ name: "mermaid-catalog", tools: [mermaidCatalogTool()] }));
   const searchExtension = webSearch && defineExtension({ name: "web-search", tools: [webSearch.tool()] });
   let searchInstalled = false;
   function refreshTools() {
@@ -237,6 +239,7 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>) {
   return {
     id: String(entry.id), kind: entry.kind,
     text: clip(text),
+    error: assistant?.stopReason === "error" && assistant.errorMessage ? clip(assistant.errorMessage) : undefined,
     imageCount: entryImages(entry).length || undefined,
     toolName: tool?.toolName, toolSucceeded: tool ? !tool.isError : undefined,
     toolCallId: tool?.toolCallId, toolTarget: tool && targets.get(tool.toolCallId),

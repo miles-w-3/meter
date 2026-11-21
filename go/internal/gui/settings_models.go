@@ -58,7 +58,8 @@ func (a *app) modelsPanel(c *ui.Context) {
 			thinking = string(*a.modelDefaults.ThinkingLevel)
 		}
 		backendField(c, "Default for new conversations", defaultModel+" · "+thinking)
-		text(c, "Existing Pi credentials are detected on the backend. Choose a model in each conversation.", 12, muted)
+		a.modelChip(c, protocol.LayoutNode{}, &a.defaultModelPane, false)
+		text(c, "Existing Pi credentials are detected on the backend. Choose a default here or override it in each conversation.", 12, muted)
 		ui.TextInputBase(c, &a.modelsFilter).Placeholder("Filter providers and models").Label("Filter providers and models").Padding(7, 9).Radius(6).Background(panel)
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(9).Children(func() {

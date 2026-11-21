@@ -45,10 +45,10 @@ func (p *pane) updateMeter(now time.Time) {
 }
 
 type message struct {
-	id, label, text, target, stats string
-	tool, user                     bool
-	succeeded                      bool
-	imageCount                     int
+	id, label, text, target, stats, errorText string
+	tool, user                                bool
+	succeeded                                 bool
+	imageCount                                int
 }
 
 func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
@@ -56,7 +56,7 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 	messages := make([]message, 0, len(entries)+len(p.state.Current.Tools)+1)
 	completed := make(map[string]bool)
 	for _, entry := range entries {
-		if entry.Text == "" && entry.ToolName == nil && (entry.ImageCount == nil || *entry.ImageCount == 0) {
+		if entry.Text == "" && entry.ToolName == nil && (entry.Error == nil || *entry.Error == "") && (entry.ImageCount == nil || *entry.ImageCount == 0) {
 			continue
 		}
 		label := strings.TrimPrefix(entry.Kind, "pi.")
@@ -65,7 +65,11 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 			if entry.ImageCount != nil {
 				imageCount = *entry.ImageCount
 			}
-			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), user: label == "user", imageCount: imageCount,
+			errorText := ""
+			if entry.Error != nil {
+				errorText = clean(*entry.Error)
+			}
+			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), errorText: errorText, user: label == "user", imageCount: imageCount,
 				stats: palette.Stats(entry.DurationMs, entry.Tokens)})
 			continue
 		}
@@ -159,13 +163,16 @@ func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg mes
 			if msg.user {
 				text(c, body, 14, ink).Selectable().LineHeight(1.5)
 			} else {
-				prose(c, body)
+				a.prose(c, body, msg.id == "partial")
 				if msg.stats != "" {
 					ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
 						text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum")
 					})
 				}
 			}
+		}
+		if msg.errorText != "" {
+			text(c, "Error: "+msg.errorText, 13, warning).Selectable().LineHeight(1.5)
 		}
 	})
 }
@@ -176,16 +183,20 @@ type proseState struct {
 }
 type proseKey struct{}
 
-func prose(c *ui.Context, body string) {
+func (a *app) prose(c *ui.Context, body string, streaming bool) {
 	root := ui.Column(c).FillWidth().MinWidth(0)
 	st := *ui.Local(root, proseKey{}, func() *proseState {
 		s := &proseState{}
 		s.options.Theme = &s.theme
-		s.options.CodeBlock = func(c *ui.Context, b *mmd.CodeBlockView) {
-			content.Highlighter(c, content.HighlighterOptions{Code: b.Code(), Language: b.Language})
-		}
 		return s
 	})
+	st.options.CodeBlock = func(c *ui.Context, b *mmd.CodeBlockView) {
+		if strings.EqualFold(b.Language, "mermaid") && !b.Open && !streaming {
+			a.mermaidBlock(c, b)
+			return
+		}
+		content.Highlighter(c, content.HighlighterOptions{Code: b.Code(), Language: b.Language})
+	}
 	st.theme = mmd.Theme{Font: "Source Serif 4", CodeFont: monoFont, FontSize: 15, LineHeight: 1.6,
 		Text: ui.Hex("#e0e9dc"), Muted: muted, Link: rain, Strong: ui.Hex("#e0e9dc"), Code: ink, CodeBackground: panel,
 		QuoteBar: theme.Border, QuoteText: muted, Rule: theme.Border, TableBorder: theme.Border,

@@ -83,7 +83,6 @@ func (a *app) closePane(tab, node uuid.UUID) {
 func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, cwd string, locked bool, p *pane) {
 	paneContent(c, func() {
 		ui.Row(c).Height(26).FillWidth().MinWidth(0).Clip().Padding(0, paneGutter, 0, paneTextInset).Gap(8).AlignItems(ui.Center).Children(func() {
-			a.modelChip(c, node, p, locked || a.busy())
 			button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).Grow(1).Shrink(1).MinWidth(0).Clip().Padding(2, 0).Radius(4).Disabled(a.busy() || locked)
 			if button.Hovered() && !a.busy() && !locked {
 				button.Background(panel)
@@ -93,6 +92,7 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 				a.pathError = ""
 				a.cwdEditor = &editor{id: node.Id, value: cwd}
 			}
+			a.modelChip(c, node, p, locked || a.busy())
 			if usage := p.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
 				pct := palette.Percent(usage.Tokens, usage.Window)
 				ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))).Children(func() {

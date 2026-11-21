@@ -43,6 +43,9 @@ func (a *app) viewWithDictation(c *ui.Context, beginDictation func(uuid.UUID, *p
 	if c.Shortcut(ui.Cmd, ui.KeyK) && !a.busy() {
 		a.paletteOpen, a.paletteFilter = true, ""
 	}
+	if a.dictation == nil && c.Shortcut(0, ui.KeyEscape) && !c.ShortcutRepeated() {
+		a.treeEscape(time.Now())
+	}
 	if a.writeToast != "" {
 		c.Toast(a.writeToast)
 		a.writeToast = ""
@@ -546,7 +549,11 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					if len(panes) > 1 {
 						ui.Box(c).FillWidth().Height(1).Background(highlight)
 					}
-					a.renderPane(c, project, tab, node)
+					if a.tree != nil && a.tree.pane == node.Id {
+						a.treePane(c, a.tree)
+					} else {
+						a.renderPane(c, project, tab, node)
+					}
 				})
 				if a.revealPane == node.Id {
 					column.ScrollIntoView()

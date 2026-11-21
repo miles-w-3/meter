@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/gui"
+	"pi-workspace.local/workspace/internal/mermaid"
 	"pi-workspace.local/workspace/internal/protocol"
 	"pi-workspace.local/workspace/internal/tui"
 	"regexp"
@@ -23,6 +24,12 @@ import (
 var bundledRevision, bundledDirty string
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "__mermaid_render" {
+		if err := mermaid.Helper(os.Stdin, os.Stdout); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

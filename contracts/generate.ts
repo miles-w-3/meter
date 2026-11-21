@@ -21,6 +21,7 @@ Object.assign(schemas.SelectionChange.properties!, { expected: ref("Selection") 
 Object.assign((schemas.ConversationView.properties!.entries as object), { items: ref("Entry") });
 Object.assign((schemas.ConversationView.properties!.queued as object), { items: ref("QueuedMessage") });
 Object.assign((schemas.HistoryPage.properties!.entries as object), { items: ref("Entry") });
+Object.assign((schemas.HistoryTree.properties!.branches as object), { items: ref("HistoryBranch") });
 for (const [model, property, item] of [
   ["Catalog", "projects", "Project"], ["Catalog", "conversations", "Conversation"],
   ["Layout", "tabs", "LayoutTab"], ["LayoutTab", "nodes", "LayoutNode"],
@@ -81,6 +82,9 @@ const spec = {
     "/v1/conversations": { post: post("CreateConversation", "CreateInput", "201", "Conversation") },
     "/v1/conversations/{id}": { parameters: [id], get: {
       operationId: "GetConversation", responses: { "200": response("Conversation", "Conversation"), ...failures },
+    } },
+    "/v1/conversations/{id}/tree": { parameters: [id], get: {
+      operationId: "GetHistoryTree", responses: { "200": response("Conversation fork ancestry", "HistoryTree"), ...failures },
     } },
     "/v1/conversations/{id}/title": { parameters: [id], put: post("RenameConversation", "ProjectRenameInput", "200", "Conversation") },
     "/v1/conversations/{id}/cwd": { parameters: [id], put: post("SetConversationCwd", "CwdInput", "200", "Conversation") },

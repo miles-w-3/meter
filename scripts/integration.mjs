@@ -217,18 +217,34 @@ async function regular() {
   await waitFor(controlWatch, (f) => f.view.failure === "aborted", "targeted run aborted");
 
   const long = await create();
+  const singleTree = await request(pathOf(long) + "/tree");
+  assert.equal(singleTree.status, 200);
+  assert.deepEqual(singleTree.value, { rootConversationId: long, branches: [{ conversationId: long }] });
+  assert.equal((await request("/v1/conversations/999999999/tree")).status, 404);
   const longWatch = await watch(long);
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 80; i++) {
     const phrase = "history sample " + i;
     assert.equal((await submit(long, input(phrase, "history-" + i))).status, 202);
     await waitFor(longWatch, (f) => f.view.status === "idle" && entries(f).some((e) => e.text === phrase), "history turn");
   }
   const live = longWatch.frames.at(-1).view;
+  assert.ok(live.entries.length >= 48 && live.entries.length <= 96);
   assert.ok(live.before);
-  const page = await request(pathOf(long) + "/entries?before=" + live.before);
-  const keys = [...page.value.entries, ...live.entries].map((entry) => entry.id);
+  const pages = [];
+  let before = live.before;
+  while (before) {
+    const page = await request(pathOf(long) + "/entries?before=" + before);
+    assert.equal(page.status, 200);
+    assert.ok(page.value.entries.length > 0 && page.value.entries.length <= 48);
+    if (pages.length === 0) assert.equal(page.value.entries.length, 48);
+    pages.unshift(...page.value.entries);
+    assert.notEqual(page.value.before, before);
+    before = page.value.before;
+  }
+  assert.ok(pages.length > 48, "history spans multiple pages");
+  const keys = [...pages, ...live.entries].map((entry) => entry.id);
   assert.equal(new Set(keys).size, keys.length);
-  assert.ok(page.value.entries.some((entry) => entry.text === "history sample 0"));
+  assert.ok(pages.some((entry) => entry.text === "history sample 0"));
   await stop(server);
   console.log("Local startup race, concurrent attach, lost receipt replay, stale abort, and transcript pagination passed");
 }

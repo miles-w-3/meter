@@ -63,6 +63,7 @@ type paneDrag struct {
 }
 
 type app struct {
+	mermaidCache         map[string]*mermaidEntry
 	ctx                  context.Context
 	api                  *client.Client
 	window               *mygo.Window
@@ -85,6 +86,8 @@ type app struct {
 	nameEditor           *nameEditor
 	paletteOpen          bool
 	paletteFilter        string
+	tree                 *treePreview
+	lastTreeEscape       time.Time
 	writeToast           string
 	badgeCount           int
 	pathQuery            string
@@ -118,6 +121,7 @@ type app struct {
 	toolsPending         bool
 	toolsError           string
 	modelsInventory      protocol.ModelInventory
+	defaultModelPane     pane
 	modelDefaults        protocol.Settings
 	modelsFilter         string
 	modelsLoading        bool
@@ -258,6 +262,9 @@ func (a *app) syncPanes() {
 			active[node.Id] = true
 			p := a.panes[node.Id]
 			if node.ConversationId == nil {
+				if a.tree != nil && a.tree.pane == node.Id {
+					a.tree = nil
+				}
 				if p == nil {
 					a.panes[node.Id] = &pane{}
 				}
@@ -265,6 +272,9 @@ func (a *app) syncPanes() {
 			}
 			if p != nil && p.conversation == *node.ConversationId {
 				continue
+			}
+			if a.tree != nil && a.tree.pane == node.Id {
+				a.tree = nil
 			}
 			if p == nil {
 				p = &pane{}
@@ -305,6 +315,9 @@ func (a *app) syncPanes() {
 	}
 	for id, p := range a.panes {
 		if !active[id] {
+			if a.tree != nil && a.tree.pane == id {
+				a.tree = nil
+			}
 			if p.cancel != nil {
 				p.cancel()
 			}

@@ -205,6 +205,18 @@ func (c *Client) Conversation(ctx context.Context, id string) (protocol.Conversa
 	return protocol.Conversation{}, responseError(res.StatusCode(), res.GetBody())
 }
 
+// HistoryTree returns the fork relationships for the conversation's history tree.
+func (c *Client) HistoryTree(ctx context.Context, id string) (protocol.HistoryTree, error) {
+	res, err := c.api.GetHistoryTreeWithResponse(ctx, id)
+	if err != nil {
+		return protocol.HistoryTree{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.HistoryTree{}, responseError(res.StatusCode(), res.GetBody())
+}
+
 func (c *Client) History(ctx context.Context, id string, before *string) (protocol.HistoryPage, error) {
 	res, err := c.api.GetEntriesWithResponse(ctx, id, &protocol.GetEntriesParams{Before: before})
 	if err != nil {

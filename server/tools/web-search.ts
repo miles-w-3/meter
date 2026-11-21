@@ -62,7 +62,12 @@ async function json(response: Response): Promise<unknown> {
   } finally {
     void reader.cancel().catch(() => {});
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  const text = Buffer.concat(chunks).toString("utf8");
+  if (response.headers.get("content-type")?.includes("text/event-stream")) {
+    const data = text.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
+    return JSON.parse(data);
+  }
+  return JSON.parse(text);
 }
 
 async function search(provider: Provider, key: string, query: string, limit: number, signal: AbortSignal) {
@@ -75,9 +80,20 @@ async function search(provider: Provider, key: string, query: string, limit: num
     return braveResponse.parse(body).web?.results ?? [];
   }
   const exa = provider === "exa";
+  if (exa && !key) {
+    const body = await json(await fetch("https://mcp.exa.ai/mcp", {
+      ...options, method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "web_search_exa", arguments: { query, numResults: limit } } }),
+    }));
+    const response = z.object({ result: z.object({ isError: z.boolean().optional(), content: z.array(z.object({ type: z.string(), text: z.string().optional() })) }) }).parse(body);
+    if (response.result.isError) throw new Error("Exa MCP search failed");
+    const text = response.result.content.filter((item) => item.type === "text").map((item) => item.text ?? "").join("\n");
+    const found = [...text.matchAll(/(?:^|\n)Title: ([^\n]*)\r?\nURL: (https?:\/\/[^\s]+)([\s\S]*?)(?=\r?\n---\s*\r?\nTitle: |$)/g)];
+    return results.parse(found.map((match) => ({ title: match[1].trim(), url: match[2], description: match[3].trim() })));
+  }
   const body = await json(await fetch(exa ? "https://api.exa.ai/search" : "https://api.firecrawl.dev/v2/search", {
     ...options, method: "POST",
-    headers: { "Content-Type": "application/json", ...(exa ? { "x-api-key": key } : { Authorization: "Bearer " + key }) },
+    headers: { "Content-Type": "application/json", ...(exa ? { "x-api-key": key } : key ? { Authorization: "Bearer " + key } : {}) },
     body: JSON.stringify(exa
       ? { query, numResults: limit, type: "auto", contents: { highlights: { maxCharacters: 650 } } }
       : { query, limit, sources: [{ type: "web" }], domainTools: false, highlights: false }),
@@ -112,7 +128,7 @@ export class WebSearch {
           const configured = !!this.keys[id];
           const failure = this.health.get(id);
           const activeFailure = failure && failure.retryAt > Date.now() ? failure : undefined;
-          const status = !enabled ? "disabled" : !configured ? "missing_key" :
+          const status = !enabled ? "disabled" : id === "brave" && !configured ? "missing_key" :
             id === "brave" && !this.braveStorage ? "storage_rights_required" : activeFailure?.status ?? "ready";
           return { id, enabled, configured, status, ...(activeFailure && status === activeFailure.status
             ? { retryAt: new Date(activeFailure.retryAt).toISOString() } : {}) };

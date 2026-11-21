@@ -50,7 +50,7 @@ func TestStatusBarFitsNarrowPane(t *testing.T) {
 	if !mok || !dok || !uok {
 		t.Fatalf("missing status controls: %v %v %v", mok, dok, uok)
 	}
-	if model.X+model.W > dir.X+0.5 || dir.X+dir.W > meter.X+0.5 || meter.X+meter.W > 320 {
+	if dir.X+dir.W > model.X+0.5 || model.X+model.W > meter.X+0.5 || meter.X+meter.W > 320 {
 		t.Fatalf("overlapping controls: model=%+v directory=%+v meter=%+v", model, dir, meter)
 	}
 	if driver.HasText("idle") || driver.HasText("ctx 19%") {

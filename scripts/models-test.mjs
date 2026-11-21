@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,6 +56,14 @@ try {
   assert.deepEqual(initial.value, { model: null, thinkingLevel: null, source: "unconfigured" });
   const inventory = await request("/v1/models");
   assert.equal(inventory.status, 200);
+  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: {
+    localtest: { baseUrl: "http://localhost:11434/v1", api: "openai-completions", apiKey: "test", models: [{ id: "new-model" }] },
+  } }));
+  const refreshed = await request("/v1/models");
+  assert.equal(refreshed.status, 200);
+  assert.ok(refreshed.value.models.some((m) => m.provider === "localtest" && m.modelId === "new-model"));
+  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: {} }));
+  assert.ok(!(await request("/v1/models")).value.models.some((m) => m.provider === "localtest"));
   const openai = inventory.value.providers.find((p) => p.id === "openai");
   assert.equal(openai.status, "unconfigured");
   assert.ok(openai.methods.some((m) => m.type === "api_key"));

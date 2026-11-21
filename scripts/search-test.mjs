@@ -174,7 +174,33 @@ try {
   } finally {
     globalThis.fetch = original;
   }
-  console.log("Search settings, fallback, cooldown, empty results, persistence, and cancellation passed");
+  // Exa's public MCP and Firecrawl's search endpoint work without credentials.
+  const savedFetch = globalThis.fetch;
+  try {
+    const prefs = (id) => () => ({ webSearch: { enabled: true, providers: { brave: false, exa: id === "exa", firecrawl: id === "firecrawl" } } });
+    for (const id of ["exa", "firecrawl"]) {
+      globalThis.fetch = async (url, options) => {
+        if (id === "exa") {
+          assert.equal(url, "https://mcp.exa.ai/mcp");
+          assert.equal(options.headers["x-api-key"], undefined);
+          assert.equal(JSON.parse(options.body).params.name, "web_search_exa");
+          const data = { result: { content: [{ type: "text", text: "Title: Exa result\nURL: https://example.org/exa\nHighlights:\nSource excerpt" }] } };
+          return new Response("event: message\ndata: " + JSON.stringify(data) + "\n\n", { headers: { "Content-Type": "text/event-stream" } });
+        }
+        assert.equal(url, "https://api.firecrawl.dev/v2/search");
+        assert.equal(options.headers.Authorization, undefined);
+        return Response.json({ success: true, data: { web: [{ title: "Firecrawl result", url: "https://example.org/firecrawl", description: "Source snippet" }] } });
+      };
+      const search = new WebSearch(prefs(id), {});
+      assert.equal(search.status().webSearch.providers.find(p => p.id === id).status, "ready");
+      assert.equal(search.available(), true);
+      const result = await search.tool().execute({ query }, {}, {});
+      const value = JSON.parse(result.output[0].text);
+      assert.equal(value.provider, id);
+      assert.equal(value.results[0].url, "https://example.org/" + id);
+    }
+  } finally { globalThis.fetch = savedFetch; }
+  console.log("Search settings, fallback, keyless providers, cooldown, persistence, and cancellation passed");
 } finally {
   if (running) {
     running.child.kill("SIGKILL");

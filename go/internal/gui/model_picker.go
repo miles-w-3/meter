@@ -252,6 +252,25 @@ func (a *app) modelPickerPanel(c *ui.Context, node protocol.LayoutNode, p *pane)
 func (a *app) applyModelSelection(node protocol.LayoutNode, p *pane) {
 	picker := &p.modelPicker
 	selected := picker.draft
+	if p == &a.defaultModelPane {
+		picker.pending, picker.error = true, ""
+		level := protocol.DefaultSettingsThinkingLevel(selected.ThinkingLevel)
+		input := protocol.DefaultSettings{Model: &selected.Model, ThinkingLevel: &level}
+		go func() {
+			updated, err := a.api.SetDefaults(a.ctx, input)
+			a.update(func() {
+				picker.pending = false
+				if err != nil {
+					picker.error = err.Error()
+					return
+				}
+				a.modelDefaults = updated
+				picker.open = false
+				a.rememberModel(selected.Model)
+			})
+		}()
+		return
+	}
 	if node.ConversationId == nil {
 		p.modelDraft = &selected
 		picker.open = false

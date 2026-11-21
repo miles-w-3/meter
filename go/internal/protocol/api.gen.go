@@ -684,6 +684,7 @@ type DefaultSettingsThinkingLevel string
 type Entry struct {
 	Added         *int    `json:"added,omitempty"`
 	DurationMs    *int    `json:"durationMs,omitempty"`
+	Error         *string `json:"error,omitempty"`
 	Id            string  `json:"id"`
 	ImageCount    *int    `json:"imageCount,omitempty"`
 	Kind          string  `json:"kind"`
@@ -702,10 +703,23 @@ type EntryImages struct {
 	Images []ImageAttachment `json:"images"`
 }
 
+// HistoryBranch defines model for HistoryBranch.
+type HistoryBranch struct {
+	At                   *string `json:"at,omitempty"`
+	ConversationId       string  `json:"conversationId"`
+	ParentConversationId *string `json:"parentConversationId,omitempty"`
+}
+
 // HistoryPage defines model for HistoryPage.
 type HistoryPage struct {
 	Before  *string `json:"before,omitempty"`
 	Entries []Entry `json:"entries"`
+}
+
+// HistoryTree defines model for HistoryTree.
+type HistoryTree struct {
+	Branches           []HistoryBranch `json:"branches"`
+	RootConversationId string          `json:"rootConversationId"`
 }
 
 // ImageAttachment defines model for ImageAttachment.
@@ -1259,6 +1273,9 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	RenameConversation(ctx context.Context, id string, body RenameConversationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetHistoryTree performs a GET /v1/conversations/{id}/tree (the `GetHistoryTree` operationId) request.
+	GetHistoryTree(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ResolveCwdWithBody performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request,
 	// with any type of body and a specified content type.
 	ResolveCwdWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1575,6 +1592,19 @@ func (c *Client) RenameConversationWithBody(ctx context.Context, id string, cont
 // Takes a body of the `application/json` content type.
 func (c *Client) RenameConversation(ctx context.Context, id string, body RenameConversationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRenameConversationRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetHistoryTree performs a GET /v1/conversations/{id}/tree (the `GetHistoryTree` operationId) request.
+func (c *Client) GetHistoryTree(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHistoryTreeRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -2392,6 +2422,40 @@ func NewRenameConversationRequestWithBody(server string, id string, contentType 
 	return req, nil
 }
 
+// NewGetHistoryTreeRequest constructs an http.Request for the GetHistoryTree method
+func NewGetHistoryTreeRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/tree", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewResolveCwdRequest calls the generic ResolveCwd builder with application/json body
 func NewResolveCwdRequest(server string, body ResolveCwdJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -2953,6 +3017,11 @@ type ClientWithResponsesInterface interface {
 	// RenameConversationWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	RenameConversationWithResponse(ctx context.Context, id string, body RenameConversationJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameConversationResponse, error)
+
+	// GetHistoryTreeWithResponse performs a GET /v1/conversations/{id}/tree (the `GetHistoryTree` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetHistoryTreeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetHistoryTreeResponse, error)
 
 	// ResolveCwdWithBodyWithResponse performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request,
 	// with any type of body and a specified content type.
@@ -3922,6 +3991,75 @@ func (r RenameConversationResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RenameConversationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetHistoryTreeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HistoryTree
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetHistoryTreeResponse) GetJSON200() *HistoryTree {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetHistoryTreeResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetHistoryTreeResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetHistoryTreeResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetHistoryTreeResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetHistoryTreeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHistoryTreeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHistoryTreeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetHistoryTreeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4902,6 +5040,17 @@ func (c *ClientWithResponses) RenameConversationWithResponse(ctx context.Context
 	return ParseRenameConversationResponse(rsp)
 }
 
+// GetHistoryTreeWithResponse performs a GET /v1/conversations/{id}/tree (the `GetHistoryTree` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetHistoryTreeWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetHistoryTreeResponse, error) {
+	rsp, err := c.GetHistoryTree(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHistoryTreeResponse(rsp)
+}
+
 // ResolveCwdWithBodyWithResponse performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -5756,6 +5905,60 @@ func ParseRenameConversationResponse(rsp *http.Response) (*RenameConversationRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Conversation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetHistoryTreeResponse parses an HTTP response from a GetHistoryTreeWithResponse call
+func ParseGetHistoryTreeResponse(rsp *http.Response) (*GetHistoryTreeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHistoryTreeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HistoryTree
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

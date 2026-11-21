@@ -867,6 +867,73 @@
         }
       }
     },
+    "/v1/conversations/{id}/tree": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "GetHistoryTree",
+        "responses": {
+          "200": {
+            "description": "Conversation fork ancestry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTree"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/conversations/{id}/title": {
       "parameters": [
         {
@@ -1922,6 +1989,9 @@
           "text": {
             "type": "string"
           },
+          "error": {
+            "type": "string"
+          },
           "imageCount": {
             "type": "integer",
             "exclusiveMinimum": 0,
@@ -2014,6 +2084,51 @@
         },
         "required": [
           "images"
+        ],
+        "additionalProperties": false
+      },
+      "HistoryBranch": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "parentConversationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "at": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "conversationId"
+        ],
+        "additionalProperties": false
+      },
+      "HistoryTree": {
+        "type": "object",
+        "properties": {
+          "rootConversationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryBranch"
+            }
+          }
+        },
+        "required": [
+          "rootConversationId",
+          "branches"
         ],
         "additionalProperties": false
       },

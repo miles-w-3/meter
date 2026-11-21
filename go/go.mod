@@ -9,6 +9,7 @@ require (
 	charm.land/bubbletea/v2 v2.1.2
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
+	github.com/Cyenoch/mygoicons v0.4.0
 	github.com/Cyenoch/mygoui v0.3.2-0.20261118090532-26b42fb83ee1
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
@@ -20,7 +21,7 @@ require (
 )
 
 require (
-	github.com/Cyenoch/mygoicons v0.4.0 // indirect
+	github.com/Broderick-Westrope/pele-go v0.2.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.14.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect

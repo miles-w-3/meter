@@ -28,3 +28,29 @@ func TestTranscriptMarkdownAndFade(t *testing.T) {
 		t.Fatalf("latest Markdown message missing: %v", driver.Texts())
 	}
 }
+
+func TestTranscriptAssistantErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, failure string
+	}{
+		{"error only", "", "prefill memory exceeded"},
+		{"partial text and error", "Partial response", "connection lost"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &pane{connected: true}
+			p.state.Current.Entries = []protocol.Entry{{Id: "1", Kind: "pi.assistant", Text: tc.body, Error: &tc.failure}}
+			a := &app{}
+			driver := ui.NewTester(func(c *ui.Context) {
+				c.SetTheme(theme)
+				a.transcript(c, p, "1")
+			}, 600, 300)
+			driver.Frame()
+			if !driver.HasText("Error: " + tc.failure) {
+				t.Fatalf("error missing: %v", driver.Texts())
+			}
+			if tc.body != "" && !driver.HasText(tc.body) {
+				t.Fatalf("partial text missing: %v", driver.Texts())
+			}
+		})
+	}
+}

@@ -16,8 +16,9 @@ try {
     env: { ...process.env, PI_CODING_AGENT_DIR: dir, PI_MODEL: "gpt-5.2", OPENAI_API_KEY: "", TEST_DB: join(dir, `${provider}.sqlite`), TEST_PROVIDER: provider, ...extra },
   });
   const missing = run("openai");
-  assert.notEqual(missing.status, 0);
-  assert.match(missing.stderr, /No openai credentials found/);
+  assert.equal(missing.status, 0, missing.stderr);
+  assert.equal(JSON.parse(missing.stdout.trim()).provider, "openai");
+  assert.equal(JSON.parse(missing.stdout.trim()).key, undefined);
   const apiKey = run("openai", { OPENAI_API_KEY: "test-api-key" });
   assert.equal(apiKey.status, 0, apiKey.stderr);
   assert.equal(JSON.parse(apiKey.stdout.trim()).key, "test-api-key");

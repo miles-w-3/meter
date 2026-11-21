@@ -42,6 +42,48 @@ func (a *app) backendPanel(c *ui.Context) {
 	if !a.backendOpen {
 		return
 	}
+	ui.Modal(c.Key("settings"), &a.backendOpen, func() {
+		ui.Column(c).Width(760).Gap(14).Children(func() {
+			text(c, "Settings", 18, ink).FontWeight(650)
+			ui.Row(c).Height(470).Gap(20).AlignItems(ui.Stretch).Children(func() {
+				ui.Column(c).Width(145).Gap(4).Children(func() {
+					a.settingsItem(c, "backend", "Backend status")
+					a.settingsItem(c, "models", "Models")
+				})
+				ui.Box(c).Width(1).Background(theme.Border)
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					if a.settingsSection == "models" {
+						a.modelsPanel(c)
+					} else {
+						a.backendStatus(c)
+					}
+				})
+			})
+			ui.Row(c).Justify(ui.End).Children(func() {
+				if action(c, "Done", false) {
+					a.backendOpen = false
+				}
+			})
+		})
+	})
+}
+
+func (a *app) settingsItem(c *ui.Context, section, label string) {
+	selected := a.settingsSection == section || (section == "backend" && a.settingsSection == "")
+	row := sidebarRow(c.Key("settings-"+section), label, false)
+	if selected {
+		row.Background(selectedFill)
+	}
+	row.Children(func() { text(c, label, 13, ink) })
+	if row.Clicked() {
+		a.settingsSection = section
+		if section == "models" && !a.modelsLoaded && !a.modelsLoading {
+			a.refreshModels()
+		}
+	}
+}
+
+func (a *app) backendStatus(c *ui.Context) {
 	info := a.backendInfo
 	state := "Unavailable"
 	if a.backendOnline {
@@ -69,51 +111,46 @@ func (a *app) backendPanel(c *ui.Context) {
 		modelStatus = "Installed"
 	}
 
-	ui.Modal(c.Key("backend-info"), &a.backendOpen, func() {
-		ui.Column(c).Width(520).Gap(12).Children(func() {
-			text(c, "Backend", 16, ink).FontWeight(650)
-			text(c, state, 13, muted)
-			backendField(c, "Running revision", backendRevision(revision, info.Dirty != nil && *info.Dirty))
-			backendField(c, "Bundled revision", backendRevision(a.backend.Revision, a.backend.Dirty))
-			backendField(c, "Dictation", modelStatus)
-			if modelMissing {
-				text(c, "Download the 168 MiB model from Hugging Face for offline dictation.", 12, muted)
-				if action(c, "Download model", a.backendPending != "" || a.backend.Download == nil) {
-					a.runBackendAction("Download model")
-				}
+	ui.Column(c).Gap(12).Children(func() {
+		text(c, "Backend status", 16, ink).FontWeight(650)
+		text(c, state, 13, muted)
+		backendField(c, "Running revision", backendRevision(revision, info.Dirty != nil && *info.Dirty))
+		backendField(c, "Bundled revision", backendRevision(a.backend.Revision, a.backend.Dirty))
+		backendField(c, "Dictation", modelStatus)
+		if modelMissing {
+			text(c, "Download the 168 MiB model from Hugging Face for offline dictation.", 12, muted)
+			if action(c, "Download model", a.backendPending != "" || a.backend.Download == nil) {
+				a.runBackendAction("Download model")
 			}
-			if a.backendNotice != "" {
-				text(c, clean(a.backendNotice), 12, muted)
-			}
-			pending := a.backendPending != ""
-			if a.backendConfirm != "" {
-				text(c, "Active sessions will reconnect after the backend starts.", 12, muted)
-				ui.Row(c).Gap(8).Children(func() {
-					if action(c, "Cancel", pending) {
-						a.backendConfirm = ""
-					}
-					if action(c, a.backendConfirm, pending) {
-						operation := a.backendConfirm
-						a.backendConfirm = ""
-						a.runBackendAction(operation)
-					}
-				})
-				return
-			}
+		}
+		if a.backendNotice != "" {
+			text(c, clean(a.backendNotice), 12, muted)
+		}
+		pending := a.backendPending != ""
+		if a.backendConfirm != "" {
+			text(c, "Active sessions will reconnect after the backend starts.", 12, muted)
 			ui.Row(c).Gap(8).Children(func() {
-				if action(c, "Refresh", pending) {
-					a.runBackendAction("Refresh")
+				if action(c, "Cancel", pending) {
+					a.backendConfirm = ""
 				}
-				if action(c, "Restart", pending || a.backend.Restart == nil) {
-					a.backendConfirm = "Restart backend"
-				}
-				if action(c, "Redeploy bundled backend", pending || !a.backend.CanRedeploy) {
-					a.backendConfirm = "Redeploy bundled backend"
-				}
-				if action(c, "Done", false) {
-					a.backendOpen = false
+				if action(c, a.backendConfirm, pending) {
+					operation := a.backendConfirm
+					a.backendConfirm = ""
+					a.runBackendAction(operation)
 				}
 			})
+			return
+		}
+		ui.Row(c).Gap(8).Children(func() {
+			if action(c, "Refresh", pending) {
+				a.runBackendAction("Refresh")
+			}
+			if action(c, "Restart", pending || a.backend.Restart == nil) {
+				a.backendConfirm = "Restart backend"
+			}
+			if action(c, "Redeploy bundled backend", pending || !a.backend.CanRedeploy) {
+				a.backendConfirm = "Redeploy bundled backend"
+			}
 		})
 	})
 }

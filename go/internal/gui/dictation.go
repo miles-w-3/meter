@@ -39,6 +39,7 @@ type spaceHold struct {
 	start, end int
 	active     bool
 	restore    bool
+	paneOnly   bool
 }
 
 func (a *app) dictationInput(c *ui.Context, input ui.Element, p *pane, disabled bool, begin func()) {
@@ -58,7 +59,7 @@ func (a *app) dictationInput(c *ui.Context, input ui.Element, p *pane, disabled 
 		}
 	})
 	hold := a.spaceHold
-	if hold == nil || hold.pane != p {
+	if hold == nil || hold.pane != p || hold.paneOnly {
 		return
 	}
 	if !input.Focused() || disabled {
@@ -82,6 +83,53 @@ func (a *app) dictationInput(c *ui.Context, input ui.Element, p *pane, disabled 
 		hold.restore = true
 		p.draft = hold.before
 		begin()
+		c.After(time.Millisecond)
+	}
+}
+
+// Observe at the workspace root so the selected pane remains the dictation
+// target even when focus is elsewhere. Text fields keep their own Space input.
+func (a *app) observePaneDictation(root ui.Element) {
+	root.ObserveInput(func(ev ui.InputEvent) {
+		p := a.panes[a.selectedPane]
+		hold := a.spaceHold
+		if hold != nil && hold.paneOnly && ev.Kind == ui.InputKeyUp && ev.Key == ui.KeySpace {
+			if hold.active && a.dictation != nil && a.dictation.pane == hold.pane && !a.dictation.released {
+				a.dictation.released = true
+				close(a.dictation.release)
+			}
+			a.spaceHold = nil
+			return
+		}
+		if a.dictationTextFocused || p == nil || p.starting || p.pendingFirst {
+			return
+		}
+		if ev.Kind == ui.InputKeyDown && ev.Key == ui.KeySpace && ev.Mods == 0 && !ev.Repeat && hold == nil && a.dictation == nil && a.mayDictate && canCaptureAudio {
+			a.spaceHold = &spaceHold{pane: p, at: time.Now(), before: p.draft, paneOnly: true}
+		} else if hold != nil && hold.paneOnly && !hold.active && ev.Kind == ui.InputKeyDown && ev.Key != ui.KeySpace {
+			a.spaceHold = nil
+		}
+	})
+}
+
+func (a *app) tickPaneDictation(c *ui.Context, focusWithin bool, begin func(uuid.UUID, *pane)) {
+	hold := a.spaceHold
+	if hold == nil || !hold.paneOnly {
+		return
+	}
+	p := a.panes[a.selectedPane]
+	if !focusWithin || p == nil || hold.pane != p || a.dictationTextFocused || p.starting || p.pendingFirst {
+		a.cancelDictation()
+		return
+	}
+	if !hold.active {
+		remaining := dictationHold - time.Since(hold.at)
+		if remaining > 0 {
+			c.After(remaining)
+			return
+		}
+		hold.active = true
+		begin(a.selectedPane, p)
 		c.After(time.Millisecond)
 	}
 }

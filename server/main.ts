@@ -7,11 +7,13 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { LiveDoc } from "@earendil-works/pi-durable";
+import { AgentDoc, InboxDoc, LiveDoc } from "@earendil-works/pi-durable";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-works/pi-durable";
 import { WebSocket, WebSocketServer } from "ws";
-import { abortInput, conversationFrame, createInput, cwdInput, layout, projectInput, projectRenameInput, submitInput } from "../contracts/schemas.ts";
-import type { ZodType } from "zod";
+import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, layout, projectInput, projectRenameInput, selectionChange, submitInput } from "../contracts/schemas.ts";
+import type { z, ZodType } from "zod";
 import { abortTarget, admit, contextTokens, entryText, historyCursor, openHarness, project, projectEntries, RequestConflict } from "./durable.ts";
 import type { Provider } from "./durable.ts";
 
@@ -23,7 +25,7 @@ const configHome = process.platform === "darwin" ? join(homedir(), "Library", "A
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 const data = resolve(process.env.PI_WORKSPACE_HOME || join(configHome, "pi-workspace"));
 const provider = process.env.PI_PROVIDER ?? "openai";
-if (!["fixture", "openai", "openai-codex", "openai-smoke"].includes(provider)) throw new Error("Unknown PI_PROVIDER");
+if (!provider || provider.length > 160) throw new Error("Invalid PI_PROVIDER");
 await mkdir(data, { recursive: true, mode: 0o700 });
 const directory = await lstat(data);
 if (!directory.isDirectory() || directory.uid !== process.getuid?.() || (directory.mode & 0o077)) {
@@ -68,7 +70,7 @@ if (!id) {
 const { harness, model, models } = await openHarness(join(data, "durable.sqlite"), provider as Provider);
 const workspaces = new Workspaces(join(data, "app.sqlite"));
 const generation = randomUUID();
-const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts"];
+const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts", "model-inventory", "model-defaults", "conversation-models"];
 const dictationDir = process.env.PI_DICTATION_DIR ||
   (existsSync(join(data, "meter-dictation")) ? data : dirname(process.execPath));
 const voice = dictation(dictationDir, data);
@@ -142,7 +144,7 @@ async function metadata(conversation: Conversation) {
   const tail = await conversation.entries({ order: "descending" }, 8, undefined, context);
   const lastActivity = tail.items.flatMap((entry) => [...(entry.model ?? [])].reverse())
     .find((message) => Number.isSafeInteger(message.timestamp) && message.timestamp >= 0)?.timestamp;
-  return { id, cwd: agent.cwd, lastActivity, title: workspaces.conversationTitle(id) ?? await titleFor(conversation, id), projectId: workspaces.projectFor(id, agent.cwd ?? ""), model: agent.model ? agent.model.provider + "/" + agent.model.modelId : "unconfigured" };
+  return { id, cwd: agent.cwd, lastActivity, title: workspaces.conversationTitle(id) ?? await titleFor(conversation, id), projectId: workspaces.projectFor(id, agent.cwd ?? ""), model: agent.model ? agent.model.provider + "/" + agent.model.modelId : "unconfigured", selection: { model: agent.model ?? null, thinkingLevel: agent.thinkingLevel } };
 }
 
 async function canonicalCwd(cwd: string) {
@@ -180,6 +182,37 @@ async function control<T>(id: string, operation: () => Promise<T>) {
   finally { if (controls.get(id) === current) controls.delete(id); }
 }
 
+function validateSelection(value: { model: { provider: string; modelId: string }; thinkingLevel: z.infer<typeof selectionChange>["thinkingLevel"] }) {
+  const selected = models.getModel(value.model.provider, value.model.modelId);
+  if (!selected) throw new Problem(400, "invalid_model", "Model is not in the current catalog");
+  if (!getSupportedThinkingLevels(selected).includes(value.thinkingLevel)) throw new Problem(400, "invalid_thinking", "Thinking level is not supported by this model");
+}
+
+function currentDefaults() {
+  const saved = workspaces.defaults();
+  if (saved) return { ...saved, source: "saved" as const };
+  return { model: model ?? null, thinkingLevel: null, source: model ? provider === "fixture" ? "fixture" as const : "environment" as const : "unconfigured" as const };
+}
+
+async function inventory() {
+  const providers = await Promise.all(models.getProviders().map(async (item) => {
+    const methods = [
+      ...(item.auth.apiKey ? [{ type: "api_key" as const, name: item.auth.apiKey.name, interactive: !!item.auth.apiKey.login }] : []),
+      ...(item.auth.oauth ? [{ type: "oauth" as const, name: item.auth.oauth.name, interactive: true }] : []),
+    ];
+    try {
+      const check = await models.checkAuth(item.id, { signal: AbortSignal.timeout(3000) });
+      return { id: item.id, name: item.name, methods, status: check ? "configured" : "unconfigured", source: check?.source };
+    } catch {
+      return { id: item.id, name: item.name, methods, status: "unknown" };
+    }
+  }));
+  return { providers, models: models.getModels().map((item) => ({
+    provider: item.provider, modelId: item.id, name: item.name, contextWindow: item.contextWindow,
+    reasoning: item.reasoning, thinkingLevels: getSupportedThinkingLevels(item),
+  })) };
+}
+
 let stopping = false;
 async function route(req: IncomingMessage, res: ServerResponse) {
   if (!allowed(req)) throw new Problem(401, "unauthorized", "Unauthorized local endpoint");
@@ -195,6 +228,23 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (url.pathname === "/v1/server/stop" && req.method === "POST") {
     res.once("finish", shutdown);
     return reply(res, 202);
+  }
+  if (url.pathname === "/v1/models" && req.method === "GET") return reply(res, 200, await inventory());
+  if (url.pathname === "/v1/settings/defaults") {
+    if (req.method === "GET") return reply(res, 200, currentDefaults());
+    if (req.method === "PUT") {
+      const value = await parseBody(req, defaultSettings);
+      if (!value.model && value.thinkingLevel) throw new Problem(400, "invalid_model", "Choose a model before setting thinking level");
+      if (value.model) {
+        const selected = models.getModel(value.model.provider, value.model.modelId);
+        if (!selected) throw new Problem(400, "invalid_model", "Model is not in the current catalog");
+        if (value.thinkingLevel && !getSupportedThinkingLevels(selected).includes(value.thinkingLevel)) {
+          throw new Problem(400, "invalid_thinking", "Thinking level is not supported by this model");
+        }
+      }
+      workspaces.saveDefaults(value);
+      return reply(res, 200, currentDefaults());
+    }
   }
   if (url.pathname === "/v1/catalog" && req.method === "GET") {
     const conversations = [];
@@ -235,10 +285,12 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
   }
   if (url.pathname === "/v1/conversations" && req.method === "POST") {
-    const { cwd, projectId } = await parseBody(req, createInput);
+    const { cwd, projectId, selection } = await parseBody(req, createInput);
+    if (selection) validateSelection(selection);
     if (projectId && !workspaces.projectExists(projectId)) throw new Problem(404, "not_found", "Project not found");
+    const defaults = currentDefaults();
     const conversation = await harness.createConversation({
-      ownership: { kind: "ownerless" }, agent: { cwd: await canonicalCwd(cwd), model },
+      ownership: { kind: "ownerless" }, agent: { cwd: await canonicalCwd(cwd), model: selection?.model ?? defaults.model ?? undefined, thinkingLevel: selection?.thinkingLevel ?? defaults.thinkingLevel ?? undefined },
     }, context);
     if (projectId) workspaces.associate(String(conversation.id), projectId);
     return reply(res, 201, await metadata(conversation));
@@ -260,7 +312,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (!result) throw new Problem(404, "not_found", "Tool result not found");
     return reply(res, 200, { text: entryText(result) });
   }
-  const match = url.pathname.match(/^\/v1\/conversations\/([^/]+)(?:\/(entries|messages|abort|cwd))?$/);
+  const match = url.pathname.match(/^\/v1\/conversations\/([^/]+)(?:\/(entries|messages|abort|cwd|model))?$/);
   if (match) {
     const conversation = await conversationFor(match[1]);
     if (req.method === "GET" && !match[2]) return reply(res, 200, await metadata(conversation));
@@ -278,9 +330,36 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       });
       return reply(res, 200, updated);
     }
+    if (req.method === "PUT" && match[2] === "model") {
+      const input = await parseBody(req, selectionChange);
+      validateSelection(input);
+      const updated = await control(match[1], async () => {
+        await conversation.commit(async (tx) => {
+          const live = await tx.doc(LiveDoc, conversation.id);
+          const inbox = await tx.doc(InboxDoc, conversation.id);
+          if (live.run || inbox.items.length) throw new Problem(409, "busy", "Wait for the conversation and queued messages to finish");
+          const agent = await tx.doc(AgentDoc, conversation.id);
+          if ((agent.model?.provider ?? null) !== (input.expected.model?.provider ?? null) ||
+              (agent.model?.modelId ?? null) !== (input.expected.model?.modelId ?? null) ||
+              (agent.thinkingLevel ?? "off") !== input.expected.thinkingLevel) {
+            throw new Problem(409, "selection_conflict", "Model selection changed in another window");
+          }
+          agent.model = input.model;
+          agent.thinkingLevel = input.thinkingLevel;
+        }, context);
+        return metadata(conversation);
+      });
+      return reply(res, 200, updated);
+    }
     if (req.method === "POST" && match[2] === "messages") {
       const input = await parseBody(req, submitInput);
-      const submissionId = await control(match[1], () => admit(conversation, input));
+      const submissionId = await control(match[1], async () => {
+        const agent = await conversation.agent(context);
+        return admit(conversation, input, async () => {
+          if (!agent.model) throw new Problem(409, "model_unconfigured", "Set a default model and create a new conversation");
+          if (!models.getModel(agent.model.provider, agent.model.modelId)) throw new Problem(409, "model_unavailable", "The conversation's model is not in the current catalog");
+        });
+      });
       return reply(res, 202, { submissionId });
     }
     if (req.method === "POST" && match[2] === "abort") {
@@ -347,17 +426,18 @@ async function attach(ws: WebSocket, id: string) {
     if (Buffer.byteLength(frame) > 2_500_000 || ws.bufferedAmount > 2_500_000) return ws.terminate();
     ws.send(frame);
   };
-  const agent = await conversation.agent(context);
-  const window = agent.model && models.getModel(agent.model.provider, agent.model.modelId)?.contextWindow;
   let committed: EntryId | undefined;
   let usage: { tokens: number; window: number } | undefined;
   const frame = async (value: typeof watch.value) => {
     const last = value.entries.at(-1)?.id;
-    if (window && (!usage || last !== committed)) {
+    const projected = project(value);
+    const model = projected.selection?.model;
+    const window = model && models.getModel(model.provider, model.modelId)?.contextWindow;
+    if (window && (!usage || usage.window !== window || last !== committed)) {
       usage = { tokens: contextTokens(await conversation.context(context)), window };
       committed = last;
-    }
-    return project(value, usage);
+    } else if (!window) usage = undefined;
+    return { ...projected, contextUsage: usage };
   };
   send("snapshot", await frame(watch.value));
   if (ws.readyState !== WebSocket.OPEN) return watch.stop();
@@ -374,6 +454,7 @@ function shutdown() {
   for (const ws of sockets.clients) ws.terminate();
   voice.close();
   void harness.close(context).then(async () => {
+    if (models instanceof ModelRuntime) await models.settleCredentialWrites();
     workspaces.db.close();
     lock.close();
     if (tcp) await unlink(endpointPath).catch((error) => {

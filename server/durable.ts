@@ -6,7 +6,7 @@ import type { FauxResponseFactory } from "@earendil-works/pi-ai/providers/faux";
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createRegistry, defineDocFamily, defineExtension, Harness, LiveDoc } from "@earendil-works/pi-durable";
-import type { Conversation, ContextView, ConversationView, EntryRecord, LiveState } from "@earendil-works/pi-durable";
+import type { AgentState, Conversation, ContextView, ConversationView, EntryRecord, LiveState } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
@@ -67,21 +67,17 @@ class LiveProbeEnv extends NodeExecutionEnv {
   }
 }
 
-export type Provider = "fixture" | "openai" | "openai-codex" | "openai-smoke";
+export type Provider = string;
 
 export async function openHarness(db: string, provider: Provider) {
   const useOpenAI = provider !== "fixture";
   const modelId = useOpenAI ? process.env.PI_MODEL : "faux-1";
-  const providerId = provider === "openai-codex" ? "openai-codex" : "openai";
-  const models = useOpenAI ? await ModelRuntime.create({ refreshOnCreate: false }) : (() => {
+  const providerId = provider === "openai-smoke" ? "openai" : provider;
+  const models = useOpenAI ? await ModelRuntime.create({ allowModelNetwork: false }) : (() => {
     const fixtureModels = createModels();
     fixtureModels.setProvider(fixtureProvider());
     return fixtureModels;
   })();
-  if (useOpenAI) {
-    if (!modelId) throw new Error("Set PI_MODEL");
-    if (!await models.checkAuth(providerId)) throw new Error(`No ${providerId} credentials found; log in with Pi or set OPENAI_API_KEY for openai`);
-  }
   const registry = createRegistry();
   registry.install(provider === "openai-smoke"
     ? defineExtension({ name: "live-probe-tools", tools: [createReadTool(), createWriteTool()] })
@@ -96,7 +92,7 @@ export async function openHarness(db: string, provider: Provider) {
       return new NodeExecutionEnv({ cwd });
     },
   }, context);
-  return { harness, models, model: { provider: useOpenAI ? providerId : "faux", modelId: modelId! } };
+  return { harness, models, model: modelId ? { provider: useOpenAI ? providerId : "faux", modelId } : undefined };
 }
 
 export class RequestConflict extends Error {}
@@ -108,7 +104,7 @@ const receipts = defineDocFamily({
   checkpointWhen: () => true,
 });
 
-export async function admit(conversation: Conversation, input: z.infer<typeof submitInput>) {
+export async function admit(conversation: Conversation, input: z.infer<typeof submitInput>, validate?: () => Promise<void>) {
   const fingerprint = createHash("sha256").update(JSON.stringify([input.mode, input.content])).digest("hex");
   return conversation.commit(async (tx) => {
     const receipt = await tx.doc(receipts, conversation.id, input.requestId, input.requestId);
@@ -116,6 +112,7 @@ export async function admit(conversation: Conversation, input: z.infer<typeof su
       if (receipt.fingerprint !== fingerprint) throw new RequestConflict("Request ID already used with different input");
       return receipt.submissionId;
     }
+    await validate?.();
     const submission = await conversation.submit(tx, {
       type: "input", requestId: input.requestId, content: input.content,
       whenBusy: input.mode === "prompt" ? "reject" : input.mode === "steer" ? "steer" : "followUp",
@@ -197,8 +194,9 @@ export function project(value: ConversationView, usage?: z.infer<typeof contextU
   const live = value.docs["pi.live"] as LiveState | undefined;
   const partial = live?.generation?.message?.content?.flatMap((block) => block.type === "text" ? [block.text] : []).join("");
   const { projected, targets } = projectEntries(value.entries);
+  const agent = value.docs["pi.agent"] as AgentState | undefined;
   return view.parse({
-    conversationId: String(value.conversation.id),
+    conversationId: String(value.conversation.id), selection: { model: agent?.model ?? null, thinkingLevel: agent?.thinkingLevel ?? "off" },
     status: live?.run ? "running" : live?.runFailure ? "failed" : "idle",
     failure: live?.runFailure?.reason,
     abortTarget: live?.run && String(live.run.taskId),

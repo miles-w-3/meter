@@ -29,7 +29,12 @@ const sidebarWidth = 218
 const sidebarIconWidth = 14
 
 func (a *app) view(c *ui.Context) {
+	a.viewWithDictation(c, a.startDictation)
+}
+
+func (a *app) viewWithDictation(c *ui.Context, beginDictation func(uuid.UUID, *pane)) {
 	a.dictationVisible = false
+	a.dictationTextFocused = false
 	c.SetTheme(theme)
 	c.SetMenuPresentation(ui.PopoverMenus)
 	if c.Shortcut(ui.Ctrl, ui.KeyQ) && a.window != nil {
@@ -42,7 +47,9 @@ func (a *app) view(c *ui.Context) {
 		c.Toast(a.writeToast)
 		a.writeToast = ""
 	}
-	ui.Column(c).Fill().Background(background).Children(func() {
+	root := ui.Column(c).Fill().Background(background).Focusable()
+	a.observePaneDictation(root)
+	root.Children(func() {
 		layout.TitleBar(c, layout.TitleBarOptions{
 			Label: "meter", MinHeight: 44,
 			Leading: func() {
@@ -68,6 +75,9 @@ func (a *app) view(c *ui.Context) {
 						} else {
 							a.refreshCatalog()
 						}
+					}
+					if iconButton(c, settingsIcon, "Settings", false).Clicked() {
+						a.backendOpen = true
 					}
 				})
 			},
@@ -112,6 +122,9 @@ func (a *app) view(c *ui.Context) {
 	if a.dictation != nil && (!a.dictationVisible || c.Shortcut(0, ui.KeyEscape)) {
 		a.cancelDictation()
 	}
+	// Begin after checking visibility of the recording rendered in this frame.
+	// A newly started recording cannot be visible until the next frame.
+	a.tickPaneDictation(c, root.FocusWithin(), beginDictation)
 }
 
 func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
@@ -155,6 +168,7 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 		sectionLabel(c, "RECENT")
 		filter := ui.TextInputBase(c, &a.filter).Placeholder("Filter conversations").Label("Filter conversations").Padding(7, 9).Radius(6).Background(panel)
 		if filter.Focused() {
+			a.dictationTextFocused = true
 			filter.Border(1, theme.Focus)
 		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
@@ -273,6 +287,7 @@ func (a *app) daemonPill(c *ui.Context) {
 		},
 	}).Clicked() {
 		a.backendConfirm = ""
+		a.settingsSection = "backend"
 		a.backendOpen = true
 		a.runBackendAction("Refresh")
 	}
@@ -443,6 +458,14 @@ func (a *app) tabMenu(m *ui.Menu, tab protocol.LayoutTab) {
 
 func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.LayoutTab) {
 	panes := orderedPanes(tab)
+	focusFirst := a.selectedPaneTab != tab.Id || !containsPane(panes, a.selectedPane)
+	if focusFirst {
+		a.cancelDictation()
+		a.selectedPaneTab, a.selectedPane = tab.Id, uuid.Nil
+		if len(panes) > 0 {
+			a.selectedPane = panes[0].Id
+		}
+	}
 	width, _ := c.Size()
 	const gap = paneGutter
 	available := max(minPaneWidth*float32(len(panes)), width-sidebarWidth-1-float32((len(panes)+1)*gap))
@@ -462,7 +485,21 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					}
 				}
 				column := ui.Column(c.Key(node.Id.String())).Width(paneWidth).MinWidth(paneWidth).MinHeight(0).Clip().
-					Radius(12).Background(contentSurface).Transition(ui.ElementTransition{Enter: &ui.Motion{X: 6}})
+					Radius(12).Background(contentSurface).Focusable().Transition(ui.ElementTransition{Enter: &ui.Motion{X: 6}})
+				border := theme.Border
+				if a.selectedPane == node.Id {
+					border = muted
+				}
+				column.Border(1, border)
+				if focusFirst && a.selectedPane == node.Id {
+					column.Focus(ui.FocusOptions{PreventScroll: true})
+				}
+				column.ObserveInput(func(ev ui.InputEvent) {
+					if ev.Kind == ui.InputPointerDown && ev.Button == 0 && a.selectedPane != node.Id {
+						a.cancelDictation()
+						a.selectedPane = node.Id
+					}
+				})
 				column.Children(func() {
 					if len(panes) > 1 {
 						ui.Box(c).FillWidth().Height(1).Background(highlight)
@@ -477,6 +514,15 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 			a.dropGap(c, tab, panes, len(panes), gap, widths)
 		})
 	})
+}
+
+func containsPane(panes []protocol.LayoutNode, id uuid.UUID) bool {
+	for _, node := range panes {
+		if node.Id == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *app) dropGap(c *ui.Context, tab *protocol.LayoutTab, panes []protocol.LayoutNode, slot, width int, widths []float32) {
@@ -523,7 +569,7 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 			a.composer(c, node.Id, p, form.ComposerOptions{
 				Label: "New conversation", Placeholder: "Message…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
 				ReadOnly:       p.starting,
-				SubmitDisabled: a.busy() || p.starting || (a.cwdEditor != nil && a.cwdEditor.id == node.Id),
+				SubmitDisabled: a.busy() || p.starting || p.modelPicker.pending || (a.cwdEditor != nil && a.cwdEditor.id == node.Id),
 				OnSubmit:       func(string) { a.create(tab.Id, node, cwd, p) },
 			})
 			a.dictationPreview(c, p)
@@ -551,7 +597,7 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		a.composer(c, node.Id, p, form.ComposerOptions{
 			Label: "Message " + id, Placeholder: "Message…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
 			ReadOnly:       p.pendingFirst,
-			SubmitDisabled: !p.connected || running,
+			SubmitDisabled: !p.connected || running || p.modelPicker.pending,
 			OnSubmit:       func(string) { a.send(p, id, "prompt", false) },
 			Actions: func() {
 				empty := strings.TrimSpace(p.draft) == ""
@@ -615,6 +661,9 @@ func (a *app) composer(c *ui.Context, id uuid.UUID, p *pane, options form.Compos
 					}
 					return true
 				})
+			if input.Focused() {
+				a.dictationTextFocused = true
+			}
 			if recording && strings.TrimSpace(a.dictation.preview) != "" {
 				start := len([]rune(dictationDraft(a.dictation.base, "x"))) - 1
 				input.TextRanges(ui.TextRange{Start: start, End: len([]rune(p.draft)), Color: muted})

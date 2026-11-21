@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type { z } from "zod";
-import { layout } from "../contracts/schemas.ts";
+import { defaultSettings, layout } from "../contracts/schemas.ts";
 
 type Layout = z.infer<typeof layout>;
 
@@ -54,6 +54,9 @@ export class Workspaces {
   constructor(file: string) {
     this.db = new DatabaseSync(file);
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL
+      ) STRICT;
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY, cwd TEXT NOT NULL UNIQUE, name TEXT NOT NULL
       ) STRICT;
@@ -67,6 +70,15 @@ export class Workspaces {
         id TEXT PRIMARY KEY, revision INTEGER NOT NULL, body TEXT NOT NULL
       ) STRICT;
     `);
+  }
+
+  defaults() {
+    const row = this.db.prepare("SELECT body FROM settings WHERE id=1").get();
+    return row ? defaultSettings.parse(JSON.parse(String(row.body))) : undefined;
+  }
+
+  saveDefaults(value: z.infer<typeof defaultSettings>) {
+    this.db.prepare("INSERT INTO settings VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET body=excluded.body").run(JSON.stringify(value));
   }
 
   projects() {

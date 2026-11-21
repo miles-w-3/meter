@@ -44,6 +44,8 @@ type pane struct {
 	meterLevel       float32
 	meterAt          time.Time
 	partialLength    int
+	modelDraft       *protocol.SelectionInput
+	modelPicker      modelPickerState
 }
 
 type editor struct {
@@ -68,6 +70,8 @@ type app struct {
 	catalog              protocol.Catalog
 	panes                map[uuid.UUID]*pane
 	paneScroll           ui.ScrollState
+	selectedPane         uuid.UUID
+	selectedPaneTab      uuid.UUID
 	widthDrag            *paneResize
 	revealPane           uuid.UUID
 	projectForm          bool
@@ -96,6 +100,7 @@ type app struct {
 	dictation            *dictationRecording
 	spaceHold            *spaceHold
 	dictationVisible     bool
+	dictationTextFocused bool
 	backend              BackendControls
 	backendInfo          protocol.ServerInfo
 	backendOpen          bool
@@ -103,6 +108,14 @@ type app struct {
 	backendConfirm       string
 	backendNotice        string
 	backendOnline        bool
+	settingsSection      string
+	modelsInventory      protocol.ModelInventory
+	modelDefaults        protocol.Settings
+	modelsFilter         string
+	modelsLoading        bool
+	modelsLoaded         bool
+	modelsError          string
+	recentModels         []protocol.ModelRef
 }
 
 type geometry struct {
@@ -164,6 +177,7 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 		a.window.OnBlur(a.cancelDictation)
 		a.window.OnClosed(func() { cancel(); mygo.App.Quit() })
 		a.reload()
+		a.refreshModels()
 	})
 	return mygo.App.Run()
 }
@@ -507,7 +521,7 @@ func (a *app) create(tabID uuid.UUID, node protocol.LayoutNode, cwd string, p *p
 	if a.busy() || p.starting || strings.TrimSpace(p.draft) == "" {
 		return
 	}
-	input := protocol.CreateInput{Cwd: cwd, ProjectId: a.layout.ActiveProject}
+	input := protocol.CreateInput{Cwd: cwd, ProjectId: a.layout.ActiveProject, Selection: p.modelDraft}
 	p.starting, p.notice = true, "Creating conversation…"
 	a.creating = true
 	go func() {

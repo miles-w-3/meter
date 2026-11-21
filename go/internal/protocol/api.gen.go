@@ -18,6 +18,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AuthMethodType.
+const (
+	ApiKey AuthMethodType = "api_key"
+	Oauth  AuthMethodType = "oauth"
+)
+
+// Valid indicates whether the value is a known member of the AuthMethodType enum.
+func (e AuthMethodType) Valid() bool {
+	switch e {
+	case ApiKey:
+		return true
+	case Oauth:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConversationSnapshotType.
 const (
 	Snapshot ConversationSnapshotType = "snapshot"
@@ -69,6 +87,39 @@ func (e ConversationViewStatus) Valid() bool {
 	}
 }
 
+// Defines values for DefaultSettingsThinkingLevel.
+const (
+	DefaultSettingsThinkingLevelHigh    DefaultSettingsThinkingLevel = "high"
+	DefaultSettingsThinkingLevelLow     DefaultSettingsThinkingLevel = "low"
+	DefaultSettingsThinkingLevelMax     DefaultSettingsThinkingLevel = "max"
+	DefaultSettingsThinkingLevelMedium  DefaultSettingsThinkingLevel = "medium"
+	DefaultSettingsThinkingLevelMinimal DefaultSettingsThinkingLevel = "minimal"
+	DefaultSettingsThinkingLevelOff     DefaultSettingsThinkingLevel = "off"
+	DefaultSettingsThinkingLevelXhigh   DefaultSettingsThinkingLevel = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the DefaultSettingsThinkingLevel enum.
+func (e DefaultSettingsThinkingLevel) Valid() bool {
+	switch e {
+	case DefaultSettingsThinkingLevelHigh:
+		return true
+	case DefaultSettingsThinkingLevelLow:
+		return true
+	case DefaultSettingsThinkingLevelMax:
+		return true
+	case DefaultSettingsThinkingLevelMedium:
+		return true
+	case DefaultSettingsThinkingLevelMinimal:
+		return true
+	case DefaultSettingsThinkingLevelOff:
+		return true
+	case DefaultSettingsThinkingLevelXhigh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LayoutNodeAxis.
 const (
 	Horizontal LayoutNodeAxis = "horizontal"
@@ -96,6 +147,159 @@ const (
 func (e LayoutNodeEmpty) Valid() bool {
 	switch e {
 	case LayoutNodeEmptyTrue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelInfoThinkingLevels.
+const (
+	ModelInfoThinkingLevelsHigh    ModelInfoThinkingLevels = "high"
+	ModelInfoThinkingLevelsLow     ModelInfoThinkingLevels = "low"
+	ModelInfoThinkingLevelsMax     ModelInfoThinkingLevels = "max"
+	ModelInfoThinkingLevelsMedium  ModelInfoThinkingLevels = "medium"
+	ModelInfoThinkingLevelsMinimal ModelInfoThinkingLevels = "minimal"
+	ModelInfoThinkingLevelsOff     ModelInfoThinkingLevels = "off"
+	ModelInfoThinkingLevelsXhigh   ModelInfoThinkingLevels = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the ModelInfoThinkingLevels enum.
+func (e ModelInfoThinkingLevels) Valid() bool {
+	switch e {
+	case ModelInfoThinkingLevelsHigh:
+		return true
+	case ModelInfoThinkingLevelsLow:
+		return true
+	case ModelInfoThinkingLevelsMax:
+		return true
+	case ModelInfoThinkingLevelsMedium:
+		return true
+	case ModelInfoThinkingLevelsMinimal:
+		return true
+	case ModelInfoThinkingLevelsOff:
+		return true
+	case ModelInfoThinkingLevelsXhigh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProviderInfoStatus.
+const (
+	ProviderInfoStatusConfigured   ProviderInfoStatus = "configured"
+	ProviderInfoStatusUnconfigured ProviderInfoStatus = "unconfigured"
+	ProviderInfoStatusUnknown      ProviderInfoStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ProviderInfoStatus enum.
+func (e ProviderInfoStatus) Valid() bool {
+	switch e {
+	case ProviderInfoStatusConfigured:
+		return true
+	case ProviderInfoStatusUnconfigured:
+		return true
+	case ProviderInfoStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SelectionThinkingLevel.
+const (
+	SelectionThinkingLevelHigh    SelectionThinkingLevel = "high"
+	SelectionThinkingLevelLow     SelectionThinkingLevel = "low"
+	SelectionThinkingLevelMax     SelectionThinkingLevel = "max"
+	SelectionThinkingLevelMedium  SelectionThinkingLevel = "medium"
+	SelectionThinkingLevelMinimal SelectionThinkingLevel = "minimal"
+	SelectionThinkingLevelOff     SelectionThinkingLevel = "off"
+	SelectionThinkingLevelXhigh   SelectionThinkingLevel = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the SelectionThinkingLevel enum.
+func (e SelectionThinkingLevel) Valid() bool {
+	switch e {
+	case SelectionThinkingLevelHigh:
+		return true
+	case SelectionThinkingLevelLow:
+		return true
+	case SelectionThinkingLevelMax:
+		return true
+	case SelectionThinkingLevelMedium:
+		return true
+	case SelectionThinkingLevelMinimal:
+		return true
+	case SelectionThinkingLevelOff:
+		return true
+	case SelectionThinkingLevelXhigh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SelectionChangeThinkingLevel.
+const (
+	SelectionChangeThinkingLevelHigh    SelectionChangeThinkingLevel = "high"
+	SelectionChangeThinkingLevelLow     SelectionChangeThinkingLevel = "low"
+	SelectionChangeThinkingLevelMax     SelectionChangeThinkingLevel = "max"
+	SelectionChangeThinkingLevelMedium  SelectionChangeThinkingLevel = "medium"
+	SelectionChangeThinkingLevelMinimal SelectionChangeThinkingLevel = "minimal"
+	SelectionChangeThinkingLevelOff     SelectionChangeThinkingLevel = "off"
+	SelectionChangeThinkingLevelXhigh   SelectionChangeThinkingLevel = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the SelectionChangeThinkingLevel enum.
+func (e SelectionChangeThinkingLevel) Valid() bool {
+	switch e {
+	case SelectionChangeThinkingLevelHigh:
+		return true
+	case SelectionChangeThinkingLevelLow:
+		return true
+	case SelectionChangeThinkingLevelMax:
+		return true
+	case SelectionChangeThinkingLevelMedium:
+		return true
+	case SelectionChangeThinkingLevelMinimal:
+		return true
+	case SelectionChangeThinkingLevelOff:
+		return true
+	case SelectionChangeThinkingLevelXhigh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SelectionInputThinkingLevel.
+const (
+	SelectionInputThinkingLevelHigh    SelectionInputThinkingLevel = "high"
+	SelectionInputThinkingLevelLow     SelectionInputThinkingLevel = "low"
+	SelectionInputThinkingLevelMax     SelectionInputThinkingLevel = "max"
+	SelectionInputThinkingLevelMedium  SelectionInputThinkingLevel = "medium"
+	SelectionInputThinkingLevelMinimal SelectionInputThinkingLevel = "minimal"
+	SelectionInputThinkingLevelOff     SelectionInputThinkingLevel = "off"
+	SelectionInputThinkingLevelXhigh   SelectionInputThinkingLevel = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the SelectionInputThinkingLevel enum.
+func (e SelectionInputThinkingLevel) Valid() bool {
+	switch e {
+	case SelectionInputThinkingLevelHigh:
+		return true
+	case SelectionInputThinkingLevelLow:
+		return true
+	case SelectionInputThinkingLevelMax:
+		return true
+	case SelectionInputThinkingLevelMedium:
+		return true
+	case SelectionInputThinkingLevelMinimal:
+		return true
+	case SelectionInputThinkingLevelOff:
+		return true
+	case SelectionInputThinkingLevelXhigh:
 		return true
 	default:
 		return false
@@ -171,6 +375,63 @@ func (e ServerInfoTransport) Valid() bool {
 	}
 }
 
+// Defines values for SettingsSource.
+const (
+	SettingsSourceEnvironment  SettingsSource = "environment"
+	SettingsSourceFixture      SettingsSource = "fixture"
+	SettingsSourceSaved        SettingsSource = "saved"
+	SettingsSourceUnconfigured SettingsSource = "unconfigured"
+)
+
+// Valid indicates whether the value is a known member of the SettingsSource enum.
+func (e SettingsSource) Valid() bool {
+	switch e {
+	case SettingsSourceEnvironment:
+		return true
+	case SettingsSourceFixture:
+		return true
+	case SettingsSourceSaved:
+		return true
+	case SettingsSourceUnconfigured:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SettingsThinkingLevel.
+const (
+	SettingsThinkingLevelHigh    SettingsThinkingLevel = "high"
+	SettingsThinkingLevelLow     SettingsThinkingLevel = "low"
+	SettingsThinkingLevelMax     SettingsThinkingLevel = "max"
+	SettingsThinkingLevelMedium  SettingsThinkingLevel = "medium"
+	SettingsThinkingLevelMinimal SettingsThinkingLevel = "minimal"
+	SettingsThinkingLevelOff     SettingsThinkingLevel = "off"
+	SettingsThinkingLevelXhigh   SettingsThinkingLevel = "xhigh"
+)
+
+// Valid indicates whether the value is a known member of the SettingsThinkingLevel enum.
+func (e SettingsThinkingLevel) Valid() bool {
+	switch e {
+	case SettingsThinkingLevelHigh:
+		return true
+	case SettingsThinkingLevelLow:
+		return true
+	case SettingsThinkingLevelMax:
+		return true
+	case SettingsThinkingLevelMedium:
+		return true
+	case SettingsThinkingLevelMinimal:
+		return true
+	case SettingsThinkingLevelOff:
+		return true
+	case SettingsThinkingLevelXhigh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubmitInputMode.
 const (
 	Followup SubmitInputMode = "followup"
@@ -197,6 +458,16 @@ type AbortInput struct {
 	Target string `json:"target"`
 }
 
+// AuthMethod defines model for AuthMethod.
+type AuthMethod struct {
+	Interactive bool           `json:"interactive"`
+	Name        string         `json:"name"`
+	Type        AuthMethodType `json:"type"`
+}
+
+// AuthMethodType defines model for AuthMethod.Type.
+type AuthMethodType string
+
 // Catalog defines model for Catalog.
 type Catalog struct {
 	Conversations []Conversation `json:"conversations"`
@@ -216,6 +487,7 @@ type Conversation struct {
 	LastActivity *int                `json:"lastActivity,omitempty"`
 	Model        string              `json:"model"`
 	ProjectId    *openapi_types.UUID `json:"projectId,omitempty"`
+	Selection    *Selection          `json:"selection,omitempty"`
 	Title        *string             `json:"title,omitempty"`
 }
 
@@ -255,6 +527,7 @@ type ConversationView struct {
 	Entries        []Entry                `json:"entries"`
 	Failure        *string                `json:"failure,omitempty"`
 	Partial        *string                `json:"partial"`
+	Selection      *Selection             `json:"selection,omitempty"`
 	Status         ConversationViewStatus `json:"status"`
 	Tools          []struct {
 		CallId  *string `json:"callId,omitempty"`
@@ -274,12 +547,25 @@ type ConversationViewStatus string
 type CreateInput struct {
 	Cwd       string              `json:"cwd"`
 	ProjectId *openapi_types.UUID `json:"projectId,omitempty"`
+	Selection *SelectionInput     `json:"selection,omitempty"`
 }
 
 // CwdInput defines model for CwdInput.
 type CwdInput struct {
 	Cwd string `json:"cwd"`
 }
+
+// DefaultSettings defines model for DefaultSettings.
+type DefaultSettings struct {
+	Model *struct {
+		ModelId  string `json:"modelId"`
+		Provider string `json:"provider"`
+	} `json:"model"`
+	ThinkingLevel *DefaultSettingsThinkingLevel `json:"thinkingLevel"`
+}
+
+// DefaultSettingsThinkingLevel defines model for DefaultSettings.ThinkingLevel.
+type DefaultSettingsThinkingLevel string
 
 // Entry defines model for Entry.
 type Entry struct {
@@ -340,6 +626,31 @@ type LayoutTab struct {
 	Root      openapi_types.UUID  `json:"root"`
 }
 
+// ModelInfo defines model for ModelInfo.
+type ModelInfo struct {
+	ContextWindow  float32                   `json:"contextWindow"`
+	ModelId        string                    `json:"modelId"`
+	Name           string                    `json:"name"`
+	Provider       string                    `json:"provider"`
+	Reasoning      bool                      `json:"reasoning"`
+	ThinkingLevels []ModelInfoThinkingLevels `json:"thinkingLevels"`
+}
+
+// ModelInfoThinkingLevels defines model for ModelInfo.ThinkingLevels.
+type ModelInfoThinkingLevels string
+
+// ModelInventory defines model for ModelInventory.
+type ModelInventory struct {
+	Models    []ModelInfo    `json:"models"`
+	Providers []ProviderInfo `json:"providers"`
+}
+
+// ModelRef defines model for ModelRef.
+type ModelRef struct {
+	ModelId  string `json:"modelId"`
+	Provider string `json:"provider"`
+}
+
 // Problem defines model for Problem.
 type Problem struct {
 	Code    string `json:"code"`
@@ -364,10 +675,59 @@ type ProjectRenameInput struct {
 	Name string `json:"name"`
 }
 
+// ProviderInfo defines model for ProviderInfo.
+type ProviderInfo struct {
+	Id      string             `json:"id"`
+	Methods []AuthMethod       `json:"methods"`
+	Name    string             `json:"name"`
+	Source  *string            `json:"source,omitempty"`
+	Status  ProviderInfoStatus `json:"status"`
+}
+
+// ProviderInfoStatus defines model for ProviderInfo.Status.
+type ProviderInfoStatus string
+
 // Receipt defines model for Receipt.
 type Receipt struct {
 	SubmissionId string `json:"submissionId"`
 }
+
+// Selection defines model for Selection.
+type Selection struct {
+	Model *struct {
+		ModelId  string `json:"modelId"`
+		Provider string `json:"provider"`
+	} `json:"model"`
+	ThinkingLevel SelectionThinkingLevel `json:"thinkingLevel"`
+}
+
+// SelectionThinkingLevel defines model for Selection.ThinkingLevel.
+type SelectionThinkingLevel string
+
+// SelectionChange defines model for SelectionChange.
+type SelectionChange struct {
+	Expected Selection `json:"expected"`
+	Model    struct {
+		ModelId  string `json:"modelId"`
+		Provider string `json:"provider"`
+	} `json:"model"`
+	ThinkingLevel SelectionChangeThinkingLevel `json:"thinkingLevel"`
+}
+
+// SelectionChangeThinkingLevel defines model for SelectionChange.ThinkingLevel.
+type SelectionChangeThinkingLevel string
+
+// SelectionInput defines model for SelectionInput.
+type SelectionInput struct {
+	Model struct {
+		ModelId  string `json:"modelId"`
+		Provider string `json:"provider"`
+	} `json:"model"`
+	ThinkingLevel SelectionInputThinkingLevel `json:"thinkingLevel"`
+}
+
+// SelectionInputThinkingLevel defines model for SelectionInput.ThinkingLevel.
+type SelectionInputThinkingLevel string
 
 // ServerInfo defines model for ServerInfo.
 type ServerInfo struct {
@@ -394,6 +754,22 @@ type ServerInfoReady bool
 
 // ServerInfoTransport defines model for ServerInfo.Transport.
 type ServerInfoTransport string
+
+// Settings defines model for Settings.
+type Settings struct {
+	Model *struct {
+		ModelId  string `json:"modelId"`
+		Provider string `json:"provider"`
+	} `json:"model"`
+	Source        SettingsSource         `json:"source"`
+	ThinkingLevel *SettingsThinkingLevel `json:"thinkingLevel"`
+}
+
+// SettingsSource defines model for Settings.Source.
+type SettingsSource string
+
+// SettingsThinkingLevel defines model for Settings.ThinkingLevel.
+type SettingsThinkingLevel string
 
 // SubmitInput defines model for SubmitInput.
 type SubmitInput struct {
@@ -427,6 +803,9 @@ type SetConversationCwdJSONRequestBody = CwdInput
 // SubmitMessageJSONRequestBody defines body for SubmitMessage for application/json ContentType.
 type SubmitMessageJSONRequestBody = SubmitInput
 
+// SetConversationModelJSONRequestBody defines body for SetConversationModel for application/json ContentType.
+type SetConversationModelJSONRequestBody = SelectionChange
+
 // RenameConversationJSONRequestBody defines body for RenameConversation for application/json ContentType.
 type RenameConversationJSONRequestBody = ProjectRenameInput
 
@@ -438,6 +817,9 @@ type RegisterProjectJSONRequestBody = ProjectInput
 
 // RenameProjectJSONRequestBody defines body for RenameProject for application/json ContentType.
 type RenameProjectJSONRequestBody = ProjectRenameInput
+
+// SetDefaultsJSONRequestBody defines body for SetDefaults for application/json ContentType.
+type SetDefaultsJSONRequestBody = DefaultSettings
 
 // SaveLayoutJSONRequestBody defines body for SaveLayout for application/json ContentType.
 type SaveLayoutJSONRequestBody = Layout
@@ -661,6 +1043,14 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	SubmitMessage(ctx context.Context, id string, body SubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// SetConversationModelWithBody performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request,
+	// with any type of body and a specified content type.
+	SetConversationModelWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetConversationModel performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
+	// Takes a body of the `application/json` content type.
+	SetConversationModel(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RenameConversationWithBody performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
 	// with any type of body and a specified content type.
 	RenameConversationWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -676,6 +1066,9 @@ type ClientInterface interface {
 	// ResolveCwd performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request.
 	// Takes a body of the `application/json` content type.
 	ResolveCwd(ctx context.Context, body ResolveCwdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetModels performs a GET /v1/models (the `GetModels` operationId) request.
+	GetModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RegisterProjectWithBody performs a POST /v1/projects (the `RegisterProject` operationId) request,
 	// with any type of body and a specified content type.
@@ -698,6 +1091,17 @@ type ClientInterface interface {
 
 	// StopServer performs a POST /v1/server/stop (the `StopServer` operationId) request.
 	StopServer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDefaults performs a GET /v1/settings/defaults (the `GetDefaults` operationId) request.
+	GetDefaults(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetDefaultsWithBody performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request,
+	// with any type of body and a specified content type.
+	SetDefaultsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetDefaults performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request.
+	// Takes a body of the `application/json` content type.
+	SetDefaults(ctx context.Context, body SetDefaultsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLayout performs a GET /v1/workspaces/{id} (the `GetLayout` operationId) request.
 	GetLayout(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -875,6 +1279,34 @@ func (c *Client) SubmitMessage(ctx context.Context, id string, body SubmitMessag
 	return c.Client.Do(req)
 }
 
+// SetConversationModelWithBody performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request,
+// with any type of body and a specified content type.
+func (c *Client) SetConversationModelWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetConversationModelRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetConversationModel performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
+// Takes a body of the `application/json` content type.
+func (c *Client) SetConversationModel(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetConversationModelRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // RenameConversationWithBody performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
 // with any type of body and a specified content type.
 func (c *Client) RenameConversationWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -921,6 +1353,19 @@ func (c *Client) ResolveCwdWithBody(ctx context.Context, contentType string, bod
 // Takes a body of the `application/json` content type.
 func (c *Client) ResolveCwd(ctx context.Context, body ResolveCwdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewResolveCwdRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetModels performs a GET /v1/models (the `GetModels` operationId) request.
+func (c *Client) GetModels(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetModelsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1003,6 +1448,47 @@ func (c *Client) GetServer(ctx context.Context, reqEditors ...RequestEditorFn) (
 // StopServer performs a POST /v1/server/stop (the `StopServer` operationId) request.
 func (c *Client) StopServer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStopServerRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDefaults performs a GET /v1/settings/defaults (the `GetDefaults` operationId) request.
+func (c *Client) GetDefaults(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDefaultsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetDefaultsWithBody performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request,
+// with any type of body and a specified content type.
+func (c *Client) SetDefaultsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetDefaultsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetDefaults performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request.
+// Takes a body of the `application/json` content type.
+func (c *Client) SetDefaults(ctx context.Context, body SetDefaultsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetDefaultsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1398,6 +1884,53 @@ func NewSubmitMessageRequestWithBody(server string, id string, contentType strin
 	return req, nil
 }
 
+// NewSetConversationModelRequest calls the generic SetConversationModel builder with application/json body
+func NewSetConversationModelRequest(server string, id string, body SetConversationModelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetConversationModelRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewSetConversationModelRequestWithBody constructs an http.Request for the SetConversationModel method, with any body, and a specified content type
+func NewSetConversationModelRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/model", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewRenameConversationRequest calls the generic RenameConversation builder with application/json body
 func NewRenameConversationRequest(server string, id string, body RenameConversationJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1481,6 +2014,33 @@ func NewResolveCwdRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetModelsRequest constructs an http.Request for the GetModels method
+func NewGetModelsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/models")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -1622,6 +2182,73 @@ func NewStopServerRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetDefaultsRequest constructs an http.Request for the GetDefaults method
+func NewGetDefaultsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/settings/defaults")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetDefaultsRequest calls the generic SetDefaults builder with application/json body
+func NewSetDefaultsRequest(server string, body SetDefaultsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetDefaultsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetDefaultsRequestWithBody constructs an http.Request for the SetDefaults method, with any body, and a specified content type
+func NewSetDefaultsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/settings/defaults")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -1811,6 +2438,16 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	SubmitMessageWithResponse(ctx context.Context, id string, body SubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*SubmitMessageResponse, error)
 
+	// SetConversationModelWithBodyWithResponse performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	SetConversationModelWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetConversationModelResponse, error)
+
+	// SetConversationModelWithResponse performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	SetConversationModelWithResponse(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*SetConversationModelResponse, error)
+
 	// RenameConversationWithBodyWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -1830,6 +2467,11 @@ type ClientWithResponsesInterface interface {
 	// ResolveCwdWithResponse performs a POST /v1/directories/resolve (the `ResolveCwd` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	ResolveCwdWithResponse(ctx context.Context, body ResolveCwdJSONRequestBody, reqEditors ...RequestEditorFn) (*ResolveCwdResponse, error)
+
+	// GetModelsWithResponse performs a GET /v1/models (the `GetModels` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetModelsResponse, error)
 
 	// RegisterProjectWithBodyWithResponse performs a POST /v1/projects (the `RegisterProject` operationId) request,
 	// with any type of body and a specified content type.
@@ -1860,6 +2502,21 @@ type ClientWithResponsesInterface interface {
 	//
 	// Returns a wrapper object for the known response body format(s).
 	StopServerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*StopServerResponse, error)
+
+	// GetDefaultsWithResponse performs a GET /v1/settings/defaults (the `GetDefaults` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetDefaultsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDefaultsResponse, error)
+
+	// SetDefaultsWithBodyWithResponse performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	SetDefaultsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetDefaultsResponse, error)
+
+	// SetDefaultsWithResponse performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	SetDefaultsWithResponse(ctx context.Context, body SetDefaultsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetDefaultsResponse, error)
 
 	// GetLayoutWithResponse performs a GET /v1/workspaces/{id} (the `GetLayout` operationId) request.
 	//
@@ -2422,6 +3079,75 @@ func (r SubmitMessageResponse) ContentType() string {
 	return ""
 }
 
+type SetConversationModelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Conversation
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetConversationModelResponse) GetJSON200() *Conversation {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SetConversationModelResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetConversationModelResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r SetConversationModelResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r SetConversationModelResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetConversationModelResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetConversationModelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetConversationModelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetConversationModelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type RenameConversationResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2554,6 +3280,75 @@ func (r ResolveCwdResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ResolveCwdResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetModelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelInventory
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetModelsResponse) GetJSON200() *ModelInventory {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetModelsResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetModelsResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetModelsResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetModelsResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetModelsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetModelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetModelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetModelsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2767,6 +3562,144 @@ func (r StopServerResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r StopServerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDefaultsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Settings
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDefaultsResponse) GetJSON200() *Settings {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetDefaultsResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetDefaultsResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetDefaultsResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetDefaultsResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDefaultsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDefaultsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDefaultsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDefaultsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetDefaultsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Settings
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetDefaultsResponse) GetJSON200() *Settings {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SetDefaultsResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetDefaultsResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r SetDefaultsResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r SetDefaultsResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetDefaultsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetDefaultsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetDefaultsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetDefaultsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3043,6 +3976,28 @@ func (c *ClientWithResponses) SubmitMessageWithResponse(ctx context.Context, id 
 	return ParseSubmitMessageResponse(rsp)
 }
 
+// SetConversationModelWithBodyWithResponse performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request,
+// with any type of body and a specified content type.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SetConversationModelWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetConversationModelResponse, error) {
+	rsp, err := c.SetConversationModelWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetConversationModelResponse(rsp)
+}
+
+// SetConversationModelWithResponse performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SetConversationModelWithResponse(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*SetConversationModelResponse, error) {
+	rsp, err := c.SetConversationModel(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetConversationModelResponse(rsp)
+}
+
 // RenameConversationWithBodyWithResponse performs a PUT /v1/conversations/{id}/title (the `RenameConversation` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -3085,6 +4040,17 @@ func (c *ClientWithResponses) ResolveCwdWithResponse(ctx context.Context, body R
 		return nil, err
 	}
 	return ParseResolveCwdResponse(rsp)
+}
+
+// GetModelsWithResponse performs a GET /v1/models (the `GetModels` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetModelsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetModelsResponse, error) {
+	rsp, err := c.GetModels(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetModelsResponse(rsp)
 }
 
 // RegisterProjectWithBodyWithResponse performs a POST /v1/projects (the `RegisterProject` operationId) request,
@@ -3151,6 +4117,39 @@ func (c *ClientWithResponses) StopServerWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseStopServerResponse(rsp)
+}
+
+// GetDefaultsWithResponse performs a GET /v1/settings/defaults (the `GetDefaults` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetDefaultsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDefaultsResponse, error) {
+	rsp, err := c.GetDefaults(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDefaultsResponse(rsp)
+}
+
+// SetDefaultsWithBodyWithResponse performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request,
+// with any type of body and a specified content type.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SetDefaultsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetDefaultsResponse, error) {
+	rsp, err := c.SetDefaultsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetDefaultsResponse(rsp)
+}
+
+// SetDefaultsWithResponse performs a PUT /v1/settings/defaults (the `SetDefaults` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SetDefaultsWithResponse(ctx context.Context, body SetDefaultsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetDefaultsResponse, error) {
+	rsp, err := c.SetDefaults(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetDefaultsResponse(rsp)
 }
 
 // GetLayoutWithResponse performs a GET /v1/workspaces/{id} (the `GetLayout` operationId) request.
@@ -3614,6 +4613,60 @@ func ParseSubmitMessageResponse(rsp *http.Response) (*SubmitMessageResponse, err
 	return response, nil
 }
 
+// ParseSetConversationModelResponse parses an HTTP response from a SetConversationModelWithResponse call
+func ParseSetConversationModelResponse(rsp *http.Response) (*SetConversationModelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetConversationModelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Conversation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseRenameConversationResponse parses an HTTP response from a RenameConversationWithResponse call
 func ParseRenameConversationResponse(rsp *http.Response) (*RenameConversationResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3684,6 +4737,60 @@ func ParseResolveCwdResponse(rsp *http.Response) (*ResolveCwdResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest CwdInput
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetModelsResponse parses an HTTP response from a GetModelsWithResponse call
+func ParseGetModelsResponse(rsp *http.Response) (*GetModelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetModelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelInventory
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -3867,6 +4974,114 @@ func ParseStopServerResponse(rsp *http.Response) (*StopServerResponse, error) {
 	response := &StopServerResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetDefaultsResponse parses an HTTP response from a GetDefaultsWithResponse call
+func ParseGetDefaultsResponse(rsp *http.Response) (*GetDefaultsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDefaultsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Settings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetDefaultsResponse parses an HTTP response from a SetDefaultsWithResponse call
+func ParseSetDefaultsResponse(rsp *http.Response) (*SetDefaultsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetDefaultsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Settings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	}
 
 	return response, nil

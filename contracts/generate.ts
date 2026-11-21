@@ -11,12 +11,16 @@ const ref = (name: keyof typeof models) => ({ $ref: "#/components/schemas/" + na
 for (const name of ["ConversationSnapshot", "ConversationUpdate"]) {
   Object.assign(schemas[name].properties!, { view: ref("ConversationView") });
 }
-Object.assign(schemas.ConversationView.properties!, { contextUsage: ref("ContextUsage") });
+Object.assign(schemas.ConversationView.properties!, { contextUsage: ref("ContextUsage"), selection: ref("Selection") });
+Object.assign(schemas.Conversation.properties!, { selection: ref("Selection") });
+Object.assign(schemas.CreateInput.properties!, { selection: ref("SelectionInput") });
+Object.assign(schemas.SelectionChange.properties!, { expected: ref("Selection") });
 Object.assign((schemas.ConversationView.properties!.entries as object), { items: ref("Entry") });
 Object.assign((schemas.HistoryPage.properties!.entries as object), { items: ref("Entry") });
 for (const [model, property, item] of [
   ["Catalog", "projects", "Project"], ["Catalog", "conversations", "Conversation"],
   ["Layout", "tabs", "LayoutTab"], ["LayoutTab", "nodes", "LayoutNode"],
+  ["ProviderInfo", "methods", "AuthMethod"], ["ModelInventory", "providers", "ProviderInfo"], ["ModelInventory", "models", "ModelInfo"],
 ] as const) {
   Object.assign(schemas[model].properties![property] as object, { items: ref(item) });
 }
@@ -50,6 +54,11 @@ const spec = {
     "/v1/server": { get: { operationId: "GetServer", responses: { "200": response("Handshake", "ServerInfo") } } },
     "/v1/server/stop": { post: { operationId: "StopServer", responses: { "202": { description: "Stopping" } } } },
     "/v1/catalog": { get: { operationId: "GetCatalog", responses: { "200": response("Catalog", "Catalog"), ...failures } } },
+    "/v1/models": { get: { operationId: "GetModels", responses: { "200": response("Provider and model inventory", "ModelInventory"), ...failures } } },
+    "/v1/settings/defaults": {
+      get: { operationId: "GetDefaults", responses: { "200": response("Default model settings", "Settings"), ...failures } },
+      put: post("SetDefaults", "DefaultSettings", "200", "Settings"),
+    },
     "/v1/directories/resolve": { post: post("ResolveCwd", "CwdInput", "200", "CwdInput") },
     "/v1/projects": { post: post("RegisterProject", "ProjectInput", "201", "Project") },
     "/v1/projects/{id}": { parameters: [id], put: post("RenameProject", "ProjectRenameInput", "200", "Project") },
@@ -63,6 +72,7 @@ const spec = {
     } },
     "/v1/conversations/{id}/title": { parameters: [id], put: post("RenameConversation", "ProjectRenameInput", "200", "Conversation") },
     "/v1/conversations/{id}/cwd": { parameters: [id], put: post("SetConversationCwd", "CwdInput", "200", "Conversation") },
+    "/v1/conversations/{id}/model": { parameters: [id], put: post("SetConversationModel", "SelectionChange", "200", "Conversation") },
     "/v1/conversations/{id}/entries": { parameters: [id], get: {
       operationId: "GetEntries",
       parameters: [{ in: "query", name: "before", schema: { type: "string" } }],

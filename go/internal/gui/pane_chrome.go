@@ -93,6 +93,7 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 	}
 	paneContent(c, func() {
 		ui.Row(c).Height(26).FillWidth().Padding(0, paneGutter, 0, paneTextInset).Gap(10).AlignItems(ui.Center).Children(func() {
+			a.modelChip(c, node, p, locked || a.busy())
 			button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).Grow(1).MinWidth(0).Padding(2, 0).Radius(4).Disabled(a.busy() || locked)
 			if button.Hovered() && !a.busy() && !locked {
 				button.Background(panel)

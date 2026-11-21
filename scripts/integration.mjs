@@ -161,6 +161,8 @@ async function regular() {
   const replay = await submit(conversation, prompt);
   const active = await waitFor(firstWatch, (f) => f.view.partial?.includes("streamed model output"), "first visible model update");
   assert.equal(active.type, "update");
+  const selection = active.view.selection;
+  assert.equal((await request(pathOf(conversation) + "/model", "PUT", { ...selection, expected: selection })).value.code, "busy");
   firstWatch.ws.close();
   const finished = await waitFor(secondWatch, (f) => f.view.status === "idle" && text(f).includes("Fixture completed"), "second viewer finishes");
   const write = entries(finished).find((entry) => entry.toolName === "write" && entry.toolSucceeded === true);

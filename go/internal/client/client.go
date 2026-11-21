@@ -124,6 +124,39 @@ func (c *Client) Info(ctx context.Context) (protocol.ServerInfo, error) {
 	return *info, nil
 }
 
+func (c *Client) Models(ctx context.Context) (protocol.ModelInventory, error) {
+	res, err := c.api.GetModelsWithResponse(ctx)
+	if err != nil {
+		return protocol.ModelInventory{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.ModelInventory{}, responseError(res.StatusCode(), res.GetBody())
+}
+
+func (c *Client) Defaults(ctx context.Context) (protocol.Settings, error) {
+	res, err := c.api.GetDefaultsWithResponse(ctx)
+	if err != nil {
+		return protocol.Settings{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.Settings{}, responseError(res.StatusCode(), res.GetBody())
+}
+
+func (c *Client) SetDefaults(ctx context.Context, input protocol.DefaultSettings) (protocol.Settings, error) {
+	res, err := c.api.SetDefaultsWithResponse(ctx, input)
+	if err != nil {
+		return protocol.Settings{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.Settings{}, responseError(res.StatusCode(), res.GetBody())
+}
+
 func (c *Client) Stop(ctx context.Context) error {
 	res, err := c.api.StopServerWithResponse(ctx)
 	if err != nil {
@@ -145,6 +178,17 @@ func (c *Client) CreateConversation(ctx context.Context, input protocol.CreateIn
 		return protocol.Conversation{}, err
 	}
 	if body := res.GetJSON201(); body != nil {
+		return *body, nil
+	}
+	return protocol.Conversation{}, responseError(res.StatusCode(), res.GetBody())
+}
+
+func (c *Client) SetConversationModel(ctx context.Context, id string, input protocol.SelectionChange) (protocol.Conversation, error) {
+	res, err := c.api.SetConversationModelWithResponse(ctx, id, input)
+	if err != nil {
+		return protocol.Conversation{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
 		return *body, nil
 	}
 	return protocol.Conversation{}, responseError(res.StatusCode(), res.GetBody())

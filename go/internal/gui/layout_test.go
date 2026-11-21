@@ -214,3 +214,39 @@ func TestToolResultExpandsIndependently(t *testing.T) {
 		t.Fatal("tool result did not collapse")
 	}
 }
+
+func TestPaneSelectionDefaultsAndResetsOnTabChange(t *testing.T) {
+	first, second, third := uuid.New(), uuid.New(), uuid.New()
+	one, two, three := "1", "2", "3"
+	tab := protocol.LayoutTab{Id: uuid.New(), Nodes: []protocol.LayoutNode{
+		{Id: first, ConversationId: &one}, {Id: second, ConversationId: &two},
+	}}
+	other := protocol.LayoutTab{Id: uuid.New(), Nodes: []protocol.LayoutNode{{Id: third, ConversationId: &three}}}
+	setPanes(&tab, tab.Nodes)
+	setPanes(&other, other.Nodes)
+	active := &tab
+	a := &app{panes: map[uuid.UUID]*pane{first: {}, second: {}, third: {}}}
+	driver := ui.NewTester(func(c *ui.Context) {
+		a.surface(c, protocol.Project{}, active)
+	}, 1200, 700)
+	driver.Frame()
+	if a.selectedPane != first {
+		t.Fatalf("initial selection = %s, want first pane", a.selectedPane)
+	}
+	if err := driver.Click("Message 2"); err != nil {
+		t.Fatal(err)
+	}
+	if a.selectedPane != second {
+		t.Fatalf("click selection = %s, want second pane", a.selectedPane)
+	}
+	active = &other
+	driver.Frame()
+	if a.selectedPane != third {
+		t.Fatalf("new tab selection = %s, want its first pane", a.selectedPane)
+	}
+	active = &tab
+	driver.Frame()
+	if a.selectedPane != first {
+		t.Fatalf("returning tab selection = %s, want its first pane", a.selectedPane)
+	}
+}

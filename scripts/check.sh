@@ -18,5 +18,6 @@ mkdir -p .bin
   go build -buildvcs=false -o ../.bin/workspace ./cmd/workspace
 )
 node scripts/auth-test.mjs
+node scripts/models-test.mjs
 node scripts/integration.mjs
 python3 scripts/tui-smoke.py

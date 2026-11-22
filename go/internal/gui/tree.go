@@ -625,7 +625,7 @@ func (a *app) treePane(c *ui.Context, preview *treePreview) {
 			text(c, "◈", 19, accent)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				text(c, "Conversation tree", 16, ink).FontWeight(650)
-				text(c, "Select a point", 12, muted).NoWrap().Ellipsis("…")
+				text(c, "Select a point", 12, muted).SingleLine()
 			})
 			if action(c, "Close tree", false) {
 				a.tree = nil
@@ -686,7 +686,7 @@ func (a *app) treePane(c *ui.Context, preview *treePreview) {
 						button.Children(func() {
 							ui.Row(c).Fill().Gap(7).AlignItems(ui.Center).Children(func() {
 								text(c, marker, 10, color)
-								text(c, row.label, 13, ink).NoWrap().Ellipsis("…").Grow(1).MinWidth(0)
+								text(c, row.label, 13, ink).SingleLine().Grow(1).MinWidth(0)
 								if row.current {
 									text(c, "CURRENT", 10, accent).Font(monoFont).Padding(0, 8, 0, 0)
 								}

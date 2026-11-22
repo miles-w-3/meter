@@ -128,7 +128,7 @@ func (a *app) pathPicker(c *ui.Context, value *string) bool {
 			}
 			for _, path := range a.pathResults {
 				row := sidebarRow(c.Key(path), path, false)
-				row.Children(func() { text(c, path, 12, ink).NoWrap().Ellipsis("…") })
+				row.Children(func() { text(c, path, 12, ink).SingleLine() })
 				if row.Clicked() {
 					*value = path + string(os.PathSeparator)
 				}

@@ -51,6 +51,11 @@ async function stop() {
   child = undefined;
 }
 try {
+  // Legacy provider/model environment values must not create a normal-mode default.
+  await start({ PI_PROVIDER: "openai-codex", PI_MODEL: "legacy-model" });
+  assert.equal((await request("/v1/server")).value.provider, "");
+  assert.deepEqual((await request("/v1/settings/defaults")).value, { model: null, thinkingLevel: null, source: "unconfigured" });
+  await stop();
   await start();
   const initial = await request("/v1/settings/defaults");
   assert.deepEqual(initial.value, { model: null, thinkingLevel: null, source: "unconfigured" });

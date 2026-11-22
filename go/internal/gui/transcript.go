@@ -49,9 +49,15 @@ func (p *pane) updateMeter(now time.Time) {
 type message struct {
 	id, label, text, target, stats, errorText string
 	tool, user                                bool
-	succeeded                                 bool
+	failed                                    bool
 	imageCount                                int
 }
+
+const (
+	turnGap    = 20
+	toolGap    = 2
+	slowToolMs = 500
+)
 
 func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 	a.transcriptState(c, p, conversationID, &p.state, func() { a.history(p, conversationID) }, p.loading || !p.connected)
@@ -84,8 +90,12 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 		if entry.ToolTarget != nil {
 			target = clean(*entry.ToolTarget)
 		}
+		stats := ""
+		if entry.DurationMs != nil && *entry.DurationMs >= slowToolMs {
+			stats = palette.Stats(entry.DurationMs, nil)
+		}
 		messages = append(messages, message{id: entry.Id, label: *entry.ToolName, text: clean(entry.Text), tool: true,
-			target: target, stats: palette.Stats(entry.DurationMs, nil), succeeded: entry.ToolSucceeded != nil && *entry.ToolSucceeded})
+			target: target, stats: stats, failed: entry.ToolSucceeded != nil && !*entry.ToolSucceeded})
 	}
 	for i, tool := range state.Current.Tools {
 		key := fmt.Sprintf("live:%s:%d", tool.Name, i)
@@ -142,14 +152,23 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 				return
 			}
 			msg := messages[i-offset]
-			paneContent(c, func() {
-				if msg.tool {
-					toolRow(c, p, msg)
-					return
-				}
-				a.messageBody(c, p, conversationID, msg)
+			top := float32(turnGap)
+			switch {
+			case i == 0:
+				top = 0
+			case msg.tool && i > offset && messages[i-offset-1].tool:
+				top = toolGap
+			}
+			ui.Column(c).FillWidth().MinWidth(0).Padding(top, 0, 0, 0).Children(func() {
+				paneContent(c, func() {
+					if msg.tool {
+						toolRow(c, p, msg)
+						return
+					}
+					a.messageBody(c, p, conversationID, msg)
+				})
 			})
-		}).Grow(1).MinHeight(0).MinWidth(0).Padding(12, 0).Gap(20).TrackScroll(&p.transcriptScroll)
+		}).Grow(1).MinHeight(0).MinWidth(0).Padding(12, 0).TrackScroll(&p.transcriptScroll)
 		mygoui.ScrollFade(c, viewport, &p.transcriptScroll, mygoui.ScrollFadeOptions{
 			Mode: mygoui.SurfaceFade, Surface: contentSurface, Edges: mygoui.FadeTop, Size: 24,
 		})
@@ -157,29 +176,43 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 }
 
 func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg message) {
-	bodyView := ui.Column(c).FillWidth().MinWidth(0).Padding(8, paneGutter, 8, paneTextInset)
 	if msg.user {
-		bodyView.Background(panel).Radius(8)
+		a.userBody(c, p, conversationID, msg)
+		return
 	}
-	bodyView.Children(func() {
-		if msg.user && msg.imageCount > 0 {
-			a.messageImages(c, p, conversationID, msg.id, msg.imageCount)
-		}
+	ui.Column(c).FillWidth().MinWidth(0).Padding(8, paneGutter, 8, paneTextInset).Children(func() {
 		if body := strings.TrimSpace(msg.text); body != "" {
-			if msg.user {
-				text(c, body, 14, ink).Selectable().LineHeight(1.5)
-			} else {
-				a.prose(c, body, msg.id == "partial")
-				if msg.stats != "" {
-					ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
-						text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum")
-					})
-				}
+			a.prose(c, body, msg.id == "partial")
+			if msg.stats != "" {
+				ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
+					text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum")
+				})
 			}
 		}
 		if msg.errorText != "" {
 			text(c, "Error: "+msg.errorText, 13, warning).Selectable().LineHeight(1.5)
 		}
+	})
+}
+
+// userBody marks a user message with a rule in the tool gutter rather than a
+// filled bubble, so the composer stays the only filled box in a pane.
+func (a *app) userBody(c *ui.Context, p *pane, conversationID string, msg message) {
+	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Stretch).Padding(2, paneGutter, 2, 0).Children(func() {
+		ui.Row(c).Width(paneTextInset).Shrink(0).Justify(ui.Center).AlignItems(ui.Stretch).Children(func() {
+			ui.Box(c).Width(2).Radius(1).Background(userRule)
+		})
+		ui.Column(c).Grow(1).MinWidth(0).Gap(8).Children(func() {
+			if msg.imageCount > 0 {
+				a.messageImages(c, p, conversationID, msg.id, msg.imageCount)
+			}
+			if body := strings.TrimSpace(msg.text); body != "" {
+				text(c, body, 14, ink).Selectable().LineHeight(1.5)
+			}
+			if msg.errorText != "" {
+				text(c, "Error: "+msg.errorText, 13, warning).Selectable().LineHeight(1.5)
+			}
+		})
 	})
 }
 
@@ -292,12 +325,19 @@ func toolRow(c *ui.Context, p *pane, msg message) {
 					text(c, glyph, 13, muted)
 				}
 			})
-			text(c, kind, 11, muted).Font(monoFont).Margin(0, 6, 0, 0)
-			if status != "" {
-				text(c, status, 11, muted).Font(monoFont).Grow(1).NoWrap().Ellipsis("…")
+			// Success is the default and goes unmarked; only a failure is.
+			kindColor := muted
+			if msg.failed {
+				kindColor = theme.Danger
 			}
-			if msg.succeeded {
-				text(c, "✓", 12, muted).Tooltip("Succeeded")
+			text(c, kind, 11, kindColor).Font(monoFont).Margin(0, 6, 0, 0)
+			if status != "" {
+				text(c, status, 11, muted).Font(monoFont).Grow(1).MinWidth(0).SingleLine()
+			} else {
+				ui.Box(c).Grow(1)
+			}
+			if msg.failed {
+				text(c, "✕", 12, theme.Danger).Tooltip("Failed").Shrink(0)
 			}
 			if msg.stats != "" {
 				text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum").Shrink(0).Margin(0, 0, 0, 6)

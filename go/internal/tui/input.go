@@ -33,6 +33,25 @@ func (m *Model) resizeComposer() {
 
 func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	name := msg.String()
+	if m.recording != nil {
+		if name == "esc" {
+			m.cancelDictation()
+			return nil
+		}
+		if name == "ctrl+q" || name == "ctrl+c" {
+			m.cancelDictation()
+			return tea.Quit
+		}
+		return nil
+	}
+	if m.spaceHold != nil && msg.Code != ' ' {
+		hold := m.spaceHold
+		m.spaceHold = nil
+		m.tapSpace(hold)
+	}
+	if handled, cmd := m.holdSpace(msg); handled {
+		return cmd
+	}
 	now := time.Now()
 	if name == "?" && (m.overlay.kind == overlayHelp || (m.overlay.kind == overlayNone && (!m.focused || m.draft.Value() == ""))) {
 		if m.overlay.kind == overlayHelp {
@@ -51,6 +70,10 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		m.quitUntil = now.Add(2 * time.Second)
 		return tea.Batch(m.abort(), tea.Tick(2*time.Second, func(time.Time) tea.Msg { return confirmationExpired{} }))
+	case "ctrl+l":
+		if m.overlay.kind == overlayNone {
+			return m.openModels()
+		}
 	case "ctrl+k":
 		if m.overlay.kind == overlaySwitch {
 			m.overlay = overlay{}

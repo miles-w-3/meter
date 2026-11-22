@@ -23,14 +23,14 @@ type dictationRecording struct {
 
 const dictationHold = 350 * time.Millisecond
 
-func dictationStatus(recording *dictationRecording) (string, ui.Color) {
+func dictationBorder(recording *dictationRecording) ui.Color {
 	if recording.released {
-		return "Transcribing…", ui.Transparent
+		return ui.Transparent
 	}
 	if recording.live {
-		return "Listening", ui.RGBA(218, 106, 104, .65)
+		return ui.RGBA(218, 106, 104, .65)
 	}
-	return "Starting…", ui.RGBA(210, 168, 95, .65)
+	return ui.RGBA(210, 168, 95, .65)
 }
 
 type spaceHold struct {

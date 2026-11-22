@@ -1,4 +1,5 @@
 import { mermaidCatalogTool } from "./tools/mermaid-catalog.ts";
+import { mermaidPreview } from "./fixtures/mermaid-preview.ts";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
@@ -31,6 +32,8 @@ function fixtureProvider() {
     const user = messages[0];
     const prompt = user?.role === "user" && typeof user.content === "string" ? user.content : JSON.stringify(user);
     const results = messages.filter((message) => message.role === "toolResult");
+    const preview = /^fixture:mermaid:(tiny|wide|tall|square)$/.exec(prompt.trim());
+    if (preview) return fauxAssistantMessage([fauxText(mermaidPreview[preview[1]])]);
     if (prompt.includes("fixture:demo")) return fauxAssistantMessage([fauxText("desktop reconnect output ".repeat(200))]);
     if (prompt.includes("fixture:slow")) return fauxAssistantMessage([fauxText("streamed model output ".repeat(45))]);
     if (prompt === "fixture:web-search" && !results.length) {
@@ -79,7 +82,9 @@ export type Provider = string;
 
 export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch) {
   const useOpenAI = provider !== "fixture";
-  const modelId = useOpenAI ? process.env.PI_MODEL : "faux-1";
+  // An empty provider is the normal server mode: it has no environment default.
+  // Explicit providers are still accepted by direct harness callers and the live smoke test.
+  const modelId = useOpenAI ? (provider ? process.env.PI_MODEL : undefined) : "faux-1";
   const providerId = provider === "openai-smoke" ? "openai" : provider;
   const models = useOpenAI ? await ModelRuntime.create({ allowModelNetwork: false }) : (() => {
     const fixtureModels = createModels();

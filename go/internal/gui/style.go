@@ -64,6 +64,24 @@ var (
 	rain           = ui.Hex("#7f9fb0")
 	selectedFill   = ui.RGBA(143, 174, 122, .17)
 	highlight      = ui.RGBA(255, 255, 255, .04)
+	// Borders carry state, not structure: panes separate from the frame by
+	// their surface step, and only the focused one is outlined.
+	focusBorder = ui.RGBA(143, 174, 122, .55)
+	// The rule beside a user message, in place of a filled bubble.
+	userRule = ui.Hex(palette.Faint)
+)
+
+// Surfaces, each lighter than the one it sits on:
+//
+//	background      frame: title bar, sidebar, tab strip, behind panes
+//	contentSurface  a conversation pane, and the selected tab
+//	panel           something to type into or press: composer, code, inputs
+//
+// Radii: 12 for panes, 8 for inputs, 6 for small controls.
+const (
+	paneRadius    = 12
+	inputRadius   = 8
+	controlRadius = 6
 )
 
 // Configure the component library from the same palette as the native controls.
@@ -81,7 +99,7 @@ func init() {
 		Code: &sidebar, CodeForeground: &ink,
 	}
 	uitheme.Configure(uitheme.Preferences{
-		FontFamily: "Geist", MonoFontFamily: monoFont, Radius: 7,
+		FontFamily: "Geist", MonoFontFamily: monoFont, Radius: controlRadius,
 		Palette: uitheme.PaletteOverrides{Dark: patch},
 	})
 }
@@ -99,7 +117,7 @@ func meterTheme() *ui.Theme {
 	t.Selection = ui.RGBA(143, 174, 122, .18)
 	t.Scrollbar = ui.RGBA(190, 210, 195, .22)
 	t.ScrollbarStyle.Hover = ui.RGBA(190, 210, 195, .38)
-	t.Font, t.Radius = "Geist", 7
+	t.Font, t.Radius = "Geist", controlRadius
 	return t
 }
 
@@ -163,5 +181,5 @@ func ghostPlus(c *ui.Context, label string, disabled bool) ui.Element {
 }
 
 func sectionLabel(c *ui.Context, label string) ui.Element {
-	return text(c, label, 11, muted).LetterSpacing(1.15).FontWeight(600)
+	return text(c, label, 12, muted).FontWeight(600)
 }

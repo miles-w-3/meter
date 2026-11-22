@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -268,11 +269,60 @@ func TestStatusNoticeTakesPriorityOverHints(t *testing.T) {
 	for _, width := range []int{96, 55, 24} {
 		m := testModel()
 		m.connected = true
-		m.notice = "Input accepted"
+		m.notice = "Submission failed"
 		m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
 		view := ansi.Strip(m.View().Content)
 		if !strings.Contains(view, m.notice) {
 			t.Errorf("width %d: notice missing from view:\n%s", width, view)
 		}
+	}
+}
+
+func TestStatusPathAndModel(t *testing.T) {
+	m := testModel()
+	m.connected = true
+	m.conversation.Cwd = "/some/long/project/path"
+	m.conversation.Model = "test-model"
+	status := ansi.Strip(m.status(80))
+	if !strings.Contains(status, "/some/long/project/path") || !strings.Contains(status, "test-model") || strings.Index(status, "test-model") < strings.Index(status, "/some/long/project/path") {
+		t.Fatalf("unexpected status %q", status)
+	}
+	narrow := ansi.Strip(m.status(30))
+	if !strings.Contains(narrow, "test-model") || !strings.Contains(narrow, "path") {
+		t.Fatalf("unexpected narrow status %q", narrow)
+	}
+}
+func TestSuccessfulSubmissionIsQuiet(t *testing.T) {
+	m := testModel()
+	m.notice = "old"
+	m.handleSent(nil, false)
+	if m.notice != "" {
+		t.Fatalf("success left notice %q", m.notice)
+	}
+}
+func TestModelPickerListsAndSelectsLevels(t *testing.T) {
+	m := testModel()
+	m.overlay = overlay{kind: overlayModel}
+	m.overlay.list = list.New(nil, modelDelegate{m.colors}, 60, 5)
+	m.receiveModels(modelsMsg{session: m.session, inventory: protocol.ModelInventory{Providers: []protocol.ProviderInfo{{Id: "ok", Status: "configured"}}, Models: []protocol.ModelInfo{{Name: "Model", ModelId: "id", Provider: "ok", ThinkingLevels: []protocol.ModelInfoThinkingLevels{"off", "high"}}}}})
+	m.modelKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !m.overlay.levels || len(m.overlay.list.Items()) != 2 {
+		t.Fatal("model did not expose its thinking levels")
+	}
+}
+
+func TestRunningStatusShowsSpinnerOnly(t *testing.T) {
+	m := testModel()
+	m.connected = true
+	m.conversation.Model = "model"
+	m.state.Current.Status = "running"
+	m.spark = []float64{0, 20, 70}
+	status := ansi.Strip(m.status(80))
+	if !strings.Contains(status, ansi.Strip(m.spinner.View())) || strings.Contains(status, "running") || strings.Contains(status, "▁▃█") || !strings.Contains(status, "model") {
+		t.Fatalf("unexpected status: %q", status)
+	}
+	m.state.Current.Status = "idle"
+	if strings.Contains(ansi.Strip(m.status(80)), ansi.Strip(m.spinner.View())) {
+		t.Fatal("spinner remained after run")
 	}
 }

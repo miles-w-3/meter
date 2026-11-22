@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -31,6 +32,17 @@ func TestMermaidTranscriptControls(t *testing.T) {
 			t.Fatalf("missing control %q: %v", label, driver.Texts())
 		}
 	}
+	zoom, ok := driver.Find("Fit")
+	if !ok {
+		t.Fatal("missing zoom controls")
+	}
+	toggle, ok := driver.Find("Show source")
+	if !ok {
+		t.Fatal("missing source toggle")
+	}
+	if zoom.Y >= toggle.Y+toggle.H || toggle.Y >= zoom.Y+zoom.H {
+		t.Fatalf("zoom and actions must share a row: %v vs %v", zoom, toggle)
+	}
 	save, _ := driver.Find("Save SVG")
 	popout, _ := driver.Find("Pop out diagram")
 	if popout.X <= save.X {
@@ -54,7 +66,7 @@ func TestMermaidTranscriptControls(t *testing.T) {
 	if !found {
 		t.Fatal("source panel copy button missing")
 	}
-	toggle, _ := driver.Find("Show source")
+	toggle, _ = driver.Find("Show source")
 	if copyButton.Y < toggle.Y+toggle.H {
 		t.Fatalf("copy button should be in the source panel, below toolbar: %v vs %v", copyButton, toggle)
 	}
@@ -272,4 +284,100 @@ func TestMermaidPaintsInVirtualTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("fit")
+}
+
+func TestInlineDiagramGeometry(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		width        float32
+		result       mermaid.Result
+		zoom, height float32
+	}{
+		{"small", 600, mermaid.Result{Width: 100, Height: 60}, 1, 140},
+		{"wide", 524, mermaid.Result{Width: 1000, Height: 200}, .5, 162},
+		{"tall", 600, mermaid.Result{Width: 200, Height: 1000}, 1, 420},
+		{"huge", 224, mermaid.Result{Width: 4000, Height: 3000}, .25, 420},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			zoom, height := inlineDiagramGeometry(tc.width, tc.result)
+			if zoom != tc.zoom || height != tc.height {
+				t.Fatalf("got %v, %v; want %v, %v", zoom, height, tc.zoom, tc.height)
+			}
+		})
+	}
+}
+
+func TestInlineDiagramFitsAvailableWidth(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 100" width="1000" height="100"><rect width="1000" height="100" fill="red"/></svg>`
+	image, err := ui.ParseSVG([]byte(svg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := &mermaidEntry{result: mermaid.Result{SVG: svg, Width: 1000, Height: 100}, image: image}
+	driver := ui.NewTester(func(c *ui.Context) { ui.Column(c).Fill().Children(func() { diagramCanvas(c, item, 220) }) }, 400, 500)
+	driver.Frame()
+	driver.Frame()
+	driver.Frame()
+	if !driver.HasText("38%") {
+		t.Fatalf("diagram did not fit 400px viewport, got %v", driver.Texts())
+	}
+}
+
+func TestDiagramDefaultsToFitAndActualSize(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		width, height float64
+		inline        bool
+	}{
+		{"tall inline", 200, 1000, true}, {"small inline", 100, 60, true}, {"popout", 100, 60, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g" width="%g" height="%g"><rect width="%g" height="%g" fill="red"/></svg>`, tc.width, tc.height, tc.width, tc.height, tc.width, tc.height)
+			image, err := ui.ParseSVG([]byte(svg))
+			if err != nil {
+				t.Fatal(err)
+			}
+			item := &mermaidEntry{result: mermaid.Result{SVG: svg, Width: tc.width, Height: tc.height}, image: image}
+			h := float32(0)
+			if tc.inline {
+				h = 220
+			}
+			driver := ui.NewTester(func(c *ui.Context) { ui.Column(c).Fill().Children(func() { diagramCanvas(c, item, h) }) }, 400, 500)
+			for range 5 {
+				driver.Frame()
+			}
+			percent := func() string {
+				for _, text := range driver.Texts() {
+					if strings.HasSuffix(text, "%") {
+						return text
+					}
+				}
+				return ""
+			}
+			before := percent()
+			if before == "" {
+				t.Fatal("missing zoom")
+			}
+			reset, _ := driver.Find("Actual Size")
+			fit, _ := driver.Find("Fit")
+			plus, _ := driver.Find("+")
+			if !(plus.X < fit.X && fit.X < reset.X) {
+				t.Fatalf("wrong order: + %v reset %v fit %v", plus, reset, fit)
+			}
+			if err := driver.Click("Fit"); err != nil {
+				t.Fatal(err)
+			}
+			driver.Frame()
+			if got := percent(); got != before {
+				t.Fatalf("default %s differs from fit %s", before, got)
+			}
+			if err := driver.Click("Actual Size"); err != nil {
+				t.Fatal(err)
+			}
+			driver.Frame()
+			if got := percent(); got != "100%" {
+				t.Fatalf("actual size = %s", got)
+			}
+		})
+	}
 }

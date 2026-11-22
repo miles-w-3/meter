@@ -26,7 +26,7 @@ func queuedMessages(c *ui.Context, a *app, p *pane, conversation string) {
 					if queued.Images > 0 {
 						content += fmt.Sprintf("  ·  %d image(s)", queued.Images)
 					}
-					text(c, clean(content), 13, ink).NoWrap().Ellipsis("…")
+					text(c, clean(content), 13, ink).SingleLine()
 				})
 				if queued.Mode == "followUp" {
 					button := ui.ButtonBase(c).Label("Steer queued message").Tooltip("Steer the active run").

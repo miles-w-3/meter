@@ -40,9 +40,13 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 				if !a.busy() {
 					handle.Label("Drag " + title).Cursor(ui.CursorGrab).Drag(paneDrag{tab: tab.Id, pane: node.Id})
 				}
+				titleColor := ink
+				if a.selectedPane != node.Id {
+					titleColor = muted
+				}
 				handle.Children(func() {
 					text(c, fmt.Sprintf("#%d", index), 11, muted).Font(monoFont).Width(paneTextInset).Shrink(0).Padding(0, 0, 0, 3)
-					text(c, title, 13, ink).Grow(1).NoWrap().Ellipsis("…")
+					text(c, title, 13, titleColor).Grow(1).MinWidth(0).SingleLine()
 				})
 				if row.Hovered() && iconButton(c, closeIcon, "Close pane", a.busy()).Clicked() {
 					a.requestClosePane(tab.Id, node.Id)
@@ -91,8 +95,8 @@ func (a *app) closePane(tab, node uuid.UUID) {
 
 func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, cwd string, locked bool, p *pane) {
 	paneContent(c, func() {
-		ui.Row(c).Height(26).FillWidth().MinWidth(0).Clip().Padding(0, paneGutter, 0, paneTextInset).Gap(8).AlignItems(ui.Center).Children(func() {
-			button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).Grow(1).Shrink(1).MinWidth(0).Clip().Padding(2, 0).Radius(4).Disabled(a.busy() || locked)
+		ui.Row(c).Height(26).FillWidth().MinWidth(0).Clip().Padding(0, paneGutter, 0, paneTextInset).Gap(16).AlignItems(ui.Center).Children(func() {
+			button := ui.ButtonBase(c).Label("Change directory").Tooltip(cwd).Grow(1).Shrink(1).MinWidth(0).Clip().Padding(2, 0).Radius(controlRadius).Disabled(a.busy() || locked)
 			if button.Hovered() && !a.busy() && !locked {
 				button.Background(panel)
 			}
@@ -101,19 +105,22 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 				a.pathError = ""
 				a.cwdEditor = &editor{id: node.Id, value: cwd}
 			}
-			a.modelChip(c, node, p, locked || a.busy())
-			if usage := p.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
-				pct := palette.Percent(usage.Tokens, usage.Window)
-				ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))).Children(func() {
-					for i := range palette.MeterCells {
-						color := theme.SurfacePressed
-						if float64(i)/palette.MeterCells < pct/100 {
-							color = ui.Hex(palette.MeterColor(i))
+			// Where on the left; what is answering, and how full it is, on the right.
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
+				a.modelChip(c, node, p, locked || a.busy())
+				if usage := p.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
+					pct := palette.Percent(usage.Tokens, usage.Window)
+					ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))).Children(func() {
+						for i := range palette.MeterCells {
+							color := theme.SurfacePressed
+							if float64(i)/palette.MeterCells < pct/100 {
+								color = ui.Hex(palette.MeterColor(i))
+							}
+							ui.Box(c.Key(i)).Size(4, 10).Radius(1).Background(color)
 						}
-						ui.Box(c.Key(i)).Size(3, 4).Radius(1).Background(color)
-					}
-				})
-			}
+					})
+				}
+			})
 		})
 	})
 }

@@ -13,7 +13,7 @@ await mkdir(agent);
 await writeFile(auth, JSON.stringify({ loggedIn: false }));
 const child = spawn(process.execPath, ["server/main.ts"], { env: {
   ...process.env, HOME: root, PI_CODING_AGENT_DIR: agent, PI_WORKSPACE_HOME: root,
-  PI_PROVIDER: "pi-claude-cli", PI_CLAUDE_CLI_COMMAND: resolve("scripts/fixtures/claude-stub.cjs"),
+  PI_PROVIDER: "", PI_CLAUDE_CODE: "1", PI_CLAUDE_CLI_COMMAND: resolve("scripts/fixtures/claude-stub.cjs"),
   PI_CLAUDE_CLI_TRACE: "off", METER_STUB_AUTH_FILE: auth, METER_STUB_AUTH_COUNT: count,
   CLAUDE_STUB_MODELS: JSON.stringify([{ value: "claude-test-99", displayName: "Test Claude" }]),
 }, stdio: ["ignore", "pipe", "pipe"] });

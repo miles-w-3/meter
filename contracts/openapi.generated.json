@@ -2835,6 +2835,19 @@
             "type": "boolean",
             "const": true
           },
+          "clientManaged": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "terminal"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          },
           "cwd": {
             "type": "string",
             "minLength": 1,

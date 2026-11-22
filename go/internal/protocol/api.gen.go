@@ -154,6 +154,21 @@ func (e LayoutNodeAxis) Valid() bool {
 	}
 }
 
+// Defines values for LayoutNodeClientManagedType.
+const (
+	Terminal LayoutNodeClientManagedType = "terminal"
+)
+
+// Valid indicates whether the value is a known member of the LayoutNodeClientManagedType enum.
+func (e LayoutNodeClientManagedType) Valid() bool {
+	switch e {
+	case Terminal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LayoutNodeEmpty.
 const (
 	LayoutNodeEmptyTrue LayoutNodeEmpty = true
@@ -764,7 +779,10 @@ type Layout struct {
 
 // LayoutNode defines model for LayoutNode.
 type LayoutNode struct {
-	Axis           *LayoutNodeAxis     `json:"axis,omitempty"`
+	Axis          *LayoutNodeAxis `json:"axis,omitempty"`
+	ClientManaged *struct {
+		Type LayoutNodeClientManagedType `json:"type"`
+	} `json:"clientManaged,omitempty"`
 	ConversationId *string             `json:"conversationId,omitempty"`
 	Cwd            *string             `json:"cwd,omitempty"`
 	Empty          *LayoutNodeEmpty    `json:"empty,omitempty"`
@@ -781,6 +799,9 @@ type LayoutNode struct {
 
 // LayoutNodeAxis defines model for LayoutNode.Axis.
 type LayoutNodeAxis string
+
+// LayoutNodeClientManagedType defines model for LayoutNode.ClientManaged.Type.
+type LayoutNodeClientManagedType string
 
 // LayoutNodeEmpty defines model for LayoutNode.Empty.
 type LayoutNodeEmpty bool

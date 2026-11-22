@@ -13,7 +13,7 @@ require (
 	github.com/Cyenoch/mygoui v0.3.2-0.20261118090532-26b42fb83ee1
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/egoist/mygo v0.10.0
+	github.com/egoist/mygo v0.10.1-0.20261120015749-71f6c08b24a3
 	github.com/gen2brain/malgo v0.11.25
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3

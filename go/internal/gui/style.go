@@ -14,12 +14,16 @@ import (
 )
 
 const monoFont = "JetBrains Mono"
+const terminalFont = "JetBrains Mono, Symbols Nerd Font"
 
 //go:embed fonts/Geist.ttf
 var geist []byte
 
 //go:embed fonts/JetBrainsMono.ttf
 var jetBrainsMono []byte
+
+//go:embed fonts/SymbolsNerdFont-Regular.ttf
+var nerdSymbols []byte
 
 //go:embed fonts/SourceSerif4.ttf
 var sourceSerif []byte
@@ -36,7 +40,12 @@ var firTitle = func() ui.ImageSource {
 }()
 
 var registerFonts = sync.OnceValue(func() error {
-	return errors.Join(ui.RegisterFont(geist, "Geist"), ui.RegisterFont(jetBrainsMono, monoFont), ui.RegisterFont(sourceSerif, "Source Serif 4"))
+	return errors.Join(
+		ui.RegisterFont(geist, "Geist"),
+		ui.RegisterFont(jetBrainsMono, monoFont),
+		ui.RegisterFont(nerdSymbols, "Symbols Nerd Font"),
+		ui.RegisterFont(sourceSerif, "Source Serif 4"),
+	)
 })
 
 var (
@@ -130,6 +139,7 @@ func paneContent(c *ui.Context, children func()) {
 
 var (
 	newPaneIcon  = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="2.5" width="14" height="19" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v8M8 12h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`))
+	terminalIcon = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 9l4 3-4 3M12 15h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`))
 	folderIcon   = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 7v12h18V8H11L9 5H3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`))
 	closeIcon    = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="m6 6 12 12M6 18 18 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`))
 	refreshIcon  = ui.MustParseSVG([]byte(`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 10a8 8 0 0 0-14-4L3 9m0-5v5h5m-4 5a8 8 0 0 0 14 4l3-3m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`))

@@ -20,6 +20,16 @@ func emptyPane() protocol.LayoutNode {
 	return protocol.LayoutNode{Id: uuid.New(), Empty: new(protocol.LayoutNodeEmpty(true))}
 }
 
+func terminalPane(cwd string) protocol.LayoutNode {
+	node := protocol.LayoutNode{Id: uuid.New(), ClientManaged: &struct {
+		Type protocol.LayoutNodeClientManagedType `json:"type"`
+	}{Type: "terminal"}}
+	if cwd != "" {
+		node.Cwd = &cwd
+	}
+	return node
+}
+
 func tabIndex(layout *protocol.Layout, id uuid.UUID) int {
 	return slices.IndexFunc(layout.Tabs, func(tab protocol.LayoutTab) bool { return tab.Id == id })
 }

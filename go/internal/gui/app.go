@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
 	"pi-workspace.local/workspace/internal/client"
@@ -134,6 +135,14 @@ type app struct {
 	modelsLoaded         bool
 	modelsError          string
 	recentModels         []protocol.ModelRef
+	terminals            map[uuid.UUID]terminalSession
+	newTerminal          func(terminal.Options) (terminalSession, error)
+	terminalErrors       map[uuid.UUID]string
+	terminalCleanupUntil time.Time
+}
+
+type terminalSession interface {
+	Close() error
 }
 
 type geometry struct {
@@ -149,6 +158,7 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 	a := &app{
 		ctx: ctx, api: api, name: name, provider: info.Provider, projectPath: cwd,
 		panes: make(map[uuid.UUID]*pane), backend: backend,
+		terminals: make(map[uuid.UUID]terminalSession), terminalErrors: make(map[uuid.UUID]string),
 	}
 	a.applyBackendInfo(info)
 	if backend.StartupError != nil {
@@ -197,7 +207,9 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 		a.reload()
 		a.refreshModels()
 	})
-	return mygo.App.Run()
+	err := mygo.App.Run()
+	a.shutdownTerminals()
+	return err
 }
 
 func saveGeometry(path string, value geometry) {
@@ -266,6 +278,13 @@ func (a *app) syncPanes() {
 		}
 		for _, node := range tab.Nodes {
 			active[node.Id] = true
+			if node.ClientManaged != nil {
+				// Restore layout eagerly, but start a shell only when its tab opens.
+				if a.layout.ActiveTab != nil && *a.layout.ActiveTab == tab.Id {
+					a.ensureTerminal(tab, node)
+				}
+				continue
+			}
 			p := a.panes[node.Id]
 			if node.ConversationId == nil {
 				if a.tree != nil && a.tree.pane == node.Id {
@@ -336,6 +355,18 @@ func (a *app) syncPanes() {
 			}(node.Id, *node.ConversationId)
 		}
 	}
+	for id := range a.terminals {
+		if !active[id] {
+			a.closeTerminal(a.terminals[id])
+			delete(a.terminals, id)
+			delete(a.terminalErrors, id)
+		}
+	}
+	for id := range a.terminalErrors {
+		if !active[id] {
+			delete(a.terminalErrors, id)
+		}
+	}
 	for id, p := range a.panes {
 		if !active[id] {
 			if a.tree != nil && a.tree.pane == id {
@@ -348,6 +379,55 @@ func (a *app) syncPanes() {
 		}
 	}
 	a.updateBadge()
+}
+
+// The plugin closes the PTY immediately and kills a process that ignores hangup
+// after two seconds. Keep the process alive for that asynchronous fallback,
+// including terminals closed shortly before app exit.
+func (a *app) closeTerminal(t terminalSession) {
+	_ = t.Close()
+	a.terminalCleanupUntil = time.Now().Add(2200 * time.Millisecond)
+}
+
+func (a *app) shutdownTerminals() {
+	for id, t := range a.terminals {
+		a.closeTerminal(t)
+		delete(a.terminals, id)
+	}
+	if delay := time.Until(a.terminalCleanupUntil); delay > 0 {
+		time.Sleep(delay)
+	}
+}
+
+func (a *app) ensureTerminal(tab protocol.LayoutTab, node protocol.LayoutNode) {
+	if a.terminals[node.Id] != nil || a.terminalErrors[node.Id] != "" {
+		return
+	}
+	cwd := ""
+	if node.Cwd != nil {
+		cwd = *node.Cwd
+	} else if tab.ProjectId != nil {
+		id := tab.ProjectId.String()
+		for _, project := range a.catalog.Projects {
+			if project.Id == id {
+				cwd = project.Cwd
+				break
+			}
+		}
+	}
+	create := a.newTerminal
+	if create == nil {
+		create = func(opts terminal.Options) (terminalSession, error) { return terminal.New(opts) }
+	}
+	t, err := create(terminal.Options{Dir: cwd, Font: terminal.Font{Family: terminalFont}})
+	if err != nil {
+		a.terminalErrors[node.Id] = err.Error()
+		return
+	}
+	if a.terminals == nil {
+		a.terminals = make(map[uuid.UUID]terminalSession)
+	}
+	a.terminals[node.Id] = t
 }
 
 func (a *app) recordPaneActivity(paneID uuid.UUID, conversationID string, latest protocol.Entry) {

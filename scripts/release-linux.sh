@@ -115,6 +115,9 @@ if [[ -n $(git status --porcelain) ]]; then dirty=true; fi
 )
 cp "$source_dir/LICENSE" "$folder/licenses/parakeet-cpp.txt"
 cp "$source_dir/third_party/ggml/LICENSE" "$folder/licenses/ggml.txt"
+# The desktop embeds these fonts; distribute their notices with the binary.
+cp go/internal/gui/fonts/*-OFL.txt "$folder/licenses/"
+cp go/internal/gui/fonts/SymbolsNerdFont-{LICENSE.txt,README.md,SOURCE.txt,License-Audit.md} "$folder/licenses/"
 cat > "$folder/README.txt" <<'README'
 Meter for Linux x86-64
 

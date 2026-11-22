@@ -1,0 +1,9 @@
+Symbols Nerd Font 3.4.0 (regular, symbols-only)
+
+Source: https://deps.files.ghostty.org/NerdFontsSymbolsOnly-3.4.0.tar.gz
+SHA-256 of archive: 1164d1b956d4bde248d7b2f0998c43cc94f5202431a1564a793895b1e73b0d04
+Upstream: https://github.com/ryanoasis/nerd-fonts/tree/v3.4.0
+
+SymbolsNerdFont-LICENSE.txt and SymbolsNerdFont-README.md are from that
+archive. SymbolsNerdFont-License-Audit.md is the upstream license audit at
+the v3.4.0 tag and lists the glyph sources and their licenses.

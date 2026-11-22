@@ -10,6 +10,7 @@ import (
 	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo/ui"
 	mmd "github.com/egoist/mygo/ui/markdown"
+	"github.com/egoist/mygo/ui/markdown/parser"
 	"pi-workspace.local/workspace/internal/client"
 	palette "pi-workspace.local/workspace/internal/theme"
 )
@@ -185,6 +186,9 @@ func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg mes
 type proseState struct {
 	options mmd.Options
 	theme   mmd.Theme
+	body    string
+	columns int
+	width   float32
 }
 type proseKey struct{}
 
@@ -206,7 +210,51 @@ func (a *app) prose(c *ui.Context, body string, streaming bool) {
 		Text: ui.Hex("#e0e9dc"), Muted: muted, Link: rain, Strong: ui.Hex("#e0e9dc"), Code: ink, CodeBackground: panel,
 		QuoteBar: theme.Border, QuoteText: muted, Rule: theme.Border, TableBorder: theme.Border,
 		TableHeader: panel, Checkbox: accent, BlockSpacing: .6}
-	root.Children(func() { mmd.View(c, body, &st.options) })
+	if st.body != body {
+		st.body, st.columns = body, 0
+		doc := parser.Parse(body)
+		for i := 0; i < doc.Len(); i++ {
+			if b := doc.Block(i); b.Kind == parser.Table {
+				st.columns = max(st.columns, len(b.Align))
+			}
+		}
+	}
+	if st.columns > 0 {
+		st.theme.TableMaxColumn, st.theme.TableCellPadding[0] = transcriptTableSizing(st.width, st.theme.FontSize, st.columns)
+
+		// Use the laid-out prose width, after pane gutters, the reading-width
+		// cap, and message padding. Context.Size is the whole window.
+		root.DrawOver(func(_ *ui.Painter, bounds ui.Rect) {
+			if bounds.W != st.width {
+
+				st.width = bounds.W
+				c.Invalidate()
+			}
+		})
+	}
+	root.Children(func() {
+		// Open Markdown tables retain grown column widths. Reset that cache
+		// when the width budget changes so columns can also shrink on resize.
+		mmd.View(c.Key([2]float32{st.theme.TableMaxColumn, st.theme.TableCellPadding[0]}), body, &st.options)
+	})
+}
+
+// The Markdown renderer sizes each column to its natural width up to this
+// cap. Budget for the widest table in the message; shorter cells stay narrow.
+// Below the readable minimum, let the renderer's horizontal viewport scroll
+// instead of squeezing columns further or reducing the font size.
+func transcriptTableSizing(width, fontSize float32, columns int) (cap, padding float32) {
+	const minColumn, maxColumn = 5, 24 // em
+	padding = 0.6
+	if width <= 0 {
+		return maxColumn, padding
+	}
+	// Reserve the grid's outer border and the renderer's per-column divider.
+	perColumn := ((width-2)/float32(columns) - 1) / fontSize
+	if perColumn < minColumn+2*padding {
+		padding = 0.3
+	}
+	return min(maxColumn, max(minColumn, perColumn-2*padding)), padding
 }
 
 func toolRow(c *ui.Context, p *pane, msg message) {

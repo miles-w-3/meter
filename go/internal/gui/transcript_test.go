@@ -54,3 +54,39 @@ func TestTranscriptAssistantErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestTranscriptTableFitsAndScrollsOnResize(t *testing.T) {
+	p := &pane{connected: true}
+	p.state.Current.Entries = []protocol.Entry{{Id: "1", Kind: "pi.assistant", Text: `| Area | Finding | Next step | Status |
+| --- | --- | --- | --- |
+| Transcript | A long description that should wrap inside its own column | Another long description for the next step | Ready |
+`}}
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(theme)
+		a.transcript(c, p, "1")
+	}, 500, 350)
+	checkFits := func() {
+		t.Helper()
+		last, ok := driver.Find("Status")
+		if !ok || last.W <= 0 || last.X+last.W > 476 {
+			t.Fatalf("last header should fit within the message inset: %+v (found: %v)", last, ok)
+		}
+	}
+	driver.Frame()
+	checkFits()
+	driver.SetSize(290, 350)
+	driver.Frame()
+	first, ok := driver.Find("Area")
+	if !ok {
+		t.Fatal("missing first header")
+	}
+	driver.Scroll(first.X+first.W/2, first.Y+first.H/2, 500, 0)
+	last, ok := driver.Find("Status")
+	if !ok || last.W <= 0 || last.X+last.W > 266 || last.X < 36 {
+		t.Fatalf("horizontal scroll should bring the last header into view: %+v (found: %v)", last, ok)
+	}
+	driver.SetSize(500, 350)
+	driver.Frame()
+	checkFits()
+}

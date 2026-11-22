@@ -16,6 +16,8 @@
     "@earendil-works/pi-ai": "1.5.2",
     "@earendil-works/pi-coding-agent": "1.5.2",
     "@earendil-works/pi-durable": "1.5.2",
+    "@effect/platform-node-shared": "4.0.3",
+    "effect": "4.0.3",
     "ws": "8.21.0",
     "zod": "4.6.7"
   }

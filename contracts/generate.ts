@@ -69,6 +69,7 @@ const spec = {
     "/v1/server/stop": { post: { operationId: "StopServer", responses: { "202": { description: "Stopping" } } } },
     "/v1/catalog": { get: { operationId: "GetCatalog", responses: { "200": response("Catalog", "Catalog"), ...failures } } },
     "/v1/models": { get: { operationId: "GetModels", responses: { "200": response("Provider and model inventory", "ModelInventory"), ...failures } } },
+    "/v1/providers/{id}/refresh": { parameters: [id], post: { operationId: "RefreshProvider", responses: { "200": response("Provider and model inventory", "ModelInventory"), ...failures } } },
     "/v1/settings/tools": {
       get: { operationId: "GetTools", responses: { "200": response("Tool settings and status", "ToolsStatus"), ...failures } },
       patch: post("UpdateTools", "ToolSettingsChange", "200", "ToolsStatus"),

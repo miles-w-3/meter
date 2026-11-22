@@ -6,7 +6,9 @@ import { createModels } from "@earendil-works/pi-ai/models";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai/providers/faux";
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { createRegistry, defineDocFamily, defineExtension, Harness, InboxDoc, LiveDoc } from "@earendil-works/pi-durable";
+import { createRegistry, defineDocFamily, defineExtension, Harness, InboxDoc, LiveDoc, ProviderDoc } from "@earendil-works/pi-durable";
+import { ClaudeCwdBridge } from "./claude-code/bridge.ts";
+import { ProviderPlugins } from "./provider-plugins.ts";
 import type { AgentState, Conversation, ContextView, ConversationView, EntryId, EntryRecord, Harness as DurableHarness, InboxState, LiveState } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -84,7 +86,13 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
     fixtureModels.setProvider(fixtureProvider());
     return fixtureModels;
   })();
+  const plugins = new ProviderPlugins();
+  const claudeEnabled = provider === "pi-claude-cli" || process.env.PI_CLAUDE_CODE === "1";
+  const bridge = claudeEnabled ? new ClaudeCwdBridge() : undefined;
+  const claude = bridge ? (await import("./claude-code/provider.ts")).createClaudeProvider(bridge) : undefined;
+  if (claude && models instanceof ModelRuntime) { plugins.register(claude); models.registerNativeProvider(claude.provider); }
   const registry = createRegistry();
+  if (bridge) registry.install(bridge.extension(plugins));
   registry.install(provider === "openai-smoke"
     ? defineExtension({ name: "live-probe-tools", tools: [createReadTool(), createWriteTool()] })
     : CodingTools);
@@ -114,7 +122,22 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
       return new NodeExecutionEnv({ cwd, shellEnv });
     },
   }, context);
-  return { harness, models, refreshTools, model: modelId ? { provider: useOpenAI ? providerId : "faux", modelId } : undefined };
+  // Older databases may predate pi.provider. Initialize before resume so the
+  // beforeRequest hook can resolve its session even for interrupted runs.
+  if (bridge) {
+    let cursor: import("@earendil-works/pi-durable").Cursor | undefined;
+    do {
+      const page = await storage.scanConversations({}, 100, cursor, context);
+      for (const record of page.items) {
+        if (await harness.snapshot(ProviderDoc, record.id, context)) continue;
+        const conversation = await harness.conversation(record.id, context);
+        if (!conversation) throw new Error(`Cannot initialize Claude session for conversation ${record.id}`);
+        await conversation.commit(async (tx) => { await tx.doc(ProviderDoc, record.id); }, context);
+      }
+      cursor = page.next;
+    } while (cursor);
+  }
+  return { harness, models, plugins, refreshTools, closeClaude: () => claude?.close(), model: modelId ? { provider: useOpenAI ? providerId : "faux", modelId } : undefined };
 }
 
 export class RequestConflict extends Error {}

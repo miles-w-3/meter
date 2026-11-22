@@ -37,6 +37,7 @@ const authMethod = z.object({ type: z.enum(["api_key", "oauth"]), name: z.string
 const providerInfo = z.object({
   id: z.string(), name: z.string(), methods: z.array(authMethod),
   status: z.enum(["configured", "unconfigured", "unknown"]), source: z.string().optional(),
+  externalAuth: z.string().optional(), catalogSource: z.enum(["builtin", "cached", "account"]).optional(),
 });
 const modelInfo = z.object({
   provider: z.string(), modelId: z.string(), name: z.string(), contextWindow: z.number(),

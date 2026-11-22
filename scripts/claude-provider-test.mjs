@@ -1,0 +1,92 @@
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
+import { DatabaseSync } from "node:sqlite";
+import { ProviderDoc } from "@earendil-works/pi-durable";
+import { openHarness } from "../server/durable.ts";
+import { ClaudeCwdBridge } from "../server/claude-code/bridge.ts";
+import { ProviderPlugins } from "../server/provider-plugins.ts";
+
+const root = await mkdtemp(join(tmpdir(), "meter-claude-test-"));
+const a = join(root, "a"), b = join(root, "b"), log = join(root, "cwd.log");
+await mkdir(a); await mkdir(b);
+process.env.PI_CLAUDE_CLI_COMMAND = resolve("scripts/fixtures/claude-stub.cjs");
+process.env.PI_CLAUDE_CLI_RELAY = "off";
+process.env.PI_CLAUDE_CLI_TRACE = "off";
+process.env.METER_STUB_CWD = log;
+process.env.PI_CODING_AGENT_DIR = root;
+let opened;
+const bridge = new ClaudeCwdBridge();
+assert.throws(() => bridge.take("missing"), /no trusted/);
+bridge.set("1", "session", a);
+assert.throws(() => bridge.set("2", "session", b), /another conversation/);
+assert.equal(bridge.take("session"), a);
+assert.throws(() => bridge.take("session"), /no trusted/);
+const registry = new ProviderPlugins();
+registry.register({ provider: { id: "claude-test" }, needsConversationCwd: true, close: async () => {} });
+const handlers = bridge.extension(registry).hooks[0].handlers;
+const hookApi = (id, provider) => ({ conversationId: id, snapshot: async (token) =>
+  token === ProviderDoc ? { sessionId: `session-${id}` } : { cwd: a, model: { provider } } });
+await handlers.beforeRequest({}, hookApi(1, "openai"), context);
+assert.throws(() => bridge.take("session-1"), /no trusted/, "other providers never receive a mapping");
+await handlers.beforeRequest({}, hookApi(1, "claude-test"), context);
+handlers.afterResponse({}, hookApi(1, "claude-test"));
+assert.throws(() => bridge.take("session-1"), /no trusted/, "unused mapping is cleared after response");
+try {
+  opened = await openHarness(join(root, "db.sqlite"), "pi-claude-cli");
+  const { harness, models } = opened;
+  const model = models.getModels("pi-claude-cli")[0];
+  assert.ok(model, "Claude provider registers models");
+  const missing = await models.completeSimple(model, { messages: [{ role: "user", content: "hello", timestamp: Date.now() }] }, { sessionId: "unmapped" });
+  assert.equal(missing.stopReason, "error");
+  assert.match(missing.errorMessage, /no trusted/);
+  await assert.rejects(readFile(log), { code: "ENOENT" });
+  const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
+    cwd: a, model: { provider: model.provider, modelId: model.id },
+  } }, context);
+  const send = async (target, id, content = "hello", expected = "PORT-OK") => {
+    const before = (await target.entries({ order: "ascending" }, 100, undefined, context)).items;
+    const old = new Set(before.map((entry) => entry.id));
+    await target.submit({ type: "input", requestId: id, content }, context);
+    await target.waitForIdle(context);
+    const entries = (await target.entries({ order: "ascending" }, 100, undefined, context)).items.filter((entry) => !old.has(entry.id));
+    assert.ok(entries.some((entry) => entry.kind === "pi.assistant" && JSON.stringify(entry).includes(expected)), JSON.stringify(entries));
+    return entries;
+  };
+  await writeFile(join(a, "stub.txt"), "hello from tool");
+  await send(conversation, "one");
+  const toolEntries = await send(conversation, "tool", "tool:read", "TOOL-DONE");
+  assert.ok(JSON.stringify(toolEntries).includes("TOOL-DONE"), JSON.stringify(toolEntries));
+  assert.equal((await readFile(log, "utf8")).trim().split("\n").length, 1, "warm process survives tool handoff");
+  await conversation.configure({ cwd: b }, context);
+  await send(conversation, "two");
+  const launches = (await readFile(log, "utf8")).trim().split("\n");
+  assert.deepEqual(launches, [await realpath(a), await realpath(b)]);
+  const conversationId = conversation.id;
+  await opened.harness.close(context);
+  await opened.closeClaude();
+  // Simulate a database from before pi.provider was introduced.
+  const db = new DatabaseSync(join(root, "db.sqlite"));
+  db.prepare("DELETE FROM document_revisions WHERE document_id IN (SELECT id FROM documents WHERE json_extract(kind, '$') = 'pi.provider' AND owner_id = ?)").run(conversationId);
+  const deleted = db.prepare("DELETE FROM documents WHERE json_extract(kind, '$') = 'pi.provider' AND owner_id = ?").run(conversationId);
+  assert.equal(deleted.changes, 1);
+  db.close();
+  opened = await openHarness(join(root, "db.sqlite"), "pi-claude-cli");
+  assert.ok((await opened.harness.snapshot(ProviderDoc, conversationId, context))?.sessionId, "legacy provider session migrated before resume");
+  const reopened = await opened.harness.conversation(conversationId, context);
+  await send(reopened, "restart");
+  const after = (await readFile(log, "utf8")).trim().split("\n");
+  assert.deepEqual(after, [await realpath(a), await realpath(b), await realpath(b)]);
+  const other = await opened.harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
+    cwd: a, model: { provider: model.provider, modelId: model.id },
+  } }, context);
+  await Promise.all([send(reopened, "parallel-a"), send(other, "parallel-b")]);
+  const parallel = (await readFile(log, "utf8")).trim().split("\n");
+  assert.equal(parallel.at(-1), await realpath(a), "other conversation launches in its own directory");
+  console.log("Claude provider: fail-closed mapping, tool handoff, cwd switch, restart and concurrent conversations passed");
+} finally {
+  if (opened) { await opened.harness.close(context); await opened.closeClaude(); }
+  await rm(root, { recursive: true, force: true });
+}

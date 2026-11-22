@@ -20,6 +20,7 @@ import (
 
 type Client struct {
 	api          *protocol.ClientWithResponses
+	longAPI      *protocol.ClientWithResponses
 	dialer       websocket.Dialer
 	endpointFile string
 }
@@ -50,6 +51,13 @@ func New(data, transport string) (*Client, error) {
 		return nil, err
 	}
 	c.api = api
+	c.longAPI, err = protocol.NewClientWithResponses("http://workspace", protocol.WithHTTPClient(&http.Client{
+		Transport: roundTripper, Timeout: 40 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}))
+	if err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
@@ -126,6 +134,17 @@ func (c *Client) Info(ctx context.Context) (protocol.ServerInfo, error) {
 
 func (c *Client) Models(ctx context.Context) (protocol.ModelInventory, error) {
 	res, err := c.api.GetModelsWithResponse(ctx)
+	if err != nil {
+		return protocol.ModelInventory{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.ModelInventory{}, responseError(res.StatusCode(), res.GetBody())
+}
+
+func (c *Client) RefreshProvider(ctx context.Context, id string) (protocol.ModelInventory, error) {
+	res, err := c.longAPI.RefreshProviderWithResponse(ctx, id)
 	if err != nil {
 		return protocol.ModelInventory{}, err
 	}

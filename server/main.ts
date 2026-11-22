@@ -71,7 +71,7 @@ if (!id) {
 }
 const workspaces = new Workspaces(join(data, "app.sqlite"));
 const webSearch = new WebSearch(() => workspaces.toolSettings());
-const { harness, model, models, refreshTools } = await openHarness(join(data, "durable.sqlite"), provider as Provider, webSearch);
+const { harness, model, models, plugins, refreshTools, closeClaude } = await openHarness(join(data, "durable.sqlite"), provider as Provider, webSearch);
 const generation = randomUUID();
 const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts", "model-inventory", "model-defaults", "conversation-models", "tool-settings"];
 const dictationDir = process.env.PI_DICTATION_DIR ||
@@ -199,15 +199,22 @@ function currentDefaults() {
 
 async function inventory() {
   const providers = await Promise.all(models.getProviders().map(async (item) => {
-    const methods = [
+    const plugin = plugins.get(item.id);
+    const methods = plugin?.externalAuth ? [] : [
       ...(item.auth.apiKey ? [{ type: "api_key" as const, name: item.auth.apiKey.name, interactive: !!item.auth.apiKey.login }] : []),
       ...(item.auth.oauth ? [{ type: "oauth" as const, name: item.auth.oauth.name, interactive: true }] : []),
     ];
+    const externalAuth = plugin?.externalAuth?.instruction;
+    const catalogSource = plugin?.catalogSource?.();
     try {
+      if (plugin?.externalAuth) {
+        const status = await plugin.externalAuth.status(AbortSignal.timeout(3000));
+        return { id: item.id, name: item.name, methods, ...status, externalAuth, catalogSource };
+      }
       const check = await models.checkAuth(item.id, { signal: AbortSignal.timeout(3000) });
-      return { id: item.id, name: item.name, methods, status: check ? "configured" : "unconfigured", source: check?.source };
+      return { id: item.id, name: item.name, methods, status: check ? "configured" : "unconfigured", source: check?.source, catalogSource };
     } catch {
-      return { id: item.id, name: item.name, methods, status: "unknown" };
+      return { id: item.id, name: item.name, methods, status: "unknown", externalAuth, catalogSource };
     }
   }));
   return { providers, models: models.getModels().map((item) => ({
@@ -237,6 +244,20 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       await models.refresh({ allowNetwork: false });
       const error = models.getError();
       if (error) throw new Problem(500, "model_refresh_failed", error);
+    }
+    return reply(res, 200, await inventory());
+  }
+  const providerRefresh = url.pathname.match(/^\/v1\/providers\/([^/]+)\/refresh$/);
+  if (providerRefresh && req.method === "POST") {
+    const plugin = plugins.get(providerRefresh[1]);
+    if (!plugin?.externalAuth || !(models instanceof ModelRuntime)) throw new Problem(404, "not_found", "Provider refresh is unavailable");
+    const signal = AbortSignal.timeout(30_000);
+    await plugin.externalAuth.refresh(signal);
+    const auth = await plugin.externalAuth.status(signal);
+    if (auth.status === "configured") {
+      const result = await models.refresh({ providers: [plugin.provider.id], allowNetwork: true, force: true, signal });
+      const error = result.errors.get(plugin.provider.id);
+      if (error) throw new Problem(500, "model_refresh_failed", error.message);
     }
     return reply(res, 200, await inventory());
   }
@@ -628,6 +649,7 @@ function shutdown() {
   for (const ws of sockets.clients) ws.terminate();
   voice.close();
   void harness.close(context).then(async () => {
+    await closeClaude();
     if (models instanceof ModelRuntime) await models.settleCredentialWrites();
     workspaces.db.close();
     lock.close();

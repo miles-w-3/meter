@@ -146,6 +146,73 @@
         }
       }
     },
+    "/v1/providers/{id}/refresh": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "RefreshProvider",
+        "responses": {
+          "200": {
+            "description": "Provider and model inventory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInventory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/settings/tools": {
       "get": {
         "operationId": "GetTools",
@@ -3402,6 +3469,17 @@
           },
           "source": {
             "type": "string"
+          },
+          "externalAuth": {
+            "type": "string"
+          },
+          "catalogSource": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "cached",
+              "account"
+            ]
           }
         },
         "required": [

@@ -1,0 +1,545 @@
+/**
+ * The Claude Code CLI's stream-json wire format: decoding of stdout lines and
+ * construction of stdin lines.
+ *
+ * The format is undocumented and changes between CLI versions, so decoding is
+ * lenient everywhere: a line that is not JSON, an envelope of an unknown type
+ * and an envelope whose body no longer matches all degrade to "nothing to do"
+ * and never fail an episode.
+ */
+
+import { Option, Schema } from "effect";
+import type { SignedThinkingBlock } from "./signed-thinking.ts";
+import type { ThinkingControl } from "./thinking-config.ts";
+
+// ---- stdout: model stream ---------------------------------------------------
+
+const TokenCount = Schema.optional(Schema.NullOr(Schema.Number));
+
+const ClaudeUsage = Schema.Struct({
+  input_tokens: TokenCount,
+  output_tokens: TokenCount,
+  cache_read_input_tokens: TokenCount,
+  cache_creation_input_tokens: TokenCount,
+  /** The cache write split by lifetime; on `message_start` only. */
+  cache_creation: Schema.optional(
+    Schema.NullOr(Schema.Struct({ ephemeral_1h_input_tokens: TokenCount })),
+  ),
+  /** Thinking tokens, a subset of `output_tokens`; on `message_delta`. */
+  output_tokens_details: Schema.optional(
+    Schema.NullOr(Schema.Struct({ thinking_tokens: TokenCount })),
+  ),
+});
+
+/** Token counts of one API call or one turn, as the Anthropic API names them. */
+export type ClaudeUsage = typeof ClaudeUsage.Type;
+
+const ClaudeModelUsage = Schema.Struct({
+  inputTokens: TokenCount,
+  outputTokens: TokenCount,
+  cacheReadInputTokens: TokenCount,
+  cacheCreationInputTokens: TokenCount,
+});
+
+/**
+ * Per-model spend, keyed by model id in `result.modelUsage`. The only place
+ * the CLI accounts for work outside the main agent's transcript (sub-agents,
+ * helper models); cumulative for the process.
+ */
+export type ClaudeModelUsage = typeof ClaudeModelUsage.Type;
+
+const ClaudeApiEvent = Schema.Struct({
+  type: Schema.String,
+  index: Schema.optional(Schema.Number),
+  message: Schema.optional(
+    Schema.Struct({
+      /** The API message id (`msg_…`), on `message_start`. */
+      id: Schema.optional(Schema.String),
+      usage: Schema.optional(Schema.NullOr(ClaudeUsage)),
+    }),
+  ),
+  content_block: Schema.optional(
+    Schema.Struct({
+      type: Schema.String,
+      text: Schema.optional(Schema.String),
+      id: Schema.optional(Schema.String),
+      name: Schema.optional(Schema.String),
+      /** The opaque payload of a `redacted_thinking` block. */
+      data: Schema.optional(Schema.String),
+    }),
+  ),
+  delta: Schema.optional(
+    Schema.Struct({
+      type: Schema.optional(Schema.String),
+      text: Schema.optional(Schema.String),
+      partial_json: Schema.optional(Schema.String),
+      thinking: Schema.optional(Schema.String),
+      signature: Schema.optional(Schema.String),
+      stop_reason: Schema.optional(Schema.NullOr(Schema.String)),
+      /** Why the model stopped, when the API says; a refusal's explanation. */
+      stop_details: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({
+            explanation: Schema.optional(Schema.NullOr(Schema.String)),
+          }),
+        ),
+      ),
+    }),
+  ),
+  usage: Schema.optional(Schema.NullOr(ClaudeUsage)),
+});
+
+/**
+ * One Anthropic streaming event (`message_start`, `content_block_delta`, …).
+ * Only the fields the event bridge reads are described; event and delta types
+ * it does not know pass through and are ignored there.
+ */
+export type ClaudeApiEvent = typeof ClaudeApiEvent.Type;
+
+const ClaudeResultMessage = Schema.Struct({
+  type: Schema.optional(Schema.String),
+  subtype: Schema.optional(Schema.String),
+  is_error: Schema.optional(Schema.Boolean),
+  result: Schema.optional(Schema.NullOr(Schema.String)),
+  error: Schema.optional(Schema.NullOr(Schema.String)),
+  errors: Schema.optional(Schema.Array(Schema.Unknown)),
+  /** Usage of the MAIN agent for the turn. */
+  usage: Schema.optional(Schema.NullOr(ClaudeUsage)),
+  /** Per-model spend for the process so far, sub-agents included. */
+  modelUsage: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, ClaudeModelUsage))),
+});
+
+/** The `result` envelope that ends a turn. */
+export type ClaudeResultMessage = typeof ClaudeResultMessage.Type;
+
+const ClaudeRateLimitInfo = Schema.Struct({
+  /** `allowed`, `allowed_warning`, `rejected`. */
+  status: Schema.optional(Schema.NullOr(Schema.String)),
+  /** The window the status is about: `five_hour`, `seven_day`, … */
+  rateLimitType: Schema.optional(Schema.NullOr(Schema.String)),
+  /** When the window resets, in Unix seconds. */
+  resetsAt: Schema.optional(Schema.NullOr(Schema.Number)),
+  /** True when the request was charged to usage credits, not plan limits. */
+  isUsingOverage: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  overageStatus: Schema.optional(Schema.NullOr(Schema.String)),
+  overageDisabledReason: Schema.optional(Schema.NullOr(Schema.String)),
+  /** How much of each limit window is used, from 0 to 1. */
+  unifiedWindows: Schema.optional(
+    Schema.NullOr(
+      Schema.Record(
+        Schema.String,
+        Schema.Struct({
+          utilization: Schema.optional(Schema.NullOr(Schema.Number)),
+          resetsAt: Schema.optional(Schema.NullOr(Schema.Number)),
+        }),
+      ),
+    ),
+  ),
+});
+
+/**
+ * The subscription's limit status after an API call, as the CLI reports it
+ * in a `rate_limit_event` (between the model's `message_stop` and the turn's
+ * `result`).
+ */
+export type ClaudeRateLimitInfo = typeof ClaudeRateLimitInfo.Type;
+
+const ClaudeAssistantBlock = Schema.Struct({
+  type: Schema.String,
+  text: Schema.optional(Schema.String),
+  id: Schema.optional(Schema.String),
+  name: Schema.optional(Schema.String),
+  input: Schema.optional(Schema.Unknown),
+});
+
+/**
+ * One content block of an `assistant` envelope: the CLI's own record of what
+ * the model returned, built from the same API stream the provider bridges.
+ */
+export type ClaudeAssistantBlock = typeof ClaudeAssistantBlock.Type;
+
+// ---- stdout: control channel ------------------------------------------------
+
+const JsonRpcId = Schema.Union([Schema.String, Schema.Number]);
+
+/** A JSON-RPC request id, as MCP uses it. */
+export type JsonRpcId = typeof JsonRpcId.Type;
+
+const McpMessage = Schema.Struct({
+  id: Schema.optional(JsonRpcId),
+  method: Schema.optional(Schema.String),
+  params: Schema.optional(Schema.Unknown),
+});
+
+/** One JSON-RPC message the CLI's MCP client sent to the in-band server. */
+export type McpMessage = typeof McpMessage.Type;
+
+const ToolPermissionRequestBody = Schema.Struct({
+  request_id: Schema.String,
+  request: Schema.Struct({
+    subtype: Schema.Literal("can_use_tool"),
+    tool_name: Schema.String,
+    input: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  }),
+});
+
+const McpRequestBody = Schema.Struct({
+  request_id: Schema.String,
+  request: Schema.Struct({
+    subtype: Schema.Literal("mcp_message"),
+    server_name: Schema.String,
+    message: McpMessage,
+  }),
+});
+
+const ControlResponseBody = Schema.Struct({
+  response: Schema.Struct({
+    subtype: Schema.String,
+    request_id: Schema.String,
+  }),
+});
+
+const Envelope = Schema.Struct({ type: Schema.String });
+const StreamEventBody = Schema.Struct({ event: ClaudeApiEvent });
+const AssistantBody = Schema.Struct({
+  message: Schema.Struct({
+    id: Schema.optional(Schema.String),
+    content: Schema.Array(ClaudeAssistantBlock),
+  }),
+});
+const RateLimitBody = Schema.Struct({ rate_limit_info: ClaudeRateLimitInfo });
+
+/** One decoded stdout line of the CLI. */
+export type CliMessage =
+  | { readonly _tag: "StreamEvent"; readonly event: ClaudeApiEvent }
+  | { readonly _tag: "Result"; readonly result: ClaudeResultMessage }
+  | {
+      /** The CLI asks whether the model may call a tool. */
+      readonly _tag: "ToolPermissionRequest";
+      readonly requestId: string;
+      readonly toolName: string;
+      readonly input: Readonly<Record<string, unknown>>;
+    }
+  | {
+      /** The CLI's MCP client talking to an in-band (`"type": "sdk"`) server. */
+      readonly _tag: "McpRequest";
+      readonly requestId: string;
+      readonly serverName: string;
+      readonly message: McpMessage;
+    }
+  | {
+      /** The CLI's answer to a control request this provider sent. */
+      readonly _tag: "ControlResponse";
+      readonly requestId: string;
+      readonly success: boolean;
+    }
+  | {
+      /**
+       * The CLI's record of an API message, written as each content block
+       * completes (before its `content_block_stop`), one or more blocks at a
+       * time. Compared with what was bridged; never streamed to pi.
+       */
+      readonly _tag: "AssistantMessage";
+      /** The API message id, as on that message's `message_start`. */
+      readonly id: Option.Option<string>;
+      readonly content: ReadonlyArray<ClaudeAssistantBlock>;
+    }
+  | {
+      /** The subscription's limit status after an API call. */
+      readonly _tag: "RateLimit";
+      readonly info: ClaudeRateLimitInfo;
+    }
+  | {
+      /**
+       * An envelope with nothing for pi's stream (`user`, `system`, anything
+       * new). It still counts as output for the inactivity timeout.
+       */
+      readonly _tag: "Other";
+      readonly type: string;
+    };
+
+const decodeJson = Schema.decodeOption(Schema.fromJsonString(Schema.Unknown));
+const decodeEnvelope = Schema.decodeUnknownOption(Envelope);
+const decodeStreamEvent = Schema.decodeUnknownOption(StreamEventBody);
+const decodeResult = Schema.decodeUnknownOption(ClaudeResultMessage);
+const decodeAssistant = Schema.decodeUnknownOption(AssistantBody);
+const decodeRateLimit = Schema.decodeUnknownOption(RateLimitBody);
+const decodeToolPermissionRequest = Schema.decodeUnknownOption(ToolPermissionRequestBody);
+const decodeMcpRequest = Schema.decodeUnknownOption(McpRequestBody);
+const decodeControlResponse = Schema.decodeUnknownOption(ControlResponseBody);
+
+const decodeEnvelopeBody = (type: string, json: unknown): Option.Option<CliMessage> => {
+  switch (type) {
+    case "stream_event":
+      return Option.map(decodeStreamEvent(json), ({ event }): CliMessage => ({
+        _tag: "StreamEvent",
+        event,
+      }));
+    case "result":
+      return Option.map(decodeResult(json), (result): CliMessage => ({
+        _tag: "Result",
+        result,
+      }));
+    case "assistant":
+      return Option.map(decodeAssistant(json), ({ message }): CliMessage => ({
+        _tag: "AssistantMessage",
+        id: Option.fromUndefinedOr(message.id),
+        content: message.content,
+      }));
+    case "rate_limit_event":
+      return Option.map(decodeRateLimit(json), (body): CliMessage => ({
+        _tag: "RateLimit",
+        info: body.rate_limit_info,
+      }));
+    case "control_request":
+      return Option.orElse(
+        Option.map(decodeToolPermissionRequest(json), (body): CliMessage => ({
+          _tag: "ToolPermissionRequest",
+          requestId: body.request_id,
+          toolName: body.request.tool_name,
+          input: body.request.input ?? {},
+        })),
+        () =>
+          Option.map(decodeMcpRequest(json), (body): CliMessage => ({
+            _tag: "McpRequest",
+            requestId: body.request_id,
+            serverName: body.request.server_name,
+            message: body.request.message,
+          })),
+      );
+    case "control_response":
+      return Option.map(decodeControlResponse(json), (body): CliMessage => ({
+        _tag: "ControlResponse",
+        requestId: body.response.request_id,
+        success: body.response.subtype === "success",
+      }));
+    default:
+      return Option.none();
+  }
+};
+
+/**
+ * Decode one stdout line. None for anything that is not a JSON envelope (the
+ * CLI prints debug lines); an envelope that is unknown or malformed decodes
+ * to `Other` so it still counts as output.
+ */
+export const decodeCliLine = (line: string): Option.Option<CliMessage> => {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) return Option.none();
+  return decodeJson(trimmed).pipe(
+    Option.flatMap((json) =>
+      Option.map(decodeEnvelope(json), ({ type }) =>
+        Option.getOrElse(decodeEnvelopeBody(type, json), (): CliMessage => ({
+          _tag: "Other",
+          type,
+        })),
+      ),
+    ),
+  );
+};
+
+/** The label a wire message is counted under in traces. */
+export const cliMessageLabel = (message: CliMessage): string => {
+  switch (message._tag) {
+    case "StreamEvent":
+      return "stream_event";
+    case "Result":
+      return "result";
+    case "ToolPermissionRequest":
+    case "McpRequest":
+      return "control_request";
+    case "ControlResponse":
+      return "control_response";
+    case "AssistantMessage":
+      return "assistant";
+    case "RateLimit":
+      return "rate_limit_event";
+    case "Other":
+      return message.type;
+  }
+};
+
+const McpToolCallParams = Schema.Struct({
+  name: Schema.String,
+  _meta: Schema.optional(
+    Schema.Struct({
+      "claudecode/toolUseId": Schema.optional(Schema.String),
+    }),
+  ),
+});
+
+const decodeMcpToolCallParams = Schema.decodeUnknownOption(McpToolCallParams);
+
+/** What identifies an MCP `tools/call`: the tool and the block that asked. */
+export interface McpToolCall {
+  /** The pi tool name, without the MCP server prefix. */
+  readonly name: string;
+  /** The assistant `tool_use` block this call executes, when the CLI tags it. */
+  readonly toolUseId: Option.Option<string>;
+}
+
+/** Read a `tools/call` request's params. Arguments stay with pi's own toolCall. */
+export const decodeMcpToolCall = (params: unknown): Option.Option<McpToolCall> =>
+  Option.map(decodeMcpToolCallParams(params), (decoded) => ({
+    name: decoded.name,
+    toolUseId: Option.fromUndefinedOr(decoded._meta?.["claudecode/toolUseId"]),
+  }));
+
+const McpCancelledParams = Schema.Struct({ requestId: JsonRpcId });
+const decodeMcpCancelledParams = Schema.decodeUnknownOption(McpCancelledParams);
+
+/** The request id a `notifications/cancelled` abandons. */
+export const decodeMcpCancelledRequestId = (params: unknown): Option.Option<JsonRpcId> =>
+  Option.map(decodeMcpCancelledParams(params), (decoded) => decoded.requestId);
+
+// ---- stdin ------------------------------------------------------------------
+
+/** Text or an image, in the Anthropic API's encoding. */
+export type CliTextOrImageBlock =
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "image";
+      readonly source: {
+        readonly type: "base64";
+        readonly media_type: string;
+        readonly data: string;
+      };
+    };
+
+/** One content block of a user message, in the Anthropic API's encoding. */
+export type CliUserContentBlock =
+  | CliTextOrImageBlock
+  | {
+      /**
+       * The result of an earlier `tool_use`; only in a replayed history.
+       * Keys in the order, and `is_error` only when true, as the CLI writes
+       * the result of a held call, so a replay sends the same bytes.
+       */
+      readonly tool_use_id: string;
+      readonly type: "tool_result";
+      readonly content: ReadonlyArray<CliTextOrImageBlock>;
+      readonly is_error?: true;
+    };
+
+/** One content block of a replayed assistant message. */
+export type CliAssistantContentBlock =
+  | { readonly type: "text"; readonly text: string }
+  /** Signed thinking, exactly as the API returned it. */
+  | SignedThinkingBlock
+  | {
+      readonly type: "tool_use";
+      readonly id: string;
+      readonly name: string;
+      readonly input: Readonly<Record<string, unknown>>;
+    };
+
+/** A JSON-RPC response for the CLI's MCP client. */
+export type McpResponse =
+  | {
+      readonly jsonrpc: "2.0";
+      readonly id: JsonRpcId;
+      readonly result: unknown;
+    }
+  | {
+      readonly jsonrpc: "2.0";
+      readonly id: JsonRpcId;
+      readonly error: { readonly code: number; readonly message: string };
+    };
+
+const line = (value: unknown): string => JSON.stringify(value) + "\n";
+
+/**
+ * A user message. By default it starts a turn. With `hold` it is added to
+ * the CLI's conversation without asking the model (`shouldQuery: false`),
+ * and the CLI answers with an empty `result`: how a history is replayed.
+ */
+export const userMessageLine = (
+  content: ReadonlyArray<CliUserContentBlock>,
+  options: { readonly hold?: boolean } = {},
+): string =>
+  line({
+    type: "user",
+    message: { role: "user", content },
+    ...(options.hold === true ? { shouldQuery: false } : {}),
+  });
+
+/**
+ * An assistant message of a replayed history. The CLI appends it to its
+ * conversation as it is and answers nothing. `modelId` must be the model the
+ * process runs: the CLI removes thinking blocks from an assistant message
+ * that names another model, or none.
+ */
+export const assistantReplayLine = (
+  modelId: string,
+  content: ReadonlyArray<CliAssistantContentBlock>,
+): string =>
+  line({
+    type: "assistant",
+    message: { role: "assistant", model: modelId, content },
+  });
+
+/**
+ * A control request of ours. `interrupt` ends the running turn the way Esc
+ * does; the turn then ends with an `error_during_execution` result.
+ */
+export const controlRequestLine = (
+  requestId: string,
+  request: ThinkingControl | { readonly subtype: "interrupt" },
+): string => line({ type: "control_request", request_id: requestId, request });
+
+/**
+ * The answer to a tool permission request. Claude Code 2.x nests
+ * `request_id` inside `response`, and an allow must echo the tool input.
+ */
+export const toolPermissionResponseLine = (
+  requestId: string,
+  decision:
+    | {
+        readonly behavior: "allow";
+        readonly updatedInput: Readonly<Record<string, unknown>>;
+      }
+    | { readonly behavior: "deny"; readonly message: string },
+): string =>
+  line({
+    type: "control_response",
+    response: { subtype: "success", request_id: requestId, response: decision },
+  });
+
+/** The answer to an in-band MCP request. */
+export const mcpResponseLine = (requestId: string, response: McpResponse): string =>
+  line({
+    type: "control_response",
+    response: {
+      subtype: "success",
+      request_id: requestId,
+      response: { mcp_response: response },
+    },
+  });
+
+/**
+ * A notification from the in-band MCP server to the CLI's MCP client. It
+ * travels the other way round from everything else the server sends: as a
+ * control request of ours, which the CLI acknowledges with a control response.
+ */
+export const mcpServerNotificationLine = (
+  requestId: string,
+  serverName: string,
+  method: string,
+): string =>
+  line({
+    type: "control_request",
+    request_id: requestId,
+    request: {
+      subtype: "mcp_message",
+      server_name: serverName,
+      message: { jsonrpc: "2.0", method },
+    },
+  });
+
+/**
+ * The acknowledgement of an in-band MCP notification. The CLI's control
+ * channel wants a response for every request, so a notification gets an
+ * empty result.
+ */
+export const mcpNotificationAckLine = (requestId: string): string =>
+  mcpResponseLine(requestId, { jsonrpc: "2.0", id: 0, result: {} });

@@ -32,6 +32,26 @@ func (a *app) refreshModels() {
 	}()
 }
 
+func (a *app) refreshProvider(id string) {
+	if a.modelsLoading {
+		return
+	}
+	a.modelsLoading = true
+	a.modelsError = ""
+	go func() {
+		inventory, err := a.api.RefreshProvider(a.ctx, id)
+		a.update(func() {
+			a.modelsLoading = false
+			if err != nil {
+				a.modelsError = err.Error()
+				return
+			}
+			a.modelsInventory = inventory
+			a.modelsLoaded = true
+		})
+	}()
+}
+
 func (a *app) modelsPanel(c *ui.Context) {
 	ui.Column(c).Fill().Gap(10).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
@@ -71,7 +91,7 @@ func (a *app) modelsPanel(c *ui.Context) {
 						continue
 					}
 					providerCount++
-					providerStatus(c, p)
+					a.providerStatus(c, p)
 				}
 				if providerCount == 0 {
 					text(c, "No matching providers", 12, muted)
@@ -102,13 +122,24 @@ func (a *app) modelsPanel(c *ui.Context) {
 	})
 }
 
-func providerStatus(c *ui.Context, p protocol.ProviderInfo) {
+func (a *app) providerStatus(c *ui.Context, p protocol.ProviderInfo) {
 	status := string(p.Status)
 	if p.Source != nil && *p.Source != "" {
 		status += " · " + *p.Source
 	}
-	ui.Row(c.Key("provider-" + p.Id)).Gap(8).Children(func() {
-		text(c, clean(p.Name), 12, ink).Grow(1).NoWrap().Ellipsis("…")
-		text(c, clean(status), 11, muted).NoWrap().Ellipsis("…").MaxWidth(250)
+	if p.CatalogSource != nil {
+		status += " · models: " + string(*p.CatalogSource)
+	}
+	ui.Column(c.Key("provider-" + p.Id)).Gap(4).Children(func() {
+		ui.Row(c).Gap(8).Children(func() {
+			text(c, clean(p.Name), 12, ink).Grow(1).NoWrap().Ellipsis("…")
+			text(c, clean(status), 11, muted).NoWrap().Ellipsis("…").MaxWidth(250)
+			if p.ExternalAuth != nil && action(c, "Refresh login & models", a.modelsLoading) {
+				a.refreshProvider(p.Id)
+			}
+		})
+		if p.ExternalAuth != nil && p.Status != protocol.ProviderInfoStatusConfigured {
+			text(c, clean(*p.ExternalAuth), 11, muted)
+		}
 	})
 }

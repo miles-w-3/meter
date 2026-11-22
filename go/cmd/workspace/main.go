@@ -118,7 +118,7 @@ func run(args []string) error {
 		})
 	case "tui":
 		flags := flag.NewFlagSet("tui", flag.ContinueOnError)
-		cwd := flags.String("cwd", "", "execution-host project directory")
+		cwd := flags.String("cwd", "", "start a conversation in the project for this directory")
 		id := flags.String("conversation", "", "existing conversation ID")
 		name := flags.String("workspace", "default", "workspace layout for the conversation switcher")
 		noMouse := flags.Bool("no-mouse", false, "leave mouse input to the terminal for selection")
@@ -133,27 +133,30 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		var conversation protocol.Conversation
-		if *id != "" {
-			conversation, err = api.Conversation(ctx, *id)
-		} else {
-			path, pathErr := filepath.Abs(*cwd)
-			if pathErr != nil {
-				return pathErr
+		var start tui.Start
+		switch {
+		case *id != "":
+			conversation, err := api.Conversation(ctx, *id)
+			if err != nil {
+				return err
 			}
-			conversation, err = api.Create(ctx, path)
-			if err != nil && client.Uncertain(err) {
-				return fmt.Errorf("create outcome unknown; check server logs before retrying: %w", err)
+			start.Conversation = &conversation
+		case *cwd != "":
+			path, err := filepath.Abs(*cwd)
+			if err != nil {
+				return err
 			}
-		}
-		if err != nil {
-			return err
+			start.Cwd, start.Create = path, true
+		default:
+			start.Cwd, _ = os.Getwd()
 		}
 		tuiCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		model := tui.New(tuiCtx, api, conversation, info, tui.Options{NoMouse: *noMouse, Transparent: *transparent, Workspace: *name})
-		_, err = tea.NewProgram(model, tea.WithContext(tuiCtx)).Run()
-		fmt.Println("Conversation", model.ConversationID())
+		app := tui.NewApp(tuiCtx, api, info, tui.Options{NoMouse: *noMouse, Transparent: *transparent, Workspace: *name}, start)
+		_, err = tea.NewProgram(app, tea.WithContext(tuiCtx)).Run()
+		if id := app.ConversationID(); id != "" {
+			fmt.Println("Conversation", id)
+		}
 		return err
 	}
 	return errors.New("expected workspace gui, tui, server, or dictation")

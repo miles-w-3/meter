@@ -77,7 +77,9 @@ export type Provider = string;
 
 export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch) {
   const useOpenAI = provider !== "fixture";
-  const modelId = useOpenAI ? process.env.PI_MODEL : "faux-1";
+  // An empty provider is the normal server mode: it has no environment default.
+  // Explicit providers are still accepted by direct harness callers and the live smoke test.
+  const modelId = useOpenAI ? (provider ? process.env.PI_MODEL : undefined) : "faux-1";
   const providerId = provider === "openai-smoke" ? "openai" : provider;
   const models = useOpenAI ? await ModelRuntime.create({ allowModelNetwork: false }) : (() => {
     const fixtureModels = createModels();

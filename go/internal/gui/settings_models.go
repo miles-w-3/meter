@@ -88,7 +88,7 @@ func (a *app) modelsPanel(c *ui.Context) {
 					}
 					shown++
 					ui.Row(c.Key(m.Provider + "/" + m.ModelId)).Gap(8).Children(func() {
-						text(c, clean(m.Name), 12, ink).Grow(1).NoWrap().Ellipsis("…")
+						text(c, clean(m.Name), 12, ink).Grow(1).SingleLine()
 						text(c, clean(m.Provider), 11, muted).NoWrap()
 					})
 				}
@@ -108,7 +108,7 @@ func providerStatus(c *ui.Context, p protocol.ProviderInfo) {
 		status += " · " + *p.Source
 	}
 	ui.Row(c.Key("provider-" + p.Id)).Gap(8).Children(func() {
-		text(c, clean(p.Name), 12, ink).Grow(1).NoWrap().Ellipsis("…")
-		text(c, clean(status), 11, muted).NoWrap().Ellipsis("…").MaxWidth(250)
+		text(c, clean(p.Name), 12, ink).Grow(1).SingleLine()
+		text(c, clean(status), 11, muted).SingleLine().MaxWidth(250)
 	})
 }

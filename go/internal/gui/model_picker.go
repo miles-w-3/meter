@@ -78,11 +78,12 @@ func (a *app) modelChip(c *ui.Context, node protocol.LayoutNode, p *pane, locked
 	if locked {
 		tooltip += " · Available when the conversation is idle and connected"
 	}
-	button := ui.ButtonBase(c.Key("model-chip")).Label("Choose model and thinking").Tooltip(tooltip).MaxWidth(190).MinWidth(0).Shrink(1).Clip().Padding(2, 5).Radius(4).Disabled(locked || p.modelPicker.pending)
+	button := ui.ButtonBase(c.Key("model-chip")).Label("Choose model and thinking").Tooltip(tooltip).MaxWidth(220).MinWidth(0).Shrink(1).Clip().
+		Padding(2, 8).Radius(controlRadius).Border(1, theme.Border).Disabled(locked || p.modelPicker.pending)
 	if button.Hovered() && !locked {
 		button.Background(panel)
 	}
-	button.Children(func() { text(c, "◇ "+label+" ⌄", 12, muted).Font(monoFont).NoWrap().Ellipsis("…") })
+	button.Children(func() { text(c, label+" ⌄", 12, muted).Font(monoFont).MinWidth(0).Shrink(1).SingleLine() })
 	if button.Clicked() {
 		picker := &p.modelPicker
 		picker.open, picker.query, picker.error, picker.index = true, "", "", 0
@@ -191,12 +192,12 @@ func (a *app) modelPickerPanel(c *ui.Context, node protocol.LayoutNode, p *pane)
 						if chosen {
 							mark = "✓ "
 						}
-						text(c, mark+model.Name, 12, ink).Grow(1).NoWrap().Ellipsis("…")
+						text(c, mark+model.Name, 12, ink).Grow(1).SingleLine()
 						label := model.Provider
 						if !available {
 							label += " · " + status
 						}
-						text(c, label, 11, muted).NoWrap().Ellipsis("…").MaxWidth(150)
+						text(c, label, 11, muted).SingleLine().MaxWidth(150)
 					})
 					if row.Clicked() {
 						picker.index = i
@@ -209,7 +210,7 @@ func (a *app) modelPickerPanel(c *ui.Context, node protocol.LayoutNode, p *pane)
 			})
 		})
 		if selected := a.modelInfo(picker.draft.Model); selected != nil {
-			text(c, clean(selected.Name), 13, ink).FontWeight(600).NoWrap().Ellipsis("…")
+			text(c, clean(selected.Name), 13, ink).FontWeight(600).SingleLine()
 			if len(selected.ThinkingLevels) <= 1 {
 				text(c, "Thinking not configurable", 12, muted)
 			} else {

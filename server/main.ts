@@ -26,8 +26,9 @@ process.umask(0o077);
 const configHome = process.platform === "darwin" ? join(homedir(), "Library", "Application Support") :
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
 const data = resolve(process.env.PI_WORKSPACE_HOME || join(configHome, "pi-workspace"));
-const provider = process.env.PI_PROVIDER ?? "openai";
-if (!provider || provider.length > 160) throw new Error("Invalid PI_PROVIDER");
+// PI_PROVIDER is only a test-mode switch. Ordinary providers are selected per conversation.
+const provider = process.env.PI_PROVIDER === "fixture" || process.env.PI_PROVIDER === "openai-smoke"
+  ? process.env.PI_PROVIDER : "";
 await mkdir(data, { recursive: true, mode: 0o700 });
 const directory = await lstat(data);
 if (!directory.isDirectory() || directory.uid !== process.getuid?.() || (directory.mode & 0o077)) {

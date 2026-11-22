@@ -196,10 +196,7 @@ func (m *Model) View() tea.View {
 		lines = append(lines, f.row(""), "")
 	}
 	status := m.status(f.width)
-	if f.hint && m.notice == "" && !time.Now().Before(m.mouseHintUntil) && !time.Now().Before(m.stopUntil) && !time.Now().Before(m.quitUntil) {
-		hint := m.hintLine(f.width)
-		status = columns(m.status(max(0, f.width-ansi.StringWidth(hint)-2)), hint, f.width)
-	}
+
 	lines = append(lines, f.row(status), "")
 	if m.overlay.kind != overlayNone {
 		m.drawOverlay(lines, f)
@@ -257,7 +254,7 @@ func (m *Model) header(width int) string {
 	if m.width < 60 {
 		return ansi.Truncate(label, width, "…")
 	}
-	return columns(label, c.faint.Render(clean(m.info.Provider)), width)
+	return ansi.Truncate(label, width, "…")
 }
 
 func (m *Model) viewport(f frame) []string {
@@ -334,10 +331,12 @@ func (m *Model) hintLine(width int) string {
 	h.SetWidth(width)
 	h.Styles = help.Styles{ShortKey: m.colors.muted, ShortDesc: m.colors.faint, ShortSeparator: m.colors.faint}
 	switch m.overlay.kind {
+	case overlayModel:
+		return h.View(shortHelp{keys("↑↓", "choose"), keys("⏎", "select"), keys("esc", "close")})
 	case overlaySearch:
 		return h.View(shortHelp{keys("⏎", "find"), keys("esc", "close")})
 	case overlaySwitch:
-		return h.View(shortHelp{keys("↑↓", "choose"), keys("⏎", "open"), keys("esc", "close")})
+		return h.View(shortHelp{keys("↑↓", "choose"), keys("⏎", "open"), keys("tab", "projects"), keys("esc", "close")})
 	case overlayPager:
 		return h.View(shortHelp{keys("j/k", "scroll"), keys("g/G", "top/bottom"), keys("y", "copy"), keys("esc", "close")})
 	}
@@ -361,62 +360,27 @@ func (m *Model) status(width int) string {
 	case now.Before(m.quitUntil):
 		return c.warning.Render("ctrl+c again to quit")
 	}
-	status := ""
-	switch {
-	case !m.connected:
-		status = c.warning.Render("● connecting or reconnecting")
-	case m.running():
-		status = c.warning.Render(m.spinner.View() + " running")
-	case m.state.Current.Status == "failed":
-		status = c.errorStyle.Render("✗ failed")
+	if m.notice != "" {
+		return ansi.Truncate(c.warning.Render(m.notice), width, "…")
 	}
-	path := shortenPath(clean(m.conversation.Cwd))
-	if i := strings.LastIndex(path, string(filepath.Separator)); i >= 0 {
-		path = c.faint.Render(path[:i+1]) + c.fog.Render(path[i+1:])
+	if now.Before(m.mouseHintUntil) {
+		return ansi.Truncate(c.muted.Render("Hold Shift (or Option) to select · --no-mouse"), width, "…")
 	}
-	tail := ""
+	path := homePath(clean(m.conversation.Cwd))
+	right := c.muted.Render(m.modelLabel())
 	if usage := m.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
 		pct := theme.Percent(usage.Tokens, usage.Window)
-		tail = c.muted.Render("ctx ") + c.contextMeter(pct) + " " + c.muted.Render(fmt.Sprintf("%.0f%%", math.Ceil(pct)))
+		right += "  " + c.muted.Render("ctx ") + c.contextMeter(pct) + " " + c.muted.Render(fmt.Sprintf("%.0f%%", math.Ceil(pct)))
 	}
-	if m.running() && width >= 60 && len(m.spark) > 0 {
-		glyphs := []rune("▁▂▃▄▅▆▇█")
-		var spark strings.Builder
-		for _, rate := range m.spark {
-			spark.WriteRune(glyphs[min(7, int(rate/10))])
-		}
-		tail += " " + c.faint.Render(spark.String())
+	if m.running() {
+		right = c.warning.Render(m.spinner.View()) + "  " + right
 	}
-	notice := m.notice
-	if now.Before(m.mouseHintUntil) {
-		notice = "Hold Shift (or Option) to select · --no-mouse"
+	// Preserve the useful end of a long directory, while reserving the right side.
+	available := max(0, width-ansi.StringWidth(right)-1)
+	if ansi.StringWidth(path) > available {
+		path = ansi.TruncateLeft(path, max(0, ansi.StringWidth(path)-available+1), "…")
 	}
-	parts := make([]string, 0, 3)
-	budget := width
-	if status != "" {
-		parts = append(parts, status)
-		budget -= ansi.StringWidth(status) + 3
-	}
-	if tail != "" {
-		budget -= ansi.StringWidth(tail) + 3
-	}
-	if budget > 3 && path != "" {
-		parts = append(parts, ansi.TruncateLeft(path, max(0, ansi.StringWidth(path)-budget), "…"))
-	}
-	if tail != "" {
-		parts = append(parts, tail)
-	}
-	status = strings.Join(parts, " · ")
-	if notice != "" {
-		if ansi.StringWidth(notice)+2 >= width {
-			return ansi.Truncate(c.muted.Render(notice), width, "…")
-		}
-		if ansi.StringWidth(status)+ansi.StringWidth(notice)+3 > width {
-			return columns(ansi.Truncate(status, max(0, width-ansi.StringWidth(notice)-2), "…"), c.muted.Render(notice), width)
-		}
-		status = columns(status, c.muted.Render(notice), width)
-	}
-	return ansi.Truncate(status, width, "…")
+	return columns(c.fog.Render(path), right, width)
 }
 
 func shortenPath(path string) string {
@@ -429,7 +393,6 @@ func shortenPath(path string) string {
 	}
 	return "…" + string(filepath.Separator) + name
 }
-
 func columns(left, right string, width int) string {
 	if right == "" {
 		return ansi.Truncate(left, max(0, width), "…")

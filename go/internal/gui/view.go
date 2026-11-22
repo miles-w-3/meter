@@ -59,13 +59,6 @@ func (a *app) viewWithDictation(c *ui.Context, beginDictation func(uuid.UUID, *p
 			Leading: func() {
 				ui.Image(c, firTitle).Size(23, 23)
 				text(c, "meter", 17, ink).Font(monoFont).FontWeight(600)
-				if project, ok := a.activeProject(); ok {
-					crumb := project.Name
-					if tab := a.activeTab(); tab != nil {
-						crumb += " › " + tabName(*tab)
-					}
-					text(c, clean(crumb), 12, muted).NoWrap().Ellipsis("…").MaxWidth(240)
-				}
 				if a.name != "default" {
 					text(c, a.name, 12, muted)
 				}
@@ -92,7 +85,7 @@ func (a *app) viewWithDictation(c *ui.Context, beginDictation func(uuid.UUID, *p
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			project, hasProject := a.activeProject()
 			a.sidebarView(c, project)
-			ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Radius(12).Clip().Background(contentSurface).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Clip().Background(background).Children(func() {
 				tab := a.activeTab()
 				if hasProject {
 					a.projectHeader(c, project, tab)
@@ -137,7 +130,7 @@ func (a *app) viewWithDictation(c *ui.Context, beginDictation func(uuid.UUID, *p
 func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 	ui.Column(c).Width(sidebarWidth).MinWidth(sidebarWidth).MinHeight(0).Background(sidebar).Padding(14, 16).Gap(9).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			sectionLabel(c, "PROJECTS").Grow(1)
+			sectionLabel(c, "Projects").Grow(1)
 			if ghostPlus(c, "Add project", a.busy()).Clicked() {
 				a.pathError = ""
 				a.projectForm = !a.projectForm
@@ -162,9 +155,11 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 						if selected {
 							color = ink
 						}
-						text(c, item.Name, 13, color).Grow(1).NoWrap().Ellipsis("…")
-						text(c, fmt.Sprint(count), 11, muted).Font(monoFont).FontFeatures("tnum").
-							Tooltip(fmt.Sprintf("%d running panes", count))
+						text(c, item.Name, 13, color).Grow(1).MinWidth(0).SingleLine()
+						if count > 0 {
+							text(c, fmt.Sprint(count), 11, runningColor).Font(monoFont).FontFeatures("tnum").Shrink(0).
+								Tooltip(fmt.Sprintf("%d running panes", count))
+						}
 					})
 					row.ContextMenu(func(m *ui.Menu) { a.projectMenu(m, item, selected) })
 					if row.Clicked() && !selected {
@@ -186,8 +181,8 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 			})
 		}
 		ui.Box(c).Height(1).Background(theme.Border)
-		sectionLabel(c, "RECENT")
-		filter := ui.TextInputBase(c, &a.filter).Placeholder("Filter conversations").Label("Filter conversations").Padding(7, 9).Radius(6).Background(panel)
+		sectionLabel(c, "Recent")
+		filter := ui.TextInputBase(c, &a.filter).Placeholder("Filter conversations").Label("Filter conversations").Padding(7, 9).Radius(inputRadius).Background(panel)
 		if filter.Focused() {
 			a.dictationTextFocused = true
 			filter.Border(1, theme.Focus)
@@ -209,7 +204,7 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 							}
 						})
 						ui.Column(c).Gap(3).Grow(1).MinWidth(0).Padding(4, 0).Children(func() {
-							text(c, title, 13, ink).NoWrap().Ellipsis("…")
+							text(c, title, 13, ink).SingleLine()
 							subtitle := tabName(entry.tab)
 							for _, p := range a.catalog.Projects {
 								if entry.tab.ProjectId != nil && p.Id == entry.tab.ProjectId.String() {
@@ -220,7 +215,7 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 							if conversation.LastActivity != nil {
 								subtitle += " · " + activityAge(c.Now(), *conversation.LastActivity)
 							}
-							text(c, subtitle, 11, muted).NoWrap().Ellipsis("…")
+							text(c, subtitle, 11, muted).SingleLine()
 						})
 					})
 					if row.Clicked() {
@@ -312,9 +307,6 @@ func (a *app) daemonPill(c *ui.Context) {
 		label, color = "Local daemon", theme.Success
 	} else if a.loaded {
 		label = "Reconnecting"
-	}
-	if a.provider != "" {
-		label += " · " + a.provider
 	}
 	if mygoui.Button(c, mygoui.ButtonOptions{
 		Label: label, Tooltip: "Backend info", Variant: mygoui.ButtonSecondary, Size: uitheme.ButtonExtraSmall,
@@ -418,9 +410,13 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 						continue
 					}
 					selected := active != nil && active.Id == tab.Id
-					row := ui.Row(c.Key(tab.Id.String())).Height(32).Padding(0, 4, 0, 10).Gap(4).AlignItems(ui.Center).Radius(8)
+					row := ui.Row(c.Key(tab.Id.String())).Height(32).Padding(0, 4, 0, 10).Gap(4).AlignItems(ui.Center).Radius(controlRadius)
 					if selected {
-						row.Background(contentSurface)
+						// The pane surface joins the selected tab to its panes; the
+						// moss rule makes the selection legible at a glance.
+						row.Background(contentSurface).DrawOver(func(p *ui.Painter, b ui.Rect) {
+							p.Fill(ui.Rect{X: b.X + 10, Y: b.Y + b.H - 2, W: max(0, b.W-20), H: 2}, accent, 1)
+						})
 					}
 					row.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, tab) })
 					row.Children(func() {
@@ -430,7 +426,7 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 							if selected {
 								color = ink
 							}
-							text(c, tabName(tab), 13, color).NoWrap().Ellipsis("…").MaxWidth(200)
+							text(c, tabName(tab), 13, color).SingleLine().MaxWidth(200)
 						})
 						if chip.Clicked() && !selected {
 							a.tabEditor, a.cwdEditor = nil, nil
@@ -438,7 +434,7 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 							a.save(func(layout *protocol.Layout) { layout.ActiveTab = &tab.Id })
 						}
 						ui.Row(c.Key("close")).Size(closeSize, closeSize).Shrink(0).Center().Children(func() {
-							if row.Hovered() && iconButton(c, closeIcon, "Close tab "+tabName(tab), a.busy()).AlignSelf(ui.Center).Clicked() {
+							if selected && row.Hovered() && iconButton(c, closeIcon, "Close tab "+tabName(tab), a.busy()).AlignSelf(ui.Center).Clicked() {
 								a.requestCloseTab(tab)
 							}
 						})
@@ -534,10 +530,11 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					}
 				}
 				column := ui.Column(c.Key(node.Id.String())).Width(paneWidth).MinWidth(paneWidth).MinHeight(0).Clip().
-					Radius(12).Background(contentSurface).Focusable().Transition(ui.ElementTransition{Enter: &ui.Motion{X: 6}})
-				border := theme.Border
-				if a.selectedPane == node.Id {
-					border = muted
+					Radius(paneRadius).Background(contentSurface).Focusable().Transition(ui.ElementTransition{Enter: &ui.Motion{X: 6}})
+				// Keep a transparent 1px border so focus never shifts the layout.
+				border := ui.Transparent
+				if a.selectedPane == node.Id && len(panes) > 1 {
+					border = focusBorder
 				}
 				column.Border(1, border)
 				if p := a.panes[node.Id]; p != nil && p.connected && p.state.Current.Status == "running" {
@@ -556,9 +553,6 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					}
 				})
 				column.Children(func() {
-					if len(panes) > 1 {
-						ui.Box(c).FillWidth().Height(1).Background(highlight)
-					}
 					if a.tree != nil && a.tree.pane == node.Id {
 						a.treePane(c, a.tree)
 					} else {
@@ -763,8 +757,7 @@ func (a *app) composerWithStop(c *ui.Context, id uuid.UUID, p *pane, options for
 	if recording {
 		status, border = dictationStatus(a.dictation)
 	}
-	ui.Column(c).FillWidth().MinWidth(0).Radius(8).Clip().Background(panel).Border(1, border).Children(func() {
-		ui.Box(c).FillWidth().Height(1).Background(highlight)
+	ui.Column(c).FillWidth().MinWidth(0).Radius(inputRadius).Clip().Background(panel).Border(1, border).Children(func() {
 		imagePreviews(c, p)
 		ui.Row(c).Padding(8, paneGutter, 8, paneTextInset).Gap(8).AlignItems(ui.Start).Children(func() {
 			input := ui.TextAreaBase(c, draft).Grow(1).MinWidth(0).Lines(1, 8).Label(options.Label).

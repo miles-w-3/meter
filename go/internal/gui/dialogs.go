@@ -193,7 +193,7 @@ func (a *app) conversationPalette(c *ui.Context) {
 						row := sidebarRow(c.Key(conversation.Id), title, a.busy())
 						row.Children(func() {
 							ui.Column(c).Grow(1).Padding(5, 8).Gap(4).Children(func() {
-								text(c, title, 13, ink).NoWrap().Ellipsis("…")
+								text(c, title, 13, ink).SingleLine()
 								pathLabel(c, conversation.Cwd)
 							})
 						})

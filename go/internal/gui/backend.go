@@ -97,7 +97,7 @@ func (a *app) backendStatus(c *ui.Context) {
 	info := a.backendInfo
 	state := "Unavailable"
 	if a.backendOnline {
-		state = "Running · " + info.Provider
+		state = "Running"
 		if info.Transport != nil {
 			state += " · " + string(*info.Transport)
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -152,7 +153,7 @@ func (m *Model) open(conversation protocol.Conversation) {
 	m.session = s
 	m.conversation = conversation
 	m.connected, m.reconnecting = false, false
-	m.streamEpoch++
+	m.streamEpoch = int(streamEpochs.Add(1))
 	m.pending = nil
 	m.spark, m.lastPartial, m.lastDelta, m.rate, m.runTarget = nil, 0, time.Time{}, 0, ""
 	m.stopUntil, m.quitUntil, m.stopTarget = time.Time{}, time.Time{}, ""
@@ -245,6 +246,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				cmd = m.finishSearch()
 			}
 		}
+	case modelsMsg:
+		cmd = m.receiveModels(msg)
+	case modelChangedMsg:
+		m.receiveModelChanged(msg)
 	case catalogMsg:
 		cmd = m.receiveCatalog(msg)
 	case toolOutputMsg:
@@ -256,7 +261,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case confirmationExpired:
 		// One redraw clears the expired confirmation or mouse hint.
 	case tea.PasteMsg:
-		if m.overlay.kind == overlaySearch || m.overlay.kind == overlaySwitch || m.overlay.pagerFind {
+		if m.overlay.kind == overlaySearch || m.overlay.kind == overlaySwitch || m.overlay.kind == overlayModel || m.overlay.pagerFind {
 			cmd = m.updateOverlay(tea.PasteMsg{Content: clean(msg.Content)})
 		} else if m.overlay.kind == overlayNone {
 			m.focusComposer()
@@ -312,7 +317,7 @@ func (m *Model) addSpark(now time.Time) {
 
 func (s *session) handleSent(err error, mayRetry bool) {
 	s.submission.Resolve(err)
-	s.notice = "Input accepted"
+	s.notice = ""
 	if err == nil {
 		return
 	}
@@ -387,4 +392,13 @@ func value[T any](p *T) (v T) {
 		return *p
 	}
 	return v
+}
+
+var streamEpochs atomic.Int64
+
+func (m *Model) stop() {
+	if m.cancelStream != nil {
+		m.cancelStream()
+	}
+	m.streamEpoch = int(streamEpochs.Add(1))
 }

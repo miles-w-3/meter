@@ -51,6 +51,10 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		m.quitUntil = now.Add(2 * time.Second)
 		return tea.Batch(m.abort(), tea.Tick(2*time.Second, func(time.Time) tea.Msg { return confirmationExpired{} }))
+	case "ctrl+l":
+		if m.overlay.kind == overlayNone {
+			return m.openModels()
+		}
 	case "ctrl+k":
 		if m.overlay.kind == overlaySwitch {
 			m.overlay = overlay{}

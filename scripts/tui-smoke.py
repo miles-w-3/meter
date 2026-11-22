@@ -62,6 +62,10 @@ with tempfile.TemporaryDirectory(prefix="pi-m1-tui-") as directory, tempfile.Tem
     try:
         first = Terminal(["tui", "--cwd", project], env)
         terminals.append(first)
+        first.wait(rb"New project")
+        first.send(b"\r")  # Confirm directory.
+        first.wait(rb"add project and start")
+        first.send(b"\r")  # Register project and start its conversation.
         first.wait(rb"ctx ")
         first.send(b"fixture:tools-slow\r")
         first.wait(rb"streamed model output")
@@ -79,12 +83,12 @@ with tempfile.TemporaryDirectory(prefix="pi-m1-tui-") as directory, tempfile.Tem
         second.wait(rb"reconnect draft")
         second.output = b""
         subprocess.run([CLI, "server", "stop"], env=env, check=True, timeout=5)
-        second.wait(rb"connecting or reconnecting")
+        second.wait(rb"reconnecting")
         second.output = b""
         subprocess.run([CLI, "server", "start"], env=env, check=True, timeout=12)
-        second.wait(rb"fixture")
+        second.wait(rb"streamed model output")  # Transcript returns after reconnect.
         second.send(b"\r")
-        second.wait(rb"Input accepte(?:\x1b\[\?7l)?d")
+        second.wait(rb"streamed model output")
         second.send(b"\x11")  # Detach even if a queued draft has started running.
         assert second.wait(rb"Conversation ([0-9]+)").group(1) == conversation
         print("Real Bubble Tea clients detached, reattached, and sent a draft preserved across daemon reconnect")

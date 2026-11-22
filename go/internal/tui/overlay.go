@@ -22,24 +22,29 @@ type overlayKind uint8
 const (
 	overlayNone overlayKind = iota
 	overlaySwitch
+	overlayModel
 	overlaySearch
 	overlayPager
 	overlayHelp
 )
 
 type overlay struct {
-	kind       overlayKind
-	list       list.Model
-	filter     textinput.Model
-	tool       Block
-	pagerText  string
-	pagerTop   int
-	pagerBusy  bool
-	pagerError string
-	pagerFind  bool
-	pagerQuery string
-	pagerMatch int
-	helpTop    int
+	kind                              overlayKind
+	list                              list.Model
+	filter                            textinput.Model
+	tool                              Block
+	pagerText                         string
+	pagerTop                          int
+	pagerBusy                         bool
+	pagerError                        string
+	pagerFind                         bool
+	pagerQuery                        string
+	pagerMatch                        int
+	helpTop                           int
+	expected                          protocol.Selection
+	chosen                            protocol.ModelInfo
+	levels, modelLoaded, modelPending bool
+	modelError                        string
 }
 
 type conversationItem struct {
@@ -228,7 +233,7 @@ func (m *Model) filterSwitcher() {
 
 func (m *Model) resizeOverlay() {
 	w, h := m.overlaySize(m.frame())
-	if m.overlay.kind == overlaySwitch {
+	if m.overlay.kind == overlaySwitch || m.overlay.kind == overlayModel {
 		m.overlay.list.SetSize(w-2, max(1, h-4))
 		m.overlay.filter.SetWidth(max(1, w-10))
 	}
@@ -263,6 +268,23 @@ func (m *Model) drawOverlay(lines []string, f frame) {
 		content = append(content, c.moss.Render("Switch conversation"), m.overlay.filter.View())
 		if len(m.overlay.list.VisibleItems()) == 0 {
 			content = append(content, c.muted.Render("No matching conversations"))
+		} else {
+			content = append(content, strings.Split(m.overlay.list.View(), "\n")...)
+		}
+	case overlayModel:
+		title := "Choose model"
+		if m.overlay.levels {
+			title = "Choose thinking level · " + clean(m.overlay.chosen.Name)
+		}
+		content = append(content, c.moss.Render(title))
+		if !m.overlay.levels {
+			content = append(content, m.overlay.filter.View())
+		}
+		if m.overlay.modelError != "" {
+			content = append(content, c.warning.Render(m.overlay.modelError))
+		}
+		if !m.overlay.modelLoaded {
+			content = append(content, c.muted.Render("Loading models…"))
 		} else {
 			content = append(content, strings.Split(m.overlay.list.View(), "\n")...)
 		}
@@ -326,7 +348,8 @@ var helpRows = [][2]string{
 	{"y", "Copy a turn, code block or tool output"},
 	{"Mouse wheel", "Scroll three lines"},
 	{"Shift / Option + drag", "Select text, or start with --no-mouse"},
-	{"Ctrl+K", "Switch conversations"},
+	{"Ctrl+K", "Switch conversations; Tab there for projects"},
+	{"Ctrl+L", "Choose model and thinking level"},
 	{"?", "Open or close help"},
 }
 
@@ -453,6 +476,9 @@ func (m *Model) updateOverlay(message tea.Msg) tea.Cmd {
 			}
 		case overlaySwitch:
 			switch msg.String() {
+			case "tab":
+				project := m.conversation.ProjectId
+				return func() tea.Msg { return leaveMsg{project: project} }
 			case "enter":
 				if item, ok := m.overlay.list.SelectedItem().(conversationItem); ok {
 					m.overlay = overlay{}
@@ -466,6 +492,10 @@ func (m *Model) updateOverlay(message tea.Msg) tea.Cmd {
 				var cmd tea.Cmd
 				m.overlay.list, cmd = m.overlay.list.Update(msg)
 				return cmd
+			}
+		case overlayModel:
+			if msg.String() == "enter" || msg.String() == "up" || msg.String() == "down" || msg.String() == "pgup" || msg.String() == "pgdown" {
+				return m.modelKey(msg)
 			}
 		case overlayHelp:
 			_, h := m.overlaySize(m.frame())
@@ -521,7 +551,10 @@ func (m *Model) updateOverlay(message tea.Msg) tea.Cmd {
 		var cmd tea.Cmd
 		m.search, cmd = m.search.Update(message)
 		return cmd
-	case overlaySwitch:
+	case overlayModel, overlaySwitch:
+		if m.overlay.kind == overlayModel && m.overlay.levels {
+			return nil
+		}
 		before := m.overlay.filter.Value()
 		var cmd tea.Cmd
 		m.overlay.filter, cmd = m.overlay.filter.Update(message)

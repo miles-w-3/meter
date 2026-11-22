@@ -227,6 +227,7 @@ func (m *Model) View() tea.View {
 		view.MouseMode = tea.MouseModeCellMotion
 	}
 	if !m.dumb {
+		view.KeyboardEnhancements.ReportEventTypes = true
 		view.KeyboardEnhancements.ReportAlternateKeys = true
 		view.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
 		view.KeyboardEnhancements.ReportAssociatedText = true
@@ -372,7 +373,15 @@ func (m *Model) status(width int) string {
 		pct := theme.Percent(usage.Tokens, usage.Window)
 		right += "  " + c.muted.Render("ctx ") + c.contextMeter(pct) + " " + c.muted.Render(fmt.Sprintf("%.0f%%", math.Ceil(pct)))
 	}
-	if m.running() {
+	if r := m.recording; r != nil && !r.released {
+		indicator := " "
+		if r.ready {
+			indicator = c.errorStyle.Render("■")
+		} else if r.blink {
+			indicator = c.warning.Render("■")
+		}
+		right = indicator + "  " + right
+	} else if m.running() {
 		right = c.warning.Render(m.spinner.View()) + "  " + right
 	}
 	// Preserve the useful end of a long directory, while reserving the right side.

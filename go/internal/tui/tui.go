@@ -50,6 +50,10 @@ type Model struct {
 	colors                        terminalTheme
 	focused                       bool
 	mayAbort, mayRetry            bool
+	mayDictate, keyReleases       bool
+	spaceHold                     *spaceHold
+	holdID                        uint64
+	recording                     *tuiRecording
 	stopUntil, quitUntil          time.Time
 	stopTarget                    string
 	spinner                       spinner.Model
@@ -89,6 +93,8 @@ func New(ctx context.Context, api *client.Client, conversation protocol.Conversa
 	m.search.SetStyles(textinput.Styles{})
 	for _, capability := range info.Capabilities {
 		switch capability {
+		case "dictation":
+			m.mayDictate = true
 		case "abort-target":
 			m.mayAbort = true
 		case "retry-submit":
@@ -128,6 +134,7 @@ func (m *Model) Init() tea.Cmd {
 func (m *Model) ConversationID() string { return m.conversation.Id }
 
 func (m *Model) open(conversation protocol.Conversation) {
+	m.cancelDictation()
 	if m.cancelStream != nil {
 		m.cancelStream()
 	}
@@ -189,6 +196,21 @@ func (m *Model) running() bool {
 func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := message.(type) {
+	case tea.KeyboardEnhancementsMsg:
+		m.keyReleases = msg.SupportsEventTypes()
+	case holdExpired:
+		cmd = m.startDictation(msg.id)
+	case dictationBlink:
+		if m.recording == msg.recording && !msg.recording.ready && !msg.recording.released {
+			msg.recording.blink = !msg.recording.blink
+			cmd = blinkDictation(msg.recording)
+		}
+	case dictationEvent:
+		cmd = m.receiveDictation(msg)
+	case tea.KeyReleaseMsg:
+		if msg.Code == ' ' {
+			cmd = m.releaseSpace()
+		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.resizeComposer()
@@ -257,10 +279,15 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		cmd = m.key(msg)
 	case tea.MouseWheelMsg, tea.MouseClickMsg:
-		cmd = m.mouse(message)
+		if m.recording == nil {
+			cmd = m.mouse(message)
+		}
 	case confirmationExpired:
 		// One redraw clears the expired confirmation or mouse hint.
 	case tea.PasteMsg:
+		if m.recording != nil {
+			break
+		}
 		if m.overlay.kind == overlaySearch || m.overlay.kind == overlaySwitch || m.overlay.kind == overlayModel || m.overlay.pagerFind {
 			cmd = m.updateOverlay(tea.PasteMsg{Content: clean(msg.Content)})
 		} else if m.overlay.kind == overlayNone {
@@ -397,6 +424,7 @@ func value[T any](p *T) (v T) {
 var streamEpochs atomic.Int64
 
 func (m *Model) stop() {
+	m.cancelDictation()
 	if m.cancelStream != nil {
 		m.cancelStream()
 	}

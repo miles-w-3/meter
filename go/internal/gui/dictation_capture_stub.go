@@ -4,11 +4,11 @@ package gui
 
 import (
 	"context"
-	"errors"
+	"pi-workspace.local/workspace/internal/microphone"
 )
 
-const canCaptureAudio = false
+const canCaptureAudio = microphone.Available
 
-func captureMicrophone(context.Context, <-chan struct{}, chan<- []byte, chan<- struct{}) error {
-	return errors.New("microphone capture is unavailable in this build")
+func captureMicrophone(ctx context.Context, release <-chan struct{}, samples chan<- []byte, ready chan<- struct{}) error {
+	return microphone.Capture(ctx, release, samples, ready)
 }

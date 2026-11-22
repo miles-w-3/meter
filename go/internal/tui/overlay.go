@@ -335,6 +335,7 @@ var helpRows = [][2]string{
 	{"Enter", "Send or queue a follow-up"},
 	{"Alt+Enter / Ctrl+S", "Steer a running conversation"},
 	{"Shift+Enter / Ctrl+J", "Insert a newline"},
+	{"Hold Space", "Dictate (supported terminals); release to finish"},
 	{"Esc", "Focus transcript, then confirm stop while running"},
 	{"Ctrl+C / Ctrl+Q", "Stop then quit / detach"},
 	{"Ctrl+R", "Retry or restore a rejected submission"},

@@ -96,40 +96,38 @@ func (a *app) mermaidBlock(c *ui.Context, b *mmd.CodeBlockView) {
 	item := a.diagram(source)
 	root := ui.Column(c).FillWidth().MinWidth(0).Gap(6).Padding(8).Radius(6).Background(panel)
 	state := *ui.Local(root, mermaidBlockKey{}, func() *mermaidBlockState { return &mermaidBlockState{} })
-	root.Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Spacer(c)
-			toggle := iconButton(c, diagramCodeIcon, "Show source", false).Role(ui.RoleToggleButton).Checked(state.source)
-			if state.source {
-				toggle.Background(selectedFill)
-			}
-			if toggle.Clicked() {
-				state.source = !state.source
-			}
-			if item.image != nil && item.err == nil && !item.loading {
-				if iconButton(c, diagramSaveIcon, "Save SVG", false).Clicked() {
-					a.saveDiagram(item.result.SVG)
-				}
-				if iconButton(c, diagramPopOutIcon, "Pop out diagram", false).Clicked() {
-					a.openDiagram(item)
-				}
-			}
-		})
-		if item.loading {
-			text(c, "Rendering diagram…", 12, muted)
-			mermaidSource(c, source, b.Language)
-			return
-		}
-		if item.err != nil {
-			text(c, "Diagram unavailable: "+item.err.Error(), 12, warning)
-			mermaidSource(c, source, b.Language)
-			return
-		}
+	actions := func() {
+		toggle := iconButton(c, diagramCodeIcon, "Show source", false).Role(ui.RoleToggleButton).Checked(state.source)
 		if state.source {
+			toggle.Background(selectedFill)
+		}
+		if toggle.Clicked() {
+			state.source = !state.source
+		}
+		if item.image != nil && item.err == nil && !item.loading {
+			if iconButton(c, diagramSaveIcon, "Save SVG", false).Clicked() {
+				a.saveDiagram(item.result.SVG)
+			}
+			if iconButton(c, diagramPopOutIcon, "Pop out diagram", false).Clicked() {
+				a.openDiagram(item)
+			}
+		}
+	}
+	root.Children(func() {
+		if item.loading || item.err != nil || state.source {
+			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Spacer(c)
+				actions()
+			})
+			if item.loading {
+				text(c, "Rendering diagram…", 12, muted)
+			} else if item.err != nil {
+				text(c, "Diagram unavailable: "+item.err.Error(), 12, warning)
+			}
 			mermaidSource(c, source, b.Language)
 			return
 		}
-		diagramCanvas(c, item, 220)
+		diagramCanvas(c, item, 220, actions)
 	})
 }
 
@@ -171,10 +169,12 @@ func (a *app) openDiagram(item *mermaidEntry) {
 
 type diagramCanvasKey struct{}
 type diagramCanvasState struct {
-	scroll      ui.ScrollState
-	zoom        float32
-	ready, drag bool
-	x, y        float32
+	scroll                ui.ScrollState
+	zoom                  float32
+	ready, drag           bool
+	auto                  bool
+	lastWidth, lastHeight float32
+	x, y                  float32
 }
 
 const diagramMargin float32 = 600
@@ -186,6 +186,7 @@ func (s *diagramCanvasState) input(e ui.InputEvent) bool {
 			return false
 		}
 		s.drag = true
+		s.auto = false
 		s.x, s.y = e.X, e.Y
 		return true
 	case ui.InputPointerMove:
@@ -203,6 +204,7 @@ func (s *diagramCanvasState) input(e ui.InputEvent) bool {
 		s.drag = false
 		return true
 	case ui.InputZoom:
+		s.auto = false
 		s.zoomAt(s.zoom*e.Scale, e.X, e.Y)
 		return true
 	}
@@ -218,35 +220,67 @@ func (s *diagramCanvasState) zoomAt(value, x, y float32) {
 	s.scroll.Y = max(0, diagramMargin+(s.scroll.Y+y-diagramMargin)*factor-y)
 	s.zoom = value
 }
-func diagramCanvas(c *ui.Context, item *mermaidEntry, height float32) {
-	root := ui.Column(c).FillWidth().Grow(1).MinHeight(0).MinWidth(0).Gap(4)
-	if height > 0 {
-		root.Grow(0).Height(height).MinHeight(height).Shrink(0)
+
+// fit centers the complete diagram, leaving 12 DIPs around its edges.
+func (s *diagramCanvasState) fit(bounds ui.Rect, result mermaid.Result) {
+	w, h := max(float32(1), bounds.W-24), max(float32(1), bounds.H-24)
+	s.zoom = max(.25, min(4, min(w/float32(result.Width), h/float32(result.Height))))
+	s.scroll.X = max(0, diagramMargin+float32(result.Width)*s.zoom/2-bounds.W/2)
+	s.scroll.Y = max(0, diagramMargin+float32(result.Height)*s.zoom/2-bounds.H/2)
+}
+
+// inlineDiagramGeometry keeps small diagrams at native scale, fits wide ones
+// down to the viewport, and bounds the inline height for tall diagrams.
+func inlineDiagramGeometry(width float32, result mermaid.Result) (float32, float32) {
+	const minCanvas, maxCanvas, chrome, inset = 140, 420, 38, 24
+	if width <= 0 {
+		width = 600
 	}
-	s := *ui.Local(root, diagramCanvasKey{}, func() *diagramCanvasState { return &diagramCanvasState{zoom: 1} })
+	zoom := max(float32(.25), min(float32(1), max(float32(1), width-inset)/float32(result.Width)))
+	height := max(float32(minCanvas), min(float32(maxCanvas), float32(result.Height)*zoom+chrome+inset))
+	return zoom, height
+}
+func diagramCanvas(c *ui.Context, item *mermaidEntry, height float32, actions ...func()) {
+	root := ui.Column(c).FillWidth().Grow(1).MinHeight(0).MinWidth(0).Gap(4)
+	s := *ui.Local(root, diagramCanvasKey{}, func() *diagramCanvasState { return &diagramCanvasState{zoom: 1, auto: true} })
 	if !s.ready {
 		s.ready = true
 		s.scroll.X, s.scroll.Y = diagramMargin, diagramMargin
 	}
+	if height > 0 {
+		width := root.Bounds().W
+		_, measuredHeight := inlineDiagramGeometry(width, item.result)
+		root.Grow(0).Height(measuredHeight).MinHeight(measuredHeight).Shrink(0)
+	}
 	root.Children(func() {
-		ui.Row(c).Gap(6).Children(func() {
+		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 			bounds := s.scroll.Bounds(c)
+			if s.auto && bounds.W > 0 && bounds.H > 0 &&
+				(math.Abs(float64(bounds.W-s.lastWidth)) > .5 || math.Abs(float64(bounds.H-s.lastHeight)) > .5) {
+				s.fit(bounds, item.result)
+				s.lastWidth, s.lastHeight = bounds.W, bounds.H
+			}
 			if ghost(c, "−", false) {
+				s.auto = false
 				s.zoomAt(s.zoom/1.25, bounds.W/2, bounds.H/2)
 			}
 			text(c, fmt.Sprintf("%.0f%%", s.zoom*100), 12, muted)
 			if ghost(c, "+", false) {
+				s.auto = false
 				s.zoomAt(s.zoom*1.25, bounds.W/2, bounds.H/2)
 			}
 			if ghost(c, "Fit", false) && bounds.W > 0 && bounds.H > 0 {
-				w, h := max(float32(1), bounds.W-24), max(float32(1), bounds.H-24)
-				s.zoom = max(.25, min(4, min(w/float32(item.result.Width), h/float32(item.result.Height))))
-				s.scroll.X = max(0, diagramMargin+float32(item.result.Width)*s.zoom/2-bounds.W/2)
-				s.scroll.Y = max(0, diagramMargin+float32(item.result.Height)*s.zoom/2-bounds.H/2)
+				s.auto = false
+				s.fit(bounds, item.result)
 			}
-			if ghost(c, "Reset", false) {
+			if ghost(c, "Actual Size", false) {
+				s.auto = false
 				s.zoom = 1
 				s.scroll.X, s.scroll.Y = diagramMargin, diagramMargin
+			}
+			if len(actions) > 0 && actions[0] != nil {
+				ui.Spacer(c)
+				actions[0]()
 			}
 		})
 		cursor := ui.CursorGrab

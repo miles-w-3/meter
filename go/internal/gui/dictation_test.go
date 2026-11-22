@@ -23,26 +23,31 @@ func TestDictationDraft(t *testing.T) {
 	}
 }
 
-func TestDictationStatusTracksCaptureAndRelease(t *testing.T) {
+func TestDictationBorderTracksCaptureAndRelease(t *testing.T) {
 	p := &pane{}
 	r := &dictationRecording{pane: p}
 	a := &app{dictation: r}
 	driver := ui.NewTester(func(c *ui.Context) {
 		a.composer(c, uuid.Nil, p, form.ComposerOptions{Label: "Message", SubmitLabel: "Send"})
 	}, 500, 100)
-	driver.Frame()
-	if !driver.HasText("Starting…") {
-		t.Fatal("missing starting state")
-	}
-	r.live = true
-	driver.Frame()
-	if !driver.HasText("Listening") {
-		t.Fatal("missing live state")
-	}
-	r.released = true
-	driver.Frame()
-	if !driver.HasText("Transcribing…") || driver.HasText("Listening") {
-		t.Fatal("release did not exit live state")
+	for _, tc := range []struct {
+		live, released bool
+		border         ui.Color
+	}{
+		{false, false, ui.RGBA(210, 168, 95, .65)},
+		{true, false, ui.RGBA(218, 106, 104, .65)},
+		{true, true, ui.Transparent},
+	} {
+		r.live, r.released = tc.live, tc.released
+		driver.Frame()
+		if got := dictationBorder(r); got != tc.border {
+			t.Fatalf("wrong dictation border: got %v want %v", got, tc.border)
+		}
+		for _, label := range []string{"Starting…", "Listening", "Transcribing…"} {
+			if driver.HasText(label) {
+				t.Fatalf("unexpected dictation label %q", label)
+			}
+		}
 	}
 }
 
@@ -240,7 +245,7 @@ func TestSelectedPaneRecordingSurvivesFirstViewFrame(t *testing.T) {
 		t.Fatalf("recording did not survive start: starts=%d recording=%v canceled=%v", starts, a.dictation, canceled)
 	}
 	driver.Frame()
-	if a.dictation == nil || canceled || !driver.HasText("Starting…") {
+	if a.dictation == nil || canceled || !a.dictationVisible {
 		t.Fatal("recording was not visible on the next frame")
 	}
 	recording := a.dictation
@@ -249,7 +254,7 @@ func TestSelectedPaneRecordingSurvivesFirstViewFrame(t *testing.T) {
 		t.Fatal("release did not retain the recording for transcription")
 	}
 	driver.Frame()
-	if !driver.HasText("Transcribing…") || canceled {
+	if a.dictation != recording || !a.dictationVisible || canceled {
 		t.Fatal("recording was canceled before transcription")
 	}
 }

@@ -753,9 +753,8 @@ func (a *app) composerWithStop(c *ui.Context, id uuid.UUID, p *pane, options for
 		return !recording && !options.ReadOnly && !options.Disabled && !options.SubmitDisabled && (strings.TrimSpace(value) != "" || len(p.images) > 0)
 	}
 	border := ui.Transparent
-	status := ""
 	if recording {
-		status, border = dictationStatus(a.dictation)
+		border = dictationBorder(a.dictation)
 	}
 	ui.Column(c).FillWidth().MinWidth(0).Radius(inputRadius).Clip().Background(panel).Border(1, border).Children(func() {
 		imagePreviews(c, p)
@@ -797,9 +796,6 @@ func (a *app) composerWithStop(c *ui.Context, id uuid.UUID, p *pane, options for
 			a.dictationInput(c, input, p, options.ReadOnly || options.Disabled, func() { a.startDictation(id, p) })
 			if options.Actions != nil {
 				options.Actions()
-			}
-			if recording {
-				text(c, status, 11, muted).NoWrap()
 			}
 			if running {
 				button := ui.ButtonBase(c).Label("Stop").Size(32, 32).AlignSelf(ui.End).Radius(16).Background(accent).Center().Disabled(stopDisabled).KeepFocus()

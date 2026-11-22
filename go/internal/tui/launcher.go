@@ -542,6 +542,7 @@ func (l *launcher) View() tea.View {
 	view.AltScreen = !l.dumb
 	if !l.dumb {
 		view.WindowTitle = "meter"
+		view.KeyboardEnhancements.ReportEventTypes = true
 		view.KeyboardEnhancements.ReportAlternateKeys = true
 		view.KeyboardEnhancements.ReportAllKeysAsEscapeCodes = true
 		view.KeyboardEnhancements.ReportAssociatedText = true

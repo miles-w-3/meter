@@ -37,6 +37,7 @@ type App struct {
 	cached   *Model
 	size     *tea.WindowSizeMsg
 	profile  *tea.ColorProfileMsg
+	keyboard *tea.KeyboardEnhancementsMsg
 }
 
 func NewApp(ctx context.Context, api *client.Client, info protocol.ServerInfo, options Options, start Start) *App {
@@ -70,6 +71,8 @@ func (a *App) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		a.size = &msg
 	case tea.ColorProfileMsg:
 		a.profile = &msg
+	case tea.KeyboardEnhancementsMsg:
+		a.keyboard = &msg
 	case openMsg:
 		if a.model != nil {
 			return a, nil
@@ -109,6 +112,9 @@ func (a *App) replay(view tea.Model) {
 	}
 	if a.profile != nil {
 		view.Update(*a.profile)
+	}
+	if a.keyboard != nil {
+		view.Update(*a.keyboard)
 	}
 }
 

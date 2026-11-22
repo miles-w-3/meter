@@ -29,8 +29,12 @@ function conversationIDs(value: Layout) {
       if (!node || visited.has(id) || depth > 8) throw new InvalidLayout("Invalid split tree");
       visited.add(id);
       const split = [node.axis, node.ratio, node.first, node.second];
-      if (node.conversationId || node.empty) {
-        if (split.some((part) => part !== undefined) || (node.conversationId && (node.empty || node.cwd)) || (node.treePosition && !node.conversationId) || (node.pendingFork && (!node.treePosition || (!node.pendingFork.content.trim() && !node.pendingFork.images?.length)))) {
+      if (node.conversationId || node.empty || node.clientManaged) {
+        if (split.some((part) => part !== undefined) ||
+            (node.conversationId && (node.empty || node.clientManaged || node.cwd)) ||
+            (node.clientManaged && (node.empty || node.treePosition || node.pendingFork || node.resumeEntryId)) ||
+            (node.treePosition && !node.conversationId) ||
+            (node.pendingFork && (!node.treePosition || (!node.pendingFork.content.trim() && !node.pendingFork.images?.length)))) {
           throw new InvalidLayout("Invalid pane fields");
         }
         if (node.conversationId) {

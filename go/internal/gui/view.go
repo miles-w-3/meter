@@ -12,6 +12,7 @@ import (
 	"github.com/Cyenoch/mygoui/form"
 	"github.com/Cyenoch/mygoui/layout"
 	uitheme "github.com/Cyenoch/mygoui/theme"
+	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
 	"pi-workspace.local/workspace/internal/protocol"
@@ -449,6 +450,9 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 			})
 		})
 		if active != nil {
+			if iconButton(c, terminalIcon, "New terminal pane", a.busy() || len(orderedPanes(active)) >= maxPanes).AlignSelf(ui.Center).Clicked() {
+				a.appendPane(active.Id, terminalPane(project.Cwd))
+			}
 			if iconButton(c, newPaneIcon, "New pane", a.busy() || len(orderedPanes(active)) >= maxPanes).AlignSelf(ui.Center).Clicked() {
 				a.appendPane(active.Id, emptyPane())
 			}
@@ -607,6 +611,10 @@ func (a *app) dropGap(c *ui.Context, tab *protocol.LayoutTab, panes []protocol.L
 }
 
 func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.LayoutTab, node protocol.LayoutNode) {
+	if node.ClientManaged != nil && node.ClientManaged.Type == "terminal" {
+		a.renderTerminalPane(c, tab, node)
+		return
+	}
 	if node.ConversationId == nil {
 		cwd := project.Cwd
 		if node.Cwd != nil {
@@ -722,6 +730,21 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 	})
 	a.paneStatusLine(c, tab, node, conversation.Cwd, !p.connected || running, p)
 	a.directoryDialog(c, tab, node, !p.connected || running)
+}
+
+func (a *app) renderTerminalPane(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode) {
+	a.paneHeader(c, tab, node, paneTitle(node, "Terminal"))
+	if err := a.terminalErrors[node.Id]; err != "" {
+		ui.Column(c).Grow(1).MinHeight(0).Justify(ui.Center).AlignItems(ui.Center).Padding(16).Children(func() {
+			text(c, err, 12, warning).MaxWidth(400)
+		})
+		return
+	}
+	t, ok := a.terminals[node.Id].(*terminal.Terminal)
+	if !ok || t == nil {
+		return
+	}
+	terminal.View(c, t).Grow(1).FillWidth()
 }
 
 func (a *app) composer(c *ui.Context, id uuid.UUID, p *pane, options form.ComposerOptions) {

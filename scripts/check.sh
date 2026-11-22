@@ -24,5 +24,6 @@ node scripts/search-test.mjs
 node scripts/mermaid-catalog-test.mjs
 node scripts/compaction-test.mjs
 node scripts/tree-test.mjs
+node scripts/terminal-layout-test.mjs
 node scripts/integration.mjs
 python3 scripts/tui-smoke.py

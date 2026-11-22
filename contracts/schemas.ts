@@ -105,7 +105,7 @@ export const catalog = z.object({ projects: z.array(projectRecord), conversation
 export const treePosition = z.strictObject({ conversationId: opaque, entryId: opaque, restoreEntryId: opaque.optional() });
 export const pendingFork = z.strictObject({ requestId: opaque, content: z.string().max(32_000), images: z.array(imageAttachment).max(4).optional() });
 export const layoutNode = z.strictObject({
-  id: z.uuid(), conversationId: opaque.optional(), treePosition: treePosition.optional(), pendingFork: pendingFork.optional(), resumeEntryId: opaque.optional(), name: z.string().trim().min(1).max(80).optional(), widthShare: z.number().min(.01).max(1).optional(), empty: z.literal(true).optional(), cwd: cwd.optional(),
+  id: z.uuid(), conversationId: opaque.optional(), treePosition: treePosition.optional(), pendingFork: pendingFork.optional(), resumeEntryId: opaque.optional(), name: z.string().trim().min(1).max(80).optional(), widthShare: z.number().min(.01).max(1).optional(), empty: z.literal(true).optional(), clientManaged: z.strictObject({ type: z.literal("terminal") }).optional(), cwd: cwd.optional(),
   axis: z.enum(["horizontal", "vertical"]).optional(), ratio: z.number().min(.15).max(.85).optional(),
   first: z.uuid().optional(), second: z.uuid().optional(),
 });

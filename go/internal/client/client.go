@@ -217,6 +217,19 @@ func (c *Client) HistoryTree(ctx context.Context, id string) (protocol.HistoryTr
 	return protocol.HistoryTree{}, responseError(res.StatusCode(), res.GetBody())
 }
 
+// HistoricalPath returns a page on a fixed conversation path and its context usage.
+// at is a Durable entry ID on that conversation's history path.
+func (c *Client) HistoricalPath(ctx context.Context, id, at string, before *string) (protocol.HistoricalPath, error) {
+	res, err := c.api.GetHistoricalPathWithResponse(ctx, id, &protocol.GetHistoricalPathParams{At: at, Before: before})
+	if err != nil {
+		return protocol.HistoricalPath{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.HistoricalPath{}, responseError(res.StatusCode(), res.GetBody())
+}
+
 func (c *Client) History(ctx context.Context, id string, before *string) (protocol.HistoryPage, error) {
 	res, err := c.api.GetEntriesWithResponse(ctx, id, &protocol.GetEntriesParams{Before: before})
 	if err != nil {
@@ -237,6 +250,18 @@ func (c *Client) Submit(ctx context.Context, id string, input protocol.SubmitInp
 		return *body, nil
 	}
 	return protocol.Receipt{}, responseError(res.StatusCode(), res.GetBody())
+}
+
+// ForkAndSubmit creates or recovers the request's fork and admits its first message.
+func (c *Client) ForkAndSubmit(ctx context.Context, attached string, input protocol.ForkInput) (protocol.ForkReceipt, error) {
+	res, err := c.api.ForkAndSubmitMessageWithResponse(ctx, attached, input)
+	if err != nil {
+		return protocol.ForkReceipt{}, err
+	}
+	if body := res.GetJSON202(); body != nil {
+		return *body, nil
+	}
+	return protocol.ForkReceipt{}, responseError(res.StatusCode(), res.GetBody())
 }
 
 func (c *Client) RecallQueued(ctx context.Context, id, submission string) (protocol.RecalledMessage, error) {
@@ -395,6 +420,18 @@ func (o *frameOrder) accept(raw protocol.ConversationFrame, id string) (Event, e
 }
 
 // EntryImages retrieves stored image blocks separately from streaming updates.
+// UserMessage retrieves the full stored content and images for editing.
+func (c *Client) UserMessage(ctx context.Context, conversation, entry string) (protocol.UserMessage, error) {
+	res, err := c.api.GetUserMessageWithResponse(ctx, conversation, entry)
+	if err != nil {
+		return protocol.UserMessage{}, err
+	}
+	if res.JSON200 == nil {
+		return protocol.UserMessage{}, responseError(res.StatusCode(), res.Body)
+	}
+	return *res.JSON200, nil
+}
+
 func (c *Client) EntryImages(ctx context.Context, conversation, entry string) ([]protocol.ImageAttachment, error) {
 	res, err := c.api.GetEntryImagesWithResponse(ctx, conversation, entry)
 	if err != nil {

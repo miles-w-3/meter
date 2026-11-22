@@ -66,6 +66,15 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 }
 
 func (a *app) requestClosePane(tab, node uuid.UUID) {
+	if i := tabIndex(&a.layout, tab); i >= 0 {
+		if j := nodeIndex(&a.layout.Tabs[i], node); j >= 0 {
+			item := a.layout.Tabs[i].Nodes[j]
+			if item.PendingFork != nil {
+				a.notice = "Resolve the pending branch send before closing this pane."
+				return
+			}
+		}
+	}
 	if p := a.panes[node]; p != nil && p.connected && p.state.Current.Status == "running" {
 		a.closePaneConfirm = &paneDrag{tab: tab, pane: node}
 		return

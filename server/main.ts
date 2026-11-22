@@ -12,9 +12,9 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-works/pi-durable";
 import { WebSocket, WebSocketServer } from "ws";
-import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, layout, projectInput, projectRenameInput, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
+import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, forkInput, layout, projectInput, projectRenameInput, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
 import type { z, ZodType } from "zod";
-import { abortTarget, admit, contextTokens, entryText, entryImages, historyCursor, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
+import { abortTarget, admit, completedFork, contextTokens, entryText, entryImages, entryUserMessage, forkAndAdmit, historyCursor, NavigationBusy, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
 import type { Provider } from "./durable.ts";
 
 import { WebSearch } from "./tools/web-search.ts";
@@ -159,8 +159,8 @@ async function canonicalCwd(cwd: string) {
   throw new Problem(400, "invalid_cwd", "Working directory is not accessible");
 }
 
-async function history(conversation: Conversation, before: string | null) {
-  let maxEntryId: EntryId | undefined;
+async function history(conversation: Conversation, before: string | null, at?: EntryId) {
+  let maxEntryId: EntryId | undefined = at;
   if (before !== null) {
     if (!/^[a-zA-Z0-9_-]{1,32}$/.test(before)) throw new Problem(400, "invalid_cursor", "Invalid history cursor");
     const value = Number(Buffer.from(before, "base64url").toString("ascii"));
@@ -168,7 +168,7 @@ async function history(conversation: Conversation, before: string | null) {
       throw new Problem(400, "invalid_cursor", "Invalid history cursor");
     }
     if (value === 1) return { entries: [] };
-    maxEntryId = (value - 1) as EntryId;
+    maxEntryId = (at === undefined ? value - 1 : Math.min(at, value - 1)) as EntryId;
   }
   const page = await conversation.entries({ maxEntryId, order: "descending" }, 48, undefined, context);
   const entries = [...page.items].reverse();
@@ -270,6 +270,8 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     do {
       const page = await harness.commit((tx) => tx.scanConversations({ order: "descending" }, 80, cursor), context);
       for (const row of page.items) {
+        // History segments are presented through their tree, not as unrelated sessions.
+        if (row.parent) continue;
         const conversation = await harness.conversation(row.id, context);
         if (conversation) conversations.push(await metadata(conversation));
       }
@@ -298,8 +300,76 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (workspace) {
     if (req.method === "GET") return reply(res, 200, workspaces.get(workspace[1]));
     if (req.method === "PUT") {
-      const requested = await parseBody(req, layout);
-      return reply(res, 200, await workspaces.save(workspace[1], requested, conversationFor));
+      const requested = await parseBody(req, layout, 11_500_000);
+      const previous = workspaces.get(workspace[1]);
+      const oldNodes = new Map(previous.tabs.flatMap((tab) => tab.nodes.map((node) => [node.id, node] as const)));
+      const changes = requested.tabs.flatMap((tab) => tab.nodes).filter((node) => {
+        if (!node.treePosition || !node.conversationId) return false;
+        const old = oldNodes.get(node.id);
+        return old?.conversationId !== node.conversationId || old?.treePosition?.conversationId !== node.treePosition.conversationId || old?.treePosition?.entryId !== node.treePosition.entryId;
+      });
+      const resumes = requested.tabs.flatMap((tab) => tab.nodes).filter((node) => {
+        const old = oldNodes.get(node.id);
+        return !!old?.treePosition && !old.pendingFork && !node.treePosition && old.conversationId === node.conversationId;
+      });
+      const sources = [...new Set([...changes.map((node) => oldNodes.get(node.id)?.conversationId ?? node.conversationId!), ...resumes.map((node) => node.conversationId!)])].sort();
+      const save = async () => {
+        const newNodes = new Map(requested.tabs.flatMap((tab) => tab.nodes.map((node) => [node.id, node] as const)));
+        for (const old of oldNodes.values()) {
+          if (!old.pendingFork || !old.treePosition || !old.conversationId) continue;
+          const next = newNodes.get(old.id);
+          if (next && next.conversationId === old.conversationId && JSON.stringify(next.treePosition) === JSON.stringify(old.treePosition) && JSON.stringify(next.pendingFork) === JSON.stringify(old.pendingFork)) continue;
+          if (!next?.conversationId || next.treePosition || next.pendingFork || !await completedFork(harness, await conversationFor(old.conversationId), old.treePosition.conversationId, old.treePosition.entryId, old.pendingFork, next.conversationId)) {
+            throw new InvalidLayout("Resolve the pending branch send before changing or closing this pane");
+          }
+        }
+        for (const node of changes) {
+          const oldConversation = oldNodes.get(node.id)?.conversationId;
+          if (oldConversation && oldConversation !== node.conversationId) throw new InvalidLayout("Tree selection cannot change the attached conversation");
+          const attached = await conversationFor(node.conversationId!);
+          const parent = await conversationFor(node.treePosition!.conversationId);
+          const entry = node.treePosition!.entryId;
+          if (!/^[1-9][0-9]*$/.test(entry) || !Number.isSafeInteger(Number(entry))) throw new InvalidLayout("Invalid tree entry");
+          const tree = await discoverHistoryTree(harness, attached.id);
+          if (!tree?.branches.some((branch) => branch.conversationId === String(parent.id))) throw new InvalidLayout("Tree position is outside the conversation tree");
+          const at = Number(entry) as EntryId;
+          const selected = await parent.entries({ minEntryId: at, maxEntryId: at }, 1, undefined, context);
+          if (!selected.items.some((item) => item.id === at)) throw new InvalidLayout("Tree entry is not on the selected path");
+        }
+        for (const id of sources) {
+          const attached = await conversationFor(id);
+          const busy = await attached.commit(async (tx) => {
+            const live = await tx.doc(LiveDoc, attached.id);
+            const inbox = await tx.doc(InboxDoc, attached.id);
+            return !!live.run || inbox.items.length > 0;
+          }, context);
+          if (busy) throw new Problem(409, "busy", "Wait for the current conversation and queued messages to finish");
+        }
+        for (const node of requested.tabs.flatMap((tab) => tab.nodes)) {
+          const isResume = resumes.includes(node);
+          if (node.resumeEntryId && !isResume) throw new InvalidLayout("Unexpected live-tail selection");
+          if (!isResume) continue;
+          if (!node.resumeEntryId) throw new InvalidLayout("Live-tail selection is required");
+          const attached = await conversationFor(node.conversationId!);
+          let before: string | null = null;
+          let current: string | undefined;
+          do {
+            const page = await history(attached, before);
+            current = [...page.entries].reverse().find((entry) => entry.text !== "" || entry.toolName !== undefined || entry.imageCount !== undefined)?.id;
+            before = current ? null : page.before ?? null;
+          } while (before);
+          if (current !== node.resumeEntryId) throw new Problem(409, "stale_position", "The current conversation advanced. Reopen the tree and select its current position.");
+        }
+        // resumeEntryId is a transition check. Legacy restore markers are no longer used.
+        const clean = { ...requested, tabs: requested.tabs.map((tab) => ({ ...tab, nodes: tab.nodes.map(({ resumeEntryId: _resume, ...node }) => {
+          if (!node.treePosition) return node;
+          const { restoreEntryId: _restore, ...treePosition } = node.treePosition;
+          return { ...node, treePosition };
+        }) })) };
+        return workspaces.save(workspace[1], clean, conversationFor);
+      };
+      const locked = (index: number): Promise<z.infer<typeof layout>> => index === sources.length ? save() : control(sources[index], () => locked(index + 1));
+      return reply(res, 200, await locked(0));
     }
   }
   if (url.pathname === "/v1/conversations" && req.method === "POST") {
@@ -320,12 +390,67 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (!tree) throw new Problem(404, "not_found", "Conversation not found");
     return reply(res, 200, tree);
   }
+  const forkPath = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/fork-messages$/);
+  if (req.method === "POST" && forkPath) {
+    const input = await parseBody(req, forkInput, 11_300_000);
+    const attached = await conversationFor(forkPath[1]);
+    const parent = await conversationFor(input.parentConversationId);
+    if (!/^[1-9][0-9]*$/.test(input.at) || !Number.isSafeInteger(Number(input.at))) {
+      throw new Problem(400, "invalid_entry", "Choose an entry ID");
+    }
+    const tree = await discoverHistoryTree(harness, attached.id);
+    if (!tree?.branches.some((branch) => branch.conversationId === String(parent.id))) {
+      throw new Problem(404, "not_found", "Conversation is not in the current history tree");
+    }
+    const at = Number(input.at) as EntryId;
+    const selected = await parent.entries({ minEntryId: at, maxEntryId: at }, 1, undefined, context);
+    if (!selected.items.some((entry) => entry.id === at)) {
+      throw new Problem(404, "not_found", "Entry is not on this conversation's history path");
+    }
+    const agent = await parent.agent(context);
+    const receipt = await control(forkPath[1], () => forkAndAdmit(harness, attached, parent, at, {
+      requestId: input.requestId, mode: "prompt", content: input.content, images: input.images,
+    }, async () => {
+      if (!agent.model) throw new Problem(409, "model_unconfigured", "Set a default model and create a new conversation");
+      if (!models.getModel(agent.model.provider, agent.model.modelId)) throw new Problem(409, "model_unavailable", "The conversation's model is not in the current catalog");
+    }));
+    return reply(res, 202, receipt);
+  }
+  const pathMatch = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/path$/);
+  if (req.method === "GET" && pathMatch) {
+    const conversation = await conversationFor(pathMatch[1]);
+    const at = url.searchParams.get("at");
+    if (!at || !/^[1-9][0-9]*$/.test(at) || !Number.isSafeInteger(Number(at))) {
+      throw new Problem(400, "invalid_entry", "Choose an entry ID");
+    }
+    const entryId = Number(at) as EntryId;
+    const selected = await conversation.entries({ minEntryId: entryId, maxEntryId: entryId }, 1, undefined, context);
+    if (!selected.items.some((entry) => entry.id === entryId)) {
+      throw new Problem(404, "not_found", "Entry is not on this conversation's history path");
+    }
+    const [page, active] = await Promise.all([
+      history(conversation, url.searchParams.get("before"), entryId),
+      conversation.context(context, { at: entryId }),
+    ]);
+    return reply(res, 200, { ...page, contextTokens: contextTokens(active) });
+  }
   const titlePath = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/title$/);
   if (titlePath && req.method === "PUT") {
     const { name } = await parseBody(req, projectRenameInput);
     const conversation = await conversationFor(titlePath[1]);
     workspaces.renameConversation(titlePath[1], name);
     return reply(res, 200, await metadata(conversation));
+  }
+  const messagePath = url.pathname.match(/^\/v1\/conversations\/([^/]+)\/entries\/([1-9][0-9]*)\/message$/);
+  if (req.method === "GET" && messagePath) {
+    const id = Number(messagePath[2]) as EntryId;
+    if (!Number.isSafeInteger(id)) throw new Problem(400, "invalid_entry", "Invalid entry ID");
+    const conversation = await conversationFor(messagePath[1]);
+    const page = await conversation.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, context);
+    const entry = page.items.find((item) => item.id === id);
+    const message = entry && entryUserMessage(entry);
+    if (!message) throw new Problem(404, "not_found", "User message not found on this conversation's history path");
+    return reply(res, 200, message);
   }
   const imagePath = url.pathname.match(/^\/v1\/conversations\/([^/]+)\/entries\/([1-9][0-9]*)\/images$/);
   if (req.method === "GET" && imagePath) {
@@ -425,6 +550,7 @@ const server = createServer({ requestTimeout: 7000 }, (req, res) => {
       error instanceof LayoutConflict ? new Problem(409, "layout_conflict", error.message) :
       error instanceof InvalidLayout ? new Problem(400, "invalid_layout", error.message) :
       error instanceof RequestConflict ? new Problem(409, "request_conflict", error.message) :
+      error instanceof NavigationBusy ? new Problem(409, "busy", error.message) :
       error instanceof Error && error.constructor.name === "ConversationBusy" ? new Problem(409, "busy", "Conversation already running") :
       error instanceof Error && error.constructor.name === "ConversationIdle" ? new Problem(409, "idle", "Steering requires an active run") : undefined;
     if (!known) console.error(error);

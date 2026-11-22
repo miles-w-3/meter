@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
+	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/protocol"
 )
 
@@ -35,6 +36,9 @@ func TestTreePreviewLoadsPagesAndAvoidsRepeatedAncestors(t *testing.T) {
 	if len(rows) != 4 || rows[0].label != "user · question" || rows[1].label != "assistant · answer" || rows[2].id != "fork:2" || rows[3].label != "user · alternate" || rows[3].depth != 1 {
 		t.Fatalf("unexpected rows: %+v", rows)
 	}
+	if rows[0].conversation != "1" || rows[0].entryID != "1" || rows[0].entryParent != "" || rows[3].conversation != "2" || rows[3].entryID != "3" || rows[3].entryParent != "2" {
+		t.Fatalf("entry coordinates were lost: %+v", rows)
+	}
 	if !rows[1].current || rows[0].current || rows[3].current {
 		t.Fatalf("current position should mark root's last message: %+v", rows)
 	}
@@ -44,7 +48,7 @@ func TestTreePreviewLoadsPagesAndAvoidsRepeatedAncestors(t *testing.T) {
 	}
 }
 
-func TestTreeDoubleEscapeOpensOnlyForEmptyDraft(t *testing.T) {
+func TestTreeDoubleEscapePreservesDraft(t *testing.T) {
 	id := uuid.New()
 	p := &pane{conversation: "1", connected: true}
 	a := &app{loaded: true, selectedPane: id, panes: map[uuid.UUID]*pane{id: p}}
@@ -73,10 +77,11 @@ func TestTreeDoubleEscapeOpensOnlyForEmptyDraft(t *testing.T) {
 		t.Fatal("close did not dismiss tree")
 	}
 	p.draft = "unsent draft"
+	p.images = []draftImage{{}}
 	a.treeEscape(now)
 	a.treeEscape(now.Add(100 * time.Millisecond))
-	if a.tree != nil {
-		t.Fatal("tree opened over a draft")
+	if a.tree == nil || p.draft != "unsent draft" || len(p.images) != 1 {
+		t.Fatal("tree should open without changing the draft or attachments")
 	}
 }
 
@@ -162,5 +167,56 @@ func TestTreeJunctionDisclosure(t *testing.T) {
 	driver.Frame()
 	if preview.collapsed["fork:2"] || !driver.HasText("user · alternate") {
 		t.Fatal("junction did not expand descendants")
+	}
+}
+
+type hiddenParentTreeFixture struct{}
+
+func (hiddenParentTreeFixture) HistoryTree(context.Context, string) (protocol.HistoryTree, error) {
+	return protocol.HistoryTree{RootConversationId: "1", Branches: []protocol.HistoryBranch{{ConversationId: "1"}}}, nil
+}
+func (hiddenParentTreeFixture) History(context.Context, string, *string) (protocol.HistoryPage, error) {
+	return protocol.HistoryPage{Entries: []protocol.Entry{
+		{Id: "1", Kind: "pi.assistant", Text: "answer"},
+		{Id: "2", Kind: "bookkeeping"},
+		{Id: "3", Kind: "pi.user", Text: "question"},
+	}}, nil
+}
+
+func TestTreePreviewKeepsPhysicalParentWhenBookkeepingIsHidden(t *testing.T) {
+	rows, err := loadTreePreview(context.Background(), hiddenParentTreeFixture{}, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[1].parent != "1" || rows[1].entryParent != "2" || rows[1].conversation != "1" {
+		t.Fatalf("display and physical parents must remain distinct: %+v", rows)
+	}
+}
+
+func TestHistoricalTranscriptDoesNotMixLiveEntries(t *testing.T) {
+	p := &pane{connected: true}
+	live := protocol.ConversationView{ConversationId: "1", Status: protocol.Idle, Entries: []protocol.Entry{{Id: "3", Kind: "pi.assistant", Text: "live-only"}}}
+	historical := protocol.ConversationView{ConversationId: "1", Status: protocol.Idle, Entries: []protocol.Entry{{Id: "2", Kind: "pi.assistant", Text: "historical-only"}}}
+	p.state.Apply(client.Event{View: &live, Reset: true})
+	p.historical.Apply(client.Event{View: &historical, Reset: true})
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) { a.transcriptState(c, p, "1", &p.historical, func() {}, false) }, 600, 400)
+	driver.Frame()
+	if !driver.HasText("historical-only") || driver.HasText("live-only") {
+		t.Fatalf("historical view mixed the live stream: %v", driver.Texts())
+	}
+}
+
+func TestPinnedPaneCannotAccidentallySendToLiveConversation(t *testing.T) {
+	id, conversation := uuid.New(), "1"
+	node := protocol.LayoutNode{Id: id, ConversationId: &conversation, TreePosition: &protocol.TreePosition{ConversationId: conversation, EntryId: "2"}}
+	tab := protocol.LayoutTab{Id: uuid.New()}
+	setPanes(&tab, []protocol.LayoutNode{node})
+	a := &app{panes: map[uuid.UUID]*pane{id: {connected: true, conversation: conversation}}}
+	driver := ui.NewTester(func(c *ui.Context) { a.renderPane(c, protocol.Project{}, &tab, node) }, 600, 400)
+	driver.Frame()
+	_, hasComposer := driver.Find("Message 1")
+	if !driver.HasText("Tree preview · send a message to branch conversation") || hasComposer {
+		t.Fatalf("pinned pane must not show a live composer: %v", driver.Texts())
 	}
 }

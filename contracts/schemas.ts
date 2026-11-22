@@ -61,7 +61,13 @@ export const submitInput = z.strictObject({
   content: z.string().max(32_000),
   images: z.array(imageAttachment).max(4).optional(),
 }).refine((value) => value.content.trim().length > 0 || (value.images?.length ?? 0) > 0);
+export const forkInput = z.strictObject({
+  parentConversationId: opaque, at: opaque, requestId: opaque,
+  content: z.string().max(32_000), images: z.array(imageAttachment).max(4).optional(),
+}).refine((value) => value.content.trim().length > 0 || (value.images?.length ?? 0) > 0);
+export const forkReceipt = z.object({ conversationId: opaque, submissionId: opaque });
 export const recalledMessage = z.object({ content: z.string(), images: z.array(imageAttachment), clearedAfter: z.number().int().nonnegative() });
+export const userMessage = z.object({ content: z.string(), images: z.array(imageAttachment) });
 export const receipt = z.object({ submissionId: opaque });
 export const abortInput = z.strictObject({ target: opaque });
 export const problem = z.object({ code: z.string(), message: z.string() });
@@ -76,6 +82,7 @@ const entryImages = z.object({ images: z.array(imageAttachment) });
 export const page = z.object({ entries: z.array(entry), before: opaque.optional() });
 export const historyBranch = z.object({ conversationId: opaque, parentConversationId: opaque.optional(), at: opaque.optional() });
 export const historyTree = z.object({ rootConversationId: opaque, branches: z.array(historyBranch) });
+export const historicalPath = z.object({ entries: z.array(entry), before: opaque.optional(), contextTokens: z.number().int().nonnegative() });
 export const contextUsage = z.object({ tokens: z.number().int().nonnegative(), window: z.number().int().positive() });
 const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional(), target: z.string().optional() });
 export const queuedMessage = z.object({ id: opaque, text: z.string(), images: z.number().int().nonnegative(), mode: z.enum(["followUp", "steer"]) });
@@ -94,8 +101,11 @@ export const projectInput = z.strictObject({ cwd: z.string().min(1).max(4096), n
 export const projectRenameInput = z.strictObject({ name: z.string().trim().min(1).max(80) });
 export const projectRecord = z.object({ id: opaque, cwd: z.string(), name: z.string() });
 export const catalog = z.object({ projects: z.array(projectRecord), conversations: z.array(conversation) });
+// restoreEntryId is accepted only for compatibility with layouts saved by earlier builds.
+export const treePosition = z.strictObject({ conversationId: opaque, entryId: opaque, restoreEntryId: opaque.optional() });
+export const pendingFork = z.strictObject({ requestId: opaque, content: z.string().max(32_000), images: z.array(imageAttachment).max(4).optional() });
 export const layoutNode = z.strictObject({
-  id: z.uuid(), conversationId: opaque.optional(), name: z.string().trim().min(1).max(80).optional(), widthShare: z.number().min(.01).max(1).optional(), empty: z.literal(true).optional(), cwd: cwd.optional(),
+  id: z.uuid(), conversationId: opaque.optional(), treePosition: treePosition.optional(), pendingFork: pendingFork.optional(), resumeEntryId: opaque.optional(), name: z.string().trim().min(1).max(80).optional(), widthShare: z.number().min(.01).max(1).optional(), empty: z.literal(true).optional(), cwd: cwd.optional(),
   axis: z.enum(["horizontal", "vertical"]).optional(), ratio: z.number().min(.15).max(.85).optional(),
   first: z.uuid().optional(), second: z.uuid().optional(),
 });
@@ -105,12 +115,12 @@ export const layout = z.strictObject({
   activeTab: z.uuid().optional(), activeProject: z.uuid().optional(), closedProjects: z.array(z.uuid()).optional(), tabs: z.array(layoutTab).max(24),
 });
 export const models = {
-  ImageAttachment: imageAttachment, ServerInfo: serverInfo, CreateInput: createInput, CwdInput: cwdInput, Conversation: conversation, SubmitInput: submitInput,
-  QueuedMessage: queuedMessage, RecalledMessage: recalledMessage, Receipt: receipt, AbortInput: abortInput, Problem: problem, Entry: entry, HistoryPage: page, ToolOutput: toolOutput, EntryImages: entryImages,
-  HistoryBranch: historyBranch, HistoryTree: historyTree,
+  ImageAttachment: imageAttachment, ServerInfo: serverInfo, CreateInput: createInput, CwdInput: cwdInput, Conversation: conversation, SubmitInput: submitInput, ForkInput: forkInput, ForkReceipt: forkReceipt,
+  QueuedMessage: queuedMessage, RecalledMessage: recalledMessage, UserMessage: userMessage, Receipt: receipt, AbortInput: abortInput, Problem: problem, Entry: entry, HistoryPage: page, ToolOutput: toolOutput, EntryImages: entryImages,
+  HistoryBranch: historyBranch, HistoryTree: historyTree, HistoricalPath: historicalPath,
   ContextUsage: contextUsage, ConversationView: view, ConversationSnapshot: snapshot, ConversationUpdate: update,
   ConversationFrame: conversationFrame, ProjectInput: projectInput, ProjectRenameInput: projectRenameInput, Project: projectRecord, Catalog: catalog,
-  LayoutNode: layoutNode, LayoutTab: layoutTab, Layout: layout,
+  TreePosition: treePosition, PendingFork: pendingFork, LayoutNode: layoutNode, LayoutTab: layoutTab, Layout: layout,
   ModelRef: modelRef, Selection: selection, SelectionInput: selectionInput, SelectionChange: selectionChange, DefaultSettings: defaultSettings, Settings: settings,
   ToolSettingsChange: toolSettingsChange, SearchProviderChange: searchProviderChange, ToolsStatus: toolsStatus, SearchProviderStatus: searchProviderStatus,
   AuthMethod: authMethod, ProviderInfo: providerInfo, ModelInfo: modelInfo, ModelInventory: modelInventory,

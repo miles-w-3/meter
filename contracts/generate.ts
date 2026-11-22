@@ -13,14 +13,19 @@ for (const name of ["ConversationSnapshot", "ConversationUpdate"]) {
 }
 Object.assign((schemas.EntryImages.properties!.images as object), { items: ref("ImageAttachment") });
 Object.assign((schemas.RecalledMessage.properties!.images as object), { items: ref("ImageAttachment") });
+Object.assign((schemas.UserMessage.properties!.images as object), { items: ref("ImageAttachment") });
 Object.assign((schemas.SubmitInput.properties!.images as object), { items: ref("ImageAttachment") });
+Object.assign((schemas.ForkInput.properties!.images as object), { items: ref("ImageAttachment") });
+Object.assign((schemas.PendingFork.properties!.images as object), { items: ref("ImageAttachment") });
 Object.assign(schemas.ConversationView.properties!, { contextUsage: ref("ContextUsage"), selection: ref("Selection") });
 Object.assign(schemas.Conversation.properties!, { selection: ref("Selection") });
 Object.assign(schemas.CreateInput.properties!, { selection: ref("SelectionInput") });
+Object.assign(schemas.LayoutNode.properties!, { treePosition: ref("TreePosition"), pendingFork: ref("PendingFork") });
 Object.assign(schemas.SelectionChange.properties!, { expected: ref("Selection") });
 Object.assign((schemas.ConversationView.properties!.entries as object), { items: ref("Entry") });
 Object.assign((schemas.ConversationView.properties!.queued as object), { items: ref("QueuedMessage") });
 Object.assign((schemas.HistoryPage.properties!.entries as object), { items: ref("Entry") });
+Object.assign((schemas.HistoricalPath.properties!.entries as object), { items: ref("Entry") });
 Object.assign((schemas.HistoryTree.properties!.branches as object), { items: ref("HistoryBranch") });
 for (const [model, property, item] of [
   ["Catalog", "projects", "Project"], ["Catalog", "conversations", "Conversation"],
@@ -86,6 +91,14 @@ const spec = {
     "/v1/conversations/{id}/tree": { parameters: [id], get: {
       operationId: "GetHistoryTree", responses: { "200": response("Conversation fork ancestry", "HistoryTree"), ...failures },
     } },
+    "/v1/conversations/{id}/path": { parameters: [id], get: {
+      operationId: "GetHistoricalPath",
+      parameters: [
+        { in: "query", name: "at", required: true, schema: { type: "string" }, description: "Entry ID on the conversation's history path" },
+        { in: "query", name: "before", schema: { type: "string" } },
+      ],
+      responses: { "200": response("Historical transcript page and context usage", "HistoricalPath"), ...failures },
+    } },
     "/v1/conversations/{id}/title": { parameters: [id], put: post("RenameConversation", "ProjectRenameInput", "200", "Conversation") },
     "/v1/conversations/{id}/cwd": { parameters: [id], put: post("SetConversationCwd", "CwdInput", "200", "Conversation") },
     "/v1/conversations/{id}/model": { parameters: [id], put: post("SetConversationModel", "SelectionChange", "200", "Conversation") },
@@ -94,6 +107,9 @@ const spec = {
       parameters: [{ in: "query", name: "before", schema: { type: "string" } }],
       responses: { "200": response("Transcript page", "HistoryPage"), ...failures },
     } },
+    "/v1/conversations/{id}/entries/{entryId}/message": { parameters: [id, { ...id, name: "entryId" }], get: {
+      operationId: "GetUserMessage", responses: { "200": response("Full stored user message", "UserMessage"), ...failures },
+    } },
     "/v1/conversations/{id}/entries/{entryId}/images": { parameters: [id, { ...id, name: "entryId" }], get: {
       operationId: "GetEntryImages", responses: { "200": response("Stored message images", "EntryImages"), ...failures },
     } },
@@ -101,6 +117,7 @@ const spec = {
       operationId: "GetToolOutput", responses: { "200": response("Stored tool output", "ToolOutput"), ...failures },
     } },
     "/v1/conversations/{id}/messages": { parameters: [id], post: post("SubmitMessage", "SubmitInput", "202", "Receipt") },
+    "/v1/conversations/{id}/fork-messages": { parameters: [id], post: post("ForkAndSubmitMessage", "ForkInput", "202", "ForkReceipt") },
     "/v1/conversations/{id}/queue/{submission}/recall": { parameters: [id, { in: "path", name: "submission", required: true, schema: { type: "string" } }], post: { operationId: "RecallQueued", responses: { "200": response("Recalled", "RecalledMessage"), ...failures } } },
     "/v1/conversations/{id}/queue/{submission}/steer": { parameters: [id, { in: "path", name: "submission", required: true, schema: { type: "string" } }], post: { operationId: "SteerQueued", responses: { "202": { description: "Steering" }, ...failures } } },
     "/v1/conversations/{id}/abort": { parameters: [id], post: post("AbortRun", "AbortInput", "202") },

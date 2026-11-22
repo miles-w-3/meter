@@ -33,6 +33,12 @@ type pane struct {
 	rejected           bool
 	cancel             context.CancelFunc
 	state              client.State
+	historical         client.State
+	historyKey         string
+	historyLoading     bool
+	historyError       string
+	forkInFlight       bool
+	forkReceipt        *protocol.ForkReceipt
 	submission         client.Submission
 	list               ui.ListState
 	draft              string
@@ -266,11 +272,15 @@ func (a *app) syncPanes() {
 					a.tree = nil
 				}
 				if p == nil {
-					a.panes[node.Id] = &pane{}
+					p = &pane{}
+					a.panes[node.Id] = p
 				}
 				continue
 			}
 			if p != nil && p.conversation == *node.ConversationId {
+				if node.PendingFork != nil {
+					a.resumeFork(tab.Id, node, p)
+				}
 				continue
 			}
 			if a.tree != nil && a.tree.pane == node.Id {
@@ -280,19 +290,32 @@ func (a *app) syncPanes() {
 				p = &pane{}
 				a.panes[node.Id] = p
 			}
-			if !p.pendingFirst {
-				p.draft = ""
-			}
 			p.transcriptImages = nil
 			if p.cancel != nil {
 				p.cancel()
 			}
 			ctx, cancel := context.WithCancel(a.ctx)
 			p.cancel, p.conversation = cancel, *node.ConversationId
+			p.state, p.connected = client.State{}, false
+			if _, found := a.metadata(p.conversation); !found && a.api != nil && a.ctx != nil && a.update != nil {
+				go func(conversation string) {
+					info, err := a.api.Conversation(a.ctx, conversation)
+					a.update(func() {
+						if err == nil && p.conversation == conversation {
+							if _, exists := a.metadata(conversation); !exists {
+								a.catalog.Conversations = append(a.catalog.Conversations, info)
+							}
+						}
+					})
+				}(p.conversation)
+			}
+			if node.PendingFork != nil {
+				a.resumeFork(tab.Id, node, p)
+			}
 			go func(id uuid.UUID, conversation string) {
 				for event := range a.api.Subscribe(ctx, conversation) {
 					a.update(func() {
-						if a.panes[id] == p {
+						if a.panes[id] == p && p.conversation == conversation {
 							p.connected = event.View != nil
 							old := p.state.Current.Entries
 							p.state.Apply(event)
@@ -569,7 +592,7 @@ func (a *app) openIn(tabID, nodeID uuid.UUID, id string) {
 		tab := &layout.Tabs[tabIndex(layout, tabID)]
 		i := nodeIndex(tab, nodeID)
 		node := &tab.Nodes[i]
-		node.ConversationId, node.Empty, node.Cwd = &id, nil, nil
+		node.ConversationId, node.Empty, node.Cwd, node.TreePosition, node.PendingFork = &id, nil, nil, nil, nil
 	})
 }
 

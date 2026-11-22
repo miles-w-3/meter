@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { openHarness } from "../server/durable.ts";
+import { forkAndAdmit, NavigationBusy, openHarness, RequestConflict } from "../server/durable.ts";
 import { discoverHistoryTree, historyTree } from "../server/tree.ts";
 
 const data = await mkdtemp(join(tmpdir(), "meter-tree-"));
@@ -32,6 +32,32 @@ try {
   await harness.close(context);
   ({ harness } = await openHarness(db, "fixture"));
   assert.deepEqual(await discoverHistoryTree(harness, left.id), expected);
+
+  const reopened = await harness.conversation(root.id, context);
+  const input = { requestId: "fork-operation", mode: "prompt", content: "branch message" };
+  const results = await Promise.all([
+    forkAndAdmit(harness, reopened, reopened, at, input),
+    forkAndAdmit(harness, reopened, reopened, at, input),
+  ]);
+  assert.deepEqual(results[0], results[1], "concurrent retries must reuse fork and admission");
+  await assert.rejects(forkAndAdmit(harness, reopened, reopened, at, { ...input, content: "different" }), RequestConflict);
+  await assert.rejects(forkAndAdmit(harness, reopened, reopened, at, { ...input, requestId: "fork-after-error" }, async () => { throw new Error("admission interrupted"); }), /admission interrupted/);
+  const retried = await forkAndAdmit(harness, reopened, reopened, at, { ...input, requestId: "fork-after-error" });
+  assert.notEqual(retried.conversationId, results[0].conversationId);
+  const count = (await discoverHistoryTree(harness, root.id)).branches.length;
+  await harness.close(context);
+  ({ harness } = await openHarness(db, "fixture"));
+  const afterRestart = await harness.conversation(root.id, context);
+  assert.deepEqual(await forkAndAdmit(harness, afterRestart, afterRestart, at, input), results[0]);
+  assert.deepEqual(await forkAndAdmit(harness, afterRestart, afterRestart, at, { ...input, requestId: "fork-after-error" }), retried);
+  assert.equal((await discoverHistoryTree(harness, root.id)).branches.length, count);
+  await afterRestart.submit({ type: "input", content: "fixture:slow", requestId: "busy-fork" }, context);
+  await afterRestart.submit({ type: "input", content: "queued", requestId: "busy-queued", whenBusy: "followUp" }, context);
+  const otherPath = await harness.conversation(left.id, context);
+  await assert.rejects(forkAndAdmit(harness, afterRestart, otherPath, at, { ...input, requestId: "busy-op" }), NavigationBusy);
+  assert.equal((await discoverHistoryTree(harness, root.id)).branches.length, count, "rejected operation must not leave a fork");
+  assert.deepEqual(await forkAndAdmit(harness, afterRestart, afterRestart, at, input), results[0], "recovery of an existing operation remains safe while busy");
+  await afterRestart.waitForIdle(context);
   assert.equal(historyTree([], 999), undefined);
   assert.throws(() => historyTree([{ id: 1, parent: { conversationId: 2, at: 1 } }, { id: 2, parent: { conversationId: 1, at: 1 } }], 1), /cycle/);
   console.log("History tree discovers sibling forks and survives restart");

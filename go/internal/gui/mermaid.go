@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/Cyenoch/mygoicons/lucide"
+	"github.com/Cyenoch/mygoui/content"
+	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	mmd "github.com/egoist/mygo/ui/markdown"
@@ -85,7 +87,6 @@ func (a *app) diagram(source string) *mermaidEntry {
 
 var (
 	diagramCodeIcon   = lucide.CodeXML()
-	diagramCopyIcon   = lucide.Copy()
 	diagramSaveIcon   = lucide.Save()
 	diagramPopOutIcon = lucide.ExternalLink()
 )
@@ -97,16 +98,13 @@ func (a *app) mermaidBlock(c *ui.Context, b *mmd.CodeBlockView) {
 	state := *ui.Local(root, mermaidBlockKey{}, func() *mermaidBlockState { return &mermaidBlockState{} })
 	root.Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			text(c, "Mermaid", 12, muted).Grow(1)
+			ui.Spacer(c)
 			toggle := iconButton(c, diagramCodeIcon, "Show source", false).Role(ui.RoleToggleButton).Checked(state.source)
 			if state.source {
 				toggle.Background(selectedFill)
 			}
 			if toggle.Clicked() {
 				state.source = !state.source
-			}
-			if iconButton(c, diagramCopyIcon, "Copy source", false).Clicked() {
-				c.WriteClipboard(source)
 			}
 			if item.image != nil && item.err == nil && !item.loading {
 				if iconButton(c, diagramSaveIcon, "Save SVG", false).Clicked() {
@@ -119,19 +117,28 @@ func (a *app) mermaidBlock(c *ui.Context, b *mmd.CodeBlockView) {
 		})
 		if item.loading {
 			text(c, "Rendering diagram…", 12, muted)
-			mmd.DefaultCodeBlock(c, b)
+			mermaidSource(c, source, b.Language)
 			return
 		}
 		if item.err != nil {
 			text(c, "Diagram unavailable: "+item.err.Error(), 12, warning)
-			mmd.DefaultCodeBlock(c, b)
+			mermaidSource(c, source, b.Language)
 			return
 		}
 		if state.source {
-			mmd.DefaultCodeBlock(c, b)
+			mermaidSource(c, source, b.Language)
 			return
 		}
 		diagramCanvas(c, item, 220)
+	})
+}
+
+// Keep the copy control in the code block header and copy the exact source;
+// Highlighter's built-in copy trims whitespace around the displayed code.
+func mermaidSource(c *ui.Context, source, language string) {
+	ui.Box(c).FillWidth().MinWidth(0).Children(func() {
+		content.Highlighter(c, content.HighlighterOptions{Code: source, Language: language, NoCopy: true})
+		content.CopyButton(c, content.CopyButtonOptions{Text: source, Label: "Copy source", Size: uitheme.ButtonSmall}).Absolute().Top(4).Right(8)
 	})
 }
 

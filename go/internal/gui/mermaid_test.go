@@ -26,7 +26,7 @@ func TestMermaidTranscriptControls(t *testing.T) {
 	markdown := "```mermaid\n" + source + "```"
 	driver := ui.NewTester(func(c *ui.Context) { app.prose(c, markdown, false) }, 900, 600)
 	driver.Frame()
-	for _, label := range []string{"Show source", "Copy source", "Save SVG", "Pop out diagram"} {
+	for _, label := range []string{"Show source", "Save SVG", "Pop out diagram"} {
 		if _, ok := driver.Find(label); !ok {
 			t.Fatalf("missing control %q: %v", label, driver.Texts())
 		}
@@ -36,17 +36,33 @@ func TestMermaidTranscriptControls(t *testing.T) {
 	if popout.X <= save.X {
 		t.Fatal("pop-out should be to the right of save")
 	}
-	if err := driver.Click("Copy source"); err != nil {
-		t.Fatal(err)
+	if _, ok := driver.Find("Copy source"); ok {
+		t.Fatal("redundant toolbar copy control remains")
 	}
-	if driver.Clipboard() != source {
-		t.Fatalf("copied source %q", driver.Clipboard())
+	for _, text := range driver.Texts() {
+		if text == "Mermaid" {
+			t.Fatal("redundant outer Mermaid label remains")
+		}
 	}
 	if err := driver.Click("Show source"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(strings.Join(driver.Texts(), " "), "flowchart") {
 		t.Fatal("source not shown")
+	}
+	copyButton, found := driver.Find("Copy source")
+	if !found {
+		t.Fatal("source panel copy button missing")
+	}
+	toggle, _ := driver.Find("Show source")
+	if copyButton.Y < toggle.Y+toggle.H {
+		t.Fatalf("copy button should be in the source panel, below toolbar: %v vs %v", copyButton, toggle)
+	}
+	if err := driver.Click("Copy source"); err != nil {
+		t.Fatal(err)
+	}
+	if driver.Clipboard() != source {
+		t.Fatalf("copied source %q", driver.Clipboard())
 	}
 	if err := driver.Click("Show source"); err != nil {
 		t.Fatal(err)

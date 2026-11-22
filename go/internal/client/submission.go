@@ -44,6 +44,9 @@ func (s *Submission) Resolve(err error) {
 
 func (s *Submission) Uncertain() bool { return s.unknown }
 
+// Pending includes in-flight, rejected, and uncertain submissions.
+func (s *Submission) Pending() bool { return s.input != nil }
+
 // Restore returns a rejected input to the editor and clears the pending item.
 // An ambiguous input keeps its request ID until it can be reconciled.
 func (s *Submission) Restore() string {

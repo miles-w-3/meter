@@ -200,16 +200,40 @@ async function regular() {
   const imageReload = await watch(imageConversation);
   assert.ok(entries(imageReload.frames[0]).some((e) => e.id === imageEntry.id && e.imageCount === 1));
   assert.deepEqual((await request(pathOf(imageConversation) + "/entries/" + imageEntry.id + "/images")).value.images, [{ data: png, mimeType: "image/png" }]);
+  assert.deepEqual((await request(pathOf(imageConversation) + "/entries/" + imageEntry.id + "/message")).value, { content: "", images: [{ data: png, mimeType: "image/png" }] });
+  assert.equal((await request(pathOf(conversation) + "/entries/" + imageEntry.id + "/message")).status, 404);
   imageReload.ws.close();
+
+  const fullText = "unclipped " + "x".repeat(15000);
+  const fullConversation = await create();
+  const fullWatch = await watch(fullConversation);
+  assert.equal((await submit(fullConversation, input(fullText, "full-text"))).status, 202);
+  const fullFrame = await waitFor(fullWatch, (f) => entries(f).some((e) => e.kind === "pi.user"), "long user message");
+  const fullEntry = entries(fullFrame).find((e) => e.kind === "pi.user");
+  assert.notEqual(fullEntry.text, fullText, "transcript projection should be clipped");
+  assert.deepEqual((await request(pathOf(fullConversation) + "/entries/" + fullEntry.id + "/message")).value, { content: fullText, images: [] });
+  fullWatch.ws.close();
 
   const control = await create();
   const controlWatch = await watch(control);
   assert.equal((await submit(control, input("fixture:slow", "first-run"))).status, 202);
   const busy = await waitFor(controlWatch, (f) => f.view.partial && f.view.abortTarget, "first run target");
   assert.equal((await submit(control, input("busy reject", "busy-reject"))).value.code, "busy");
+  const busyEntry = entries(busy).find((entry) => entry.kind === "pi.user");
+  assert.ok(busyEntry);
+  const blockedFork = await request(pathOf(control) + "/fork-messages", "POST", { parentConversationId: control, at: busyEntry.id, requestId: "blocked-fork", content: "must wait" });
+  assert.equal(blockedFork.status, 409);
+  assert.equal(blockedFork.value.code, "busy");
+  const blockedLeaf = { id: randomUUID(), conversationId: control, treePosition: { conversationId: control, entryId: busyEntry.id } };
+  const blockedTab = { id: randomUUID(), root: blockedLeaf.id, nodes: [blockedLeaf] };
+  const blockedPosition = await request("/v1/workspaces/blocked-tree", "PUT", { revision: 0, tabs: [blockedTab] });
+  assert.equal(blockedPosition.status, 409);
+  assert.equal(blockedPosition.value.code, "busy");
+  assert.deepEqual((await request("/v1/workspaces/blocked-tree")).value, { revision: 0, tabs: [] });
   assert.equal((await request(pathOf(control) + "/cwd", "PUT", { cwd: project })).value.code, "busy");
   assert.equal((await submit(control, input("steer this", "steer", "steer"))).status, 202);
   assert.equal((await submit(control, input("fixture:slow successor", "queued-run", "followup"))).status, 202);
+  assert.equal((await request("/v1/workspaces/blocked-tree", "PUT", { revision: 0, tabs: [blockedTab] })).value.code, "busy");
   const successor = await waitFor(controlWatch, (f) => f.view.abortTarget && f.view.abortTarget !== busy.view.abortTarget &&
     text(f).includes("fixture:slow successor"), "follow-up starts");
   assert.equal((await abort(control, busy.view.abortTarget)).value.code, "stale_run");
@@ -245,6 +269,78 @@ async function regular() {
   const keys = [...pages, ...live.entries].map((entry) => entry.id);
   assert.equal(new Set(keys).size, keys.length);
   assert.ok(pages.some((entry) => entry.text === "history sample 0"));
+  const all = [...pages, ...live.entries];
+  const selected = all[Math.floor(all.length / 2)];
+  const userIndex = all.findIndex((entry, index) => index > 2 && entry.kind === "pi.user");
+  assert.ok(userIndex > 2);
+  const restoreLeaf = { id: randomUUID(), conversationId: long, treePosition: { conversationId: long, entryId: all[userIndex - 1].id, restoreEntryId: all[userIndex].id } };
+  const restoreTab = { id: randomUUID(), root: restoreLeaf.id, nodes: [restoreLeaf] };
+  const restoreLayout = { revision: 0, tabs: [restoreTab] };
+  const legacyRestore = await request("/v1/workspaces/tree-restore", "PUT", restoreLayout);
+  assert.equal(legacyRestore.status, 200);
+  assert.equal(legacyRestore.value.tabs[0].nodes[0].treePosition.restoreEntryId, undefined, "obsolete draft marker is discarded");
+  const prefix = [];
+  let cursor;
+  do {
+    const query = new URLSearchParams({ at: selected.id });
+    if (cursor) query.set("before", cursor);
+    const response = await request(pathOf(long) + "/path?" + query);
+    assert.equal(response.status, 200);
+    assert.ok(response.value.contextTokens >= 0);
+    prefix.unshift(...response.value.entries);
+    assert.notEqual(response.value.before, cursor);
+    cursor = response.value.before;
+  } while (cursor);
+  assert.deepEqual(prefix.map((entry) => entry.id), all.slice(0, all.indexOf(selected) + 1).map((entry) => entry.id));
+  assert.equal((await request(pathOf(long) + "/path?at=start")).status, 400);
+  assert.equal((await request(pathOf(long) + "/path?at=" + imageEntry.id)).status, 404);
+  assert.equal((await request(pathOf(long) + "/path?at=invalid")).status, 400);
+  assert.equal((await request(pathOf(long) + "/path?at=" + selected.id + "&before=bad!")).status, 400);
+  const resumeLeaf = { id: randomUUID(), conversationId: long, treePosition: { conversationId: long, entryId: selected.id } };
+  const resumeTab = { id: randomUUID(), root: resumeLeaf.id, nodes: [resumeLeaf] };
+  const pinned = (await request("/v1/workspaces/tree-resume", "PUT", { revision: 0, tabs: [resumeTab] })).value;
+  assert.equal(pinned.revision, 1);
+  const resuming = structuredClone(pinned);
+  const resumeNode = resuming.tabs[0].nodes[0];
+  delete resumeNode.treePosition;
+  resumeNode.resumeEntryId = selected.id;
+  assert.equal((await request("/v1/workspaces/tree-resume", "PUT", resuming)).value.code, "stale_position");
+  assert.deepEqual((await request("/v1/workspaces/tree-resume")).value, pinned);
+  const current = all.findLast((entry) => entry.text || entry.toolName || entry.imageCount).id;
+  resumeNode.resumeEntryId = current;
+  const resumed = await request("/v1/workspaces/tree-resume", "PUT", resuming);
+  assert.equal(resumed.status, 200);
+  assert.equal(resumed.value.tabs[0].nodes[0].treePosition, undefined);
+  assert.equal(resumed.value.tabs[0].nodes[0].resumeEntryId, undefined);
+  assert.equal((await submit(long, input("continued at current", "resume-current"))).status, 202);
+  await waitFor(longWatch, (f) => f.view.status === "idle" && entries(f).some((entry) => entry.text === "continued at current"), "resumed live conversation");
+  assert.equal((await request(pathOf(long) + "/tree")).value.branches.length, 1, "resuming current must not fork");
+  const forkBody = { parentConversationId: long, at: selected.id, requestId: "tree-fork-one", content: "fork continuation" };
+  const forkResults = await Promise.all([
+    request(pathOf(long) + "/fork-messages", "POST", forkBody),
+    request(pathOf(long) + "/fork-messages", "POST", forkBody),
+  ]);
+  assert.deepEqual(forkResults.map((result) => result.status), [202, 202]);
+  assert.deepEqual(forkResults[0].value, forkResults[1].value);
+  const forkId = forkResults[0].value.conversationId;
+  assert.notEqual(forkId, long);
+  assert.equal((await request(pathOf(long) + "/fork-messages", "POST", { ...forkBody, content: "conflicting" })).value.code, "request_conflict");
+  assert.equal((await request(pathOf(long) + "/fork-messages", "POST", { ...forkBody, requestId: "unrelated", parentConversationId: imageConversation })).status, 404);
+  assert.equal((await request(pathOf(long) + "/fork-messages", "POST", { ...forkBody, requestId: "wrong-entry", at: imageEntry.id })).status, 404);
+  assert.ok(!(await request("/v1/catalog")).value.conversations.some((conversation) => conversation.id === forkId));
+  const forkTree = (await request(pathOf(long) + "/tree")).value;
+  assert.ok(forkTree.branches.some((branch) => branch.conversationId === forkId && branch.at === selected.id));
+  const inherited = await request(pathOf(forkId) + "/path?at=" + selected.id);
+  assert.equal(inherited.status, 200, "fork path must resolve inherited entries");
+  const later = all[all.indexOf(selected) + 1];
+  assert.equal((await request(pathOf(forkId) + "/path?at=" + later.id)).status, 404, "fork must not include later parent entries");
+  const sibling = await request(pathOf(long) + "/fork-messages", "POST", { ...forkBody, parentConversationId: forkId, requestId: "tree-fork-sibling" });
+  assert.equal(sibling.status, 202);
+  assert.notEqual(sibling.value.conversationId, forkId);
+  await stop(server);
+  server = start();
+  await server.ready;
+  assert.deepEqual((await request(pathOf(long) + "/fork-messages", "POST", forkBody)).value, forkResults[0].value);
   await stop(server);
   console.log("Local startup race, concurrent attach, lost receipt replay, stale abort, and transcript pagination passed");
 }
@@ -254,6 +350,10 @@ async function workspaceChecks() {
   await server.ready;
   const id = await create();
   const other = await create();
+  const pinWatch = await watch(id);
+  assert.equal((await submit(id, input("pin source", "pin-source"))).status, 202);
+  await waitFor(pinWatch, (f) => f.view.status === "idle" && text(f).includes("Fixture completed"), "pin source finishes");
+  pinWatch.ws.close();
   const projectRecord = await request("/v1/projects", "POST", { cwd: await realpath(project), name: "Scratch project" });
   assert.equal(projectRecord.status, 201);
   const duplicate = await request("/v1/projects", "POST", { cwd: join(project, "."), name: "Accidental rename" });
@@ -299,7 +399,20 @@ async function workspaceChecks() {
   const tab = { id: randomUUID(), name: "Reliability", projectId, root: branch.id, nodes: [branch, leaf1, leaf2] };
   const empty = { id: randomUUID(), empty: true, cwd: await realpath(movedRoot) };
   const scratch = { id: randomUUID(), name: "Scratch", projectId, root: empty.id, nodes: [empty] };
-  const body = { revision: 0, activeTab: tab.id, activeProject: projectId, tabs: [tab, scratch] };
+  const history = await request(pathOf(id) + "/entries");
+  const pinEntry = history.value.entries.find((entry) => entry.kind === "pi.user").id;
+  const pinnedLeaf = { id: randomUUID(), conversationId: id, treePosition: { conversationId: id, entryId: pinEntry }, pendingFork: { requestId: "restart-pending-fork", content: "recover this request" } };
+  const pinnedTab = { id: randomUUID(), name: "Pinned", projectId, root: pinnedLeaf.id, nodes: [pinnedLeaf] };
+  const body = { revision: 0, activeTab: tab.id, activeProject: projectId, tabs: [tab, scratch, pinnedTab] };
+  const wrongPosition = structuredClone(body);
+  wrongPosition.tabs[2].nodes[0].treePosition.conversationId = other;
+  assert.equal((await request(path, "PUT", wrongPosition)).value.code, "invalid_layout");
+  const wrongEntry = structuredClone(body);
+  wrongEntry.tabs[2].nodes[0].treePosition.entryId = "999999999";
+  assert.equal((await request(path, "PUT", wrongEntry)).value.code, "invalid_layout");
+  const duplicateLive = structuredClone(body);
+  delete duplicateLive.tabs[2].nodes[0].treePosition;
+  assert.equal((await request(path, "PUT", duplicateLive)).value.code, "invalid_layout");
 
   const duplicateTab = structuredClone(body);
   duplicateTab.tabs[1].name = "reliability";
@@ -325,11 +438,49 @@ async function workspaceChecks() {
   assert.equal((await request(pathOf(movedID))).value.cwd, await realpath(movedRoot));
   assert.equal((await request(pathOf(movedID))).value.projectId, projectId);
   assert.equal((await request("/v1/catalog")).value.projects[0].id, renamed.value.id);
-  assert.equal((await request(path, "PUT", { revision: 1, tabs: [] })).status, 200);
+  assert.equal((await request(path, "PUT", { revision: 1, tabs: [] })).value.code, "invalid_layout", "pending branch cannot be discarded");
+  const pendingReceipt = await request(pathOf(id) + "/fork-messages", "POST", { parentConversationId: id, at: pinEntry, ...pinnedLeaf.pendingFork });
+  assert.equal(pendingReceipt.status, 202);
+  const completed = structuredClone(saved);
+  const completedLeaf = completed.tabs[2].nodes[0];
+  completedLeaf.conversationId = pendingReceipt.value.conversationId;
+  delete completedLeaf.treePosition;
+  delete completedLeaf.pendingFork;
+  const switched = await request(path, "PUT", completed);
+  assert.equal(switched.status, 200);
+  assert.equal((await request(path, "PUT", { revision: 2, tabs: [] })).status, 200);
   assert.equal((await request(pathOf(id))).status, 200);
   assert.equal((await request(pathOf(other))).status, 200);
   await stop(server);
   console.log("Project catalog, nested layout validation, revision race, and restore after restart passed");
+}
+
+async function forkRecovery(point) {
+  let server = start(point);
+  await server.ready;
+  const id = await create();
+  const viewer = await watch(id);
+  assert.equal((await submit(id, input("fork source", "fork-source-" + point))).status, 202);
+  const frame = await waitFor(viewer, (f) => f.view.status === "idle" && entries(f).some((e) => e.kind === "pi.assistant"), "fork source finishes");
+  const at = entries(frame).findLast((entry) => entry.kind === "pi.assistant").id;
+  const operation = { parentConversationId: id, at, requestId: "fork-crash-" + point, content: "recovered fork input" };
+  await request(pathOf(id) + "/fork-messages", "POST", operation).catch(() => {});
+  assert.equal((await server.exited).signal, "SIGKILL");
+  viewer.ws.close();
+  server = start();
+  await server.ready;
+  const receipt = await request(pathOf(id) + "/fork-messages", "POST", operation);
+  assert.equal(receipt.status, 202);
+  assert.deepEqual((await request(pathOf(id) + "/fork-messages", "POST", operation)).value, receipt.value);
+  const branches = (await request(pathOf(id) + "/tree")).value.branches;
+  assert.equal(branches.length, 2, "recovery must not duplicate the fork");
+  assert.equal(branches[1].conversationId, receipt.value.conversationId);
+  const forkView = await watch(receipt.value.conversationId);
+  const done = await waitFor(forkView, (f) => f.view.status === "idle" && entries(f).some((e) => e.text === operation.content), "fork recovered");
+  assert.equal(entries(done).filter((entry) => entry.text === operation.content).length, 1);
+  forkView.ws.close();
+  await stop(server);
+  console.log("Recovered fork request after SIGKILL at " + point);
 }
 
 async function recovery(point) {
@@ -377,6 +528,7 @@ try {
     await regular();
     await workspaceChecks();
     for (const point of ["model", "read", "write"]) await recovery(point);
+    for (const point of ["fork-created", "fork-admitted"]) await forkRecovery(point);
   }
 } finally {
   for (const ws of sockets) ws.terminate();

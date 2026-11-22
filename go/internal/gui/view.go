@@ -472,6 +472,12 @@ func (a *app) tabStatus(tab protocol.LayoutTab) string {
 }
 
 func (a *app) requestCloseTab(tab protocol.LayoutTab) {
+	for _, node := range orderedPanes(&tab) {
+		if node.PendingFork != nil {
+			a.notice = "Resolve the pending branch send before closing this tab."
+			return
+		}
+	}
 	if a.tabStatus(tab) == "running" {
 		id := tab.Id
 		a.closeTabConfirm = &id
@@ -632,6 +638,43 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 	}
 	p := a.panes[node.Id]
 	if p == nil {
+		return
+	}
+	if node.TreePosition != nil {
+		position := *node.TreePosition
+		a.loadPinnedHistory(p, position)
+		a.paneHeader(c, tab, node, paneTitle(node, "Tree preview"))
+		ui.Column(c).Grow(1).MinHeight(0).Children(func() {
+			ui.Row(c).FillWidth().Padding(8, 16).Children(func() {
+				text(c, "Tree preview · send a message to branch conversation", 12, warning)
+			})
+			if p.historyError != "" {
+				text(c, clean(p.historyError), 12, warning)
+			} else if p.historyLoading && len(p.historical.Entries()) == 0 {
+				text(c, "Loading historical transcript…", 12, muted)
+			} else {
+				a.transcriptState(c, p, position.ConversationId, &p.historical, func() { a.olderPinnedHistory(p, position) }, p.historyLoading)
+			}
+			composerArea(c, func() {
+				if node.PendingFork == nil {
+					a.composer(c, node.Id, p, form.ComposerOptions{
+						Label: "Message tree preview", Placeholder: "Continue on a new branch…", SubmitLabel: "Send", MinLines: 1, MaxLines: 8,
+						ReadOnly: a.busy(), SubmitDisabled: a.busy() || !p.connected || p.historyLoading || p.historyError != "",
+						OnSubmit: func(string) { a.beginFork(tab.Id, node, p) },
+					})
+					a.dictationPreview(c, p)
+				} else if !p.forkInFlight && action(c, "Retry branch", a.busy()) {
+					if p.forkReceipt != nil {
+						a.finishFork(tab.Id, node.Id, node.PendingFork.RequestId, p)
+					} else {
+						a.resumeFork(tab.Id, node, p)
+					}
+				}
+				if p.notice != "" {
+					text(c, clean(p.notice), 12, warning)
+				}
+			})
+		})
 		return
 	}
 	id := *node.ConversationId

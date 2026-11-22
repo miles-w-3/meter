@@ -10,6 +10,7 @@ export class InvalidLayout extends Error {}
 
 function conversationIDs(value: Layout) {
   const conversations = new Set<string>();
+  const liveAttachments = new Set<string>();
   const allIDs = new Set<string>();
   const unique = (id: string) => {
     if (allIDs.has(id)) throw new InvalidLayout("Duplicate tab or pane ID");
@@ -29,16 +30,20 @@ function conversationIDs(value: Layout) {
       visited.add(id);
       const split = [node.axis, node.ratio, node.first, node.second];
       if (node.conversationId || node.empty) {
-        if (split.some((part) => part !== undefined) || (node.conversationId && (node.empty || node.cwd))) {
+        if (split.some((part) => part !== undefined) || (node.conversationId && (node.empty || node.cwd)) || (node.treePosition && !node.conversationId) || (node.pendingFork && (!node.treePosition || (!node.pendingFork.content.trim() && !node.pendingFork.images?.length)))) {
           throw new InvalidLayout("Invalid pane fields");
         }
         if (node.conversationId) {
-          if (conversations.has(node.conversationId) && tab.projectId) throw new InvalidLayout("Conversation is already open");
+          if (!node.treePosition) {
+            if (liveAttachments.has(node.conversationId) && tab.projectId) throw new InvalidLayout("Conversation is already open");
+            liveAttachments.add(node.conversationId);
+          }
           conversations.add(node.conversationId);
+          if (node.treePosition) conversations.add(node.treePosition.conversationId);
         }
         return;
       }
-      if (node.cwd || node.name || node.widthShare !== undefined || !node.axis || node.ratio === undefined || !node.first || !node.second) throw new InvalidLayout("Split is incomplete");
+      if (node.cwd || node.name || node.treePosition || node.pendingFork || node.widthShare !== undefined || !node.axis || node.ratio === undefined || !node.first || !node.second) throw new InvalidLayout("Split is incomplete");
       walk(node.first, depth + 1);
       walk(node.second, depth + 1);
     }

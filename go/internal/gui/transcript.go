@@ -10,6 +10,7 @@ import (
 	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo/ui"
 	mmd "github.com/egoist/mygo/ui/markdown"
+	"pi-workspace.local/workspace/internal/client"
 	palette "pi-workspace.local/workspace/internal/theme"
 )
 
@@ -52,8 +53,12 @@ type message struct {
 }
 
 func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
-	entries := p.state.Entries()
-	messages := make([]message, 0, len(entries)+len(p.state.Current.Tools)+1)
+	a.transcriptState(c, p, conversationID, &p.state, func() { a.history(p, conversationID) }, p.loading || !p.connected)
+}
+
+func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, state *client.State, older func(), loading bool) {
+	entries := state.Entries()
+	messages := make([]message, 0, len(entries)+len(state.Current.Tools)+1)
 	completed := make(map[string]bool)
 	for _, entry := range entries {
 		if entry.Text == "" && entry.ToolName == nil && (entry.Error == nil || *entry.Error == "") && (entry.ImageCount == nil || *entry.ImageCount == 0) {
@@ -81,7 +86,7 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 		messages = append(messages, message{id: entry.Id, label: *entry.ToolName, text: clean(entry.Text), tool: true,
 			target: target, stats: palette.Stats(entry.DurationMs, nil), succeeded: entry.ToolSucceeded != nil && *entry.ToolSucceeded})
 	}
-	for i, tool := range p.state.Current.Tools {
+	for i, tool := range state.Current.Tools {
 		key := fmt.Sprintf("live:%s:%d", tool.Name, i)
 		if tool.CallId != nil {
 			key = "call:" + *tool.CallId
@@ -105,17 +110,17 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 		}
 		messages = append(messages, message{id: key, label: tool.Name + " · " + tool.Status, text: output, tool: true})
 	}
-	if partial := p.state.Current.Partial; partial != nil {
+	if partial := state.Current.Partial; partial != nil {
 		messages = append(messages, message{id: "partial", label: "assistant · streaming", text: clean(*partial) + " ▍"})
 	}
-	if len(messages) == 0 && p.state.Before == nil {
+	if len(messages) == 0 && state.Before == nil {
 		ui.Column(c).Grow(1).MinHeight(0).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			text(c, "Messages appear here", 14, muted)
 		})
 		return
 	}
 	offset := 0
-	if p.state.Before != nil {
+	if state.Before != nil {
 		offset = 1
 	}
 	p.list.Key = func(row int) any {
@@ -129,8 +134,8 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 		viewport := ui.List(c, &p.list, len(messages)+offset, func(i int) {
 			if offset == 1 && i == 0 {
 				ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
-					if ui.Button(c, "Older history").FontSize(12).TextColor(muted).Background(panel).Radius(12).Disabled(p.loading || !p.connected).Clicked() {
-						a.history(p, conversationID)
+					if ui.Button(c, "Older history").FontSize(12).TextColor(muted).Background(panel).Radius(12).Disabled(loading).Clicked() {
+						older()
 					}
 				})
 				return

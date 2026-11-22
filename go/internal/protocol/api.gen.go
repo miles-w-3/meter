@@ -703,6 +703,28 @@ type EntryImages struct {
 	Images []ImageAttachment `json:"images"`
 }
 
+// ForkInput defines model for ForkInput.
+type ForkInput struct {
+	At                   string             `json:"at"`
+	Content              string             `json:"content"`
+	Images               *[]ImageAttachment `json:"images,omitempty"`
+	ParentConversationId string             `json:"parentConversationId"`
+	RequestId            string             `json:"requestId"`
+}
+
+// ForkReceipt defines model for ForkReceipt.
+type ForkReceipt struct {
+	ConversationId string `json:"conversationId"`
+	SubmissionId   string `json:"submissionId"`
+}
+
+// HistoricalPath defines model for HistoricalPath.
+type HistoricalPath struct {
+	Before        *string `json:"before,omitempty"`
+	ContextTokens int     `json:"contextTokens"`
+	Entries       []Entry `json:"entries"`
+}
+
 // HistoryBranch defines model for HistoryBranch.
 type HistoryBranch struct {
 	At                   *string `json:"at,omitempty"`
@@ -749,8 +771,11 @@ type LayoutNode struct {
 	First          *openapi_types.UUID `json:"first,omitempty"`
 	Id             openapi_types.UUID  `json:"id"`
 	Name           *string             `json:"name,omitempty"`
+	PendingFork    *PendingFork        `json:"pendingFork,omitempty"`
 	Ratio          *float32            `json:"ratio,omitempty"`
+	ResumeEntryId  *string             `json:"resumeEntryId,omitempty"`
 	Second         *openapi_types.UUID `json:"second,omitempty"`
+	TreePosition   *TreePosition       `json:"treePosition,omitempty"`
 	WidthShare     *float32            `json:"widthShare,omitempty"`
 }
 
@@ -792,6 +817,13 @@ type ModelInventory struct {
 type ModelRef struct {
 	ModelId  string `json:"modelId"`
 	Provider string `json:"provider"`
+}
+
+// PendingFork defines model for PendingFork.
+type PendingFork struct {
+	Content   string             `json:"content"`
+	Images    *[]ImageAttachment `json:"images,omitempty"`
+	RequestId string             `json:"requestId"`
 }
 
 // Problem defines model for Problem.
@@ -988,8 +1020,28 @@ type ToolsStatus struct {
 	} `json:"webSearch"`
 }
 
+// TreePosition defines model for TreePosition.
+type TreePosition struct {
+	ConversationId string  `json:"conversationId"`
+	EntryId        string  `json:"entryId"`
+	RestoreEntryId *string `json:"restoreEntryId,omitempty"`
+}
+
+// UserMessage defines model for UserMessage.
+type UserMessage struct {
+	Content string            `json:"content"`
+	Images  []ImageAttachment `json:"images"`
+}
+
 // GetEntriesParams defines parameters for GetEntries.
 type GetEntriesParams struct {
+	Before *string `form:"before,omitempty" json:"before,omitempty"`
+}
+
+// GetHistoricalPathParams defines parameters for GetHistoricalPath.
+type GetHistoricalPathParams struct {
+	// At Entry ID on the conversation's history path
+	At     string  `form:"at" json:"at"`
 	Before *string `form:"before,omitempty" json:"before,omitempty"`
 }
 
@@ -1001,6 +1053,9 @@ type AbortRunJSONRequestBody = AbortInput
 
 // SetConversationCwdJSONRequestBody defines body for SetConversationCwd for application/json ContentType.
 type SetConversationCwdJSONRequestBody = CwdInput
+
+// ForkAndSubmitMessageJSONRequestBody defines body for ForkAndSubmitMessage for application/json ContentType.
+type ForkAndSubmitMessageJSONRequestBody = ForkInput
 
 // SubmitMessageJSONRequestBody defines body for SubmitMessage for application/json ContentType.
 type SubmitMessageJSONRequestBody = SubmitInput
@@ -1240,8 +1295,19 @@ type ClientInterface interface {
 	// GetEntryImages performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
 	GetEntryImages(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetUserMessage performs a GET /v1/conversations/{id}/entries/{entryId}/message (the `GetUserMessage` operationId) request.
+	GetUserMessage(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetToolOutput performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 	GetToolOutput(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ForkAndSubmitMessageWithBody performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request,
+	// with any type of body and a specified content type.
+	ForkAndSubmitMessageWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ForkAndSubmitMessage performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request.
+	// Takes a body of the `application/json` content type.
+	ForkAndSubmitMessage(ctx context.Context, id string, body ForkAndSubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SubmitMessageWithBody performs a POST /v1/conversations/{id}/messages (the `SubmitMessage` operationId) request,
 	// with any type of body and a specified content type.
@@ -1258,6 +1324,9 @@ type ClientInterface interface {
 	// SetConversationModel performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
 	// Takes a body of the `application/json` content type.
 	SetConversationModel(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetHistoricalPath performs a GET /v1/conversations/{id}/path (the `GetHistoricalPath` operationId) request.
+	GetHistoricalPath(ctx context.Context, id string, params *GetHistoricalPathParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RecallQueued performs a POST /v1/conversations/{id}/queue/{submission}/recall (the `RecallQueued` operationId) request.
 	RecallQueued(ctx context.Context, id string, submission string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1479,9 +1548,50 @@ func (c *Client) GetEntryImages(ctx context.Context, id string, entryId string, 
 	return c.Client.Do(req)
 }
 
+// GetUserMessage performs a GET /v1/conversations/{id}/entries/{entryId}/message (the `GetUserMessage` operationId) request.
+func (c *Client) GetUserMessage(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUserMessageRequest(c.Server, id, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetToolOutput performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 func (c *Client) GetToolOutput(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetToolOutputRequest(c.Server, id, entryId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ForkAndSubmitMessageWithBody performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request,
+// with any type of body and a specified content type.
+func (c *Client) ForkAndSubmitMessageWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewForkAndSubmitMessageRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ForkAndSubmitMessage performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request.
+// Takes a body of the `application/json` content type.
+func (c *Client) ForkAndSubmitMessage(ctx context.Context, id string, body ForkAndSubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewForkAndSubmitMessageRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1538,6 +1648,19 @@ func (c *Client) SetConversationModelWithBody(ctx context.Context, id string, co
 // Takes a body of the `application/json` content type.
 func (c *Client) SetConversationModel(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetConversationModelRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetHistoricalPath performs a GET /v1/conversations/{id}/path (the `GetHistoricalPath` operationId) request.
+func (c *Client) GetHistoricalPath(ctx context.Context, id string, params *GetHistoricalPathParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHistoricalPathRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2158,6 +2281,47 @@ func NewGetEntryImagesRequest(server string, id string, entryId string) (*http.R
 	return req, nil
 }
 
+// NewGetUserMessageRequest constructs an http.Request for the GetUserMessage method
+func NewGetUserMessageRequest(server string, id string, entryId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "entryId", entryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/entries/%s/message", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetToolOutputRequest constructs an http.Request for the GetToolOutput method
 func NewGetToolOutputRequest(server string, id string, entryId string) (*http.Request, error) {
 	var err error
@@ -2195,6 +2359,53 @@ func NewGetToolOutputRequest(server string, id string, entryId string) (*http.Re
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewForkAndSubmitMessageRequest calls the generic ForkAndSubmitMessage builder with application/json body
+func NewForkAndSubmitMessageRequest(server string, id string, body ForkAndSubmitMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewForkAndSubmitMessageRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewForkAndSubmitMessageRequestWithBody constructs an http.Request for the ForkAndSubmitMessage method, with any body, and a specified content type
+func NewForkAndSubmitMessageRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/fork-messages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -2289,6 +2500,75 @@ func NewSetConversationModelRequestWithBody(server string, id string, contentTyp
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetHistoricalPathRequest constructs an http.Request for the GetHistoricalPath method
+func NewGetHistoricalPathRequest(server string, id string, params *GetHistoricalPathParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/path", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "at", params.At, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Before != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "before", *params.Before, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2973,10 +3253,25 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetEntryImagesWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetEntryImagesResponse, error)
 
+	// GetUserMessageWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/message (the `GetUserMessage` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetUserMessageWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetUserMessageResponse, error)
+
 	// GetToolOutputWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	GetToolOutputWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetToolOutputResponse, error)
+
+	// ForkAndSubmitMessageWithBodyWithResponse performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ForkAndSubmitMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ForkAndSubmitMessageResponse, error)
+
+	// ForkAndSubmitMessageWithResponse performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	ForkAndSubmitMessageWithResponse(ctx context.Context, id string, body ForkAndSubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*ForkAndSubmitMessageResponse, error)
 
 	// SubmitMessageWithBodyWithResponse performs a POST /v1/conversations/{id}/messages (the `SubmitMessage` operationId) request,
 	// with any type of body and a specified content type.
@@ -2997,6 +3292,11 @@ type ClientWithResponsesInterface interface {
 	// SetConversationModelWithResponse performs a PUT /v1/conversations/{id}/model (the `SetConversationModel` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	SetConversationModelWithResponse(ctx context.Context, id string, body SetConversationModelJSONRequestBody, reqEditors ...RequestEditorFn) (*SetConversationModelResponse, error)
+
+	// GetHistoricalPathWithResponse performs a GET /v1/conversations/{id}/path (the `GetHistoricalPath` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetHistoricalPathWithResponse(ctx context.Context, id string, params *GetHistoricalPathParams, reqEditors ...RequestEditorFn) (*GetHistoricalPathResponse, error)
 
 	// RecallQueuedWithResponse performs a POST /v1/conversations/{id}/queue/{submission}/recall (the `RecallQueued` operationId) request.
 	//
@@ -3590,6 +3890,75 @@ func (r GetEntryImagesResponse) ContentType() string {
 	return ""
 }
 
+type GetUserMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UserMessage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUserMessageResponse) GetJSON200() *UserMessage {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetUserMessageResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetUserMessageResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetUserMessageResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetUserMessageResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUserMessageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUserMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUserMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUserMessageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetToolOutputResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3653,6 +4022,75 @@ func (r GetToolOutputResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetToolOutputResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ForkAndSubmitMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *ForkReceipt
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r ForkAndSubmitMessageResponse) GetJSON202() *ForkReceipt {
+	return r.JSON202
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ForkAndSubmitMessageResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ForkAndSubmitMessageResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ForkAndSubmitMessageResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ForkAndSubmitMessageResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ForkAndSubmitMessageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ForkAndSubmitMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ForkAndSubmitMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ForkAndSubmitMessageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3791,6 +4229,75 @@ func (r SetConversationModelResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetConversationModelResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetHistoricalPathResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HistoricalPath
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetHistoricalPathResponse) GetJSON200() *HistoricalPath {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetHistoricalPathResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetHistoricalPathResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetHistoricalPathResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetHistoricalPathResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetHistoricalPathResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHistoricalPathResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHistoricalPathResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetHistoricalPathResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4941,6 +5448,17 @@ func (c *ClientWithResponses) GetEntryImagesWithResponse(ctx context.Context, id
 	return ParseGetEntryImagesResponse(rsp)
 }
 
+// GetUserMessageWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/message (the `GetUserMessage` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetUserMessageWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetUserMessageResponse, error) {
+	rsp, err := c.GetUserMessage(ctx, id, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUserMessageResponse(rsp)
+}
+
 // GetToolOutputWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/output (the `GetToolOutput` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -4950,6 +5468,28 @@ func (c *ClientWithResponses) GetToolOutputWithResponse(ctx context.Context, id 
 		return nil, err
 	}
 	return ParseGetToolOutputResponse(rsp)
+}
+
+// ForkAndSubmitMessageWithBodyWithResponse performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request,
+// with any type of body and a specified content type.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ForkAndSubmitMessageWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ForkAndSubmitMessageResponse, error) {
+	rsp, err := c.ForkAndSubmitMessageWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseForkAndSubmitMessageResponse(rsp)
+}
+
+// ForkAndSubmitMessageWithResponse performs a POST /v1/conversations/{id}/fork-messages (the `ForkAndSubmitMessage` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ForkAndSubmitMessageWithResponse(ctx context.Context, id string, body ForkAndSubmitMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*ForkAndSubmitMessageResponse, error) {
+	rsp, err := c.ForkAndSubmitMessage(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseForkAndSubmitMessageResponse(rsp)
 }
 
 // SubmitMessageWithBodyWithResponse performs a POST /v1/conversations/{id}/messages (the `SubmitMessage` operationId) request,
@@ -4994,6 +5534,17 @@ func (c *ClientWithResponses) SetConversationModelWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseSetConversationModelResponse(rsp)
+}
+
+// GetHistoricalPathWithResponse performs a GET /v1/conversations/{id}/path (the `GetHistoricalPath` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetHistoricalPathWithResponse(ctx context.Context, id string, params *GetHistoricalPathParams, reqEditors ...RequestEditorFn) (*GetHistoricalPathResponse, error) {
+	rsp, err := c.GetHistoricalPath(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHistoricalPathResponse(rsp)
 }
 
 // RecallQueuedWithResponse performs a POST /v1/conversations/{id}/queue/{submission}/recall (the `RecallQueued` operationId) request.
@@ -5623,6 +6174,60 @@ func ParseGetEntryImagesResponse(rsp *http.Response) (*GetEntryImagesResponse, e
 	return response, nil
 }
 
+// ParseGetUserMessageResponse parses an HTTP response from a GetUserMessageWithResponse call
+func ParseGetUserMessageResponse(rsp *http.Response) (*GetUserMessageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUserMessageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserMessage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetToolOutputResponse parses an HTTP response from a GetToolOutputWithResponse call
 func ParseGetToolOutputResponse(rsp *http.Response) (*GetToolOutputResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -5643,6 +6248,60 @@ func ParseGetToolOutputResponse(rsp *http.Response) (*GetToolOutputResponse, err
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseForkAndSubmitMessageResponse parses an HTTP response from a ForkAndSubmitMessageWithResponse call
+func ParseForkAndSubmitMessageResponse(rsp *http.Response) (*ForkAndSubmitMessageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ForkAndSubmitMessageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest ForkReceipt
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Problem
@@ -5747,6 +6406,60 @@ func ParseSetConversationModelResponse(rsp *http.Response) (*SetConversationMode
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Conversation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetHistoricalPathResponse parses an HTTP response from a GetHistoricalPathWithResponse call
+func ParseGetHistoricalPathResponse(rsp *http.Response) (*GetHistoricalPathResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHistoricalPathResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HistoricalPath
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

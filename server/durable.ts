@@ -7,7 +7,7 @@ import type { FauxResponseFactory } from "@earendil-works/pi-ai/providers/faux";
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createRegistry, defineDocFamily, defineExtension, Harness, InboxDoc, LiveDoc } from "@earendil-works/pi-durable";
-import type { AgentState, Conversation, ContextView, ConversationView, EntryRecord, InboxState, LiveState } from "@earendil-works/pi-durable";
+import type { AgentState, Conversation, ContextView, ConversationView, EntryId, EntryRecord, Harness as DurableHarness, InboxState, LiveState } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
@@ -104,6 +104,9 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
   const storage = await openNodeSqliteStorage(db);
   const harness = await Harness.open(storage, {
     models, registry,
+    // Meter does not yet expose or visualize compaction. Keep automatic
+    // compaction off until its effects on history and context are supported.
+    settings: { compaction: { enabled: false } },
     env: ({ cwd }) => {
       if (!cwd) throw new Error("Conversation has no working directory");
       if (provider === "openai-smoke") return new LiveProbeEnv({ cwd, shellEnv });
@@ -147,6 +150,70 @@ export async function admit(conversation: Conversation, input: z.infer<typeof su
     receipt.submissionId = String(submission);
     return receipt.submissionId;
   }, context);
+}
+
+// Record the chosen physical fork in the same Durable commit that creates it.
+// Admission has its own durable receipt, so either half can be retried after a crash.
+const forkOperations = defineDocFamily({
+  kind: "workspace.fork-operation", scope: "session", family: true, version: 1,
+  initial: (_key: string) => ({ fingerprint: "", conversationId: "" }),
+  checkpointWhen: () => true,
+});
+
+function forkFingerprint(attached: string, parent: string, at: string, input: { content: string; images?: { data: string; mimeType: "image/png" }[] }) {
+  return createHash("sha256").update(JSON.stringify([attached, parent, at, "prompt", input.content, input.images ?? []])).digest("hex");
+}
+
+// Only a durably admitted request may clear a pending layout operation.
+export async function completedFork(harness: DurableHarness, attached: Conversation, parentId: string, at: string, input: { requestId: string; content: string; images?: { data: string; mimeType: "image/png" }[] }, destination: string) {
+  return harness.commit(async (tx) => {
+    const operation = await tx.doc(forkOperations, input.requestId, input.requestId);
+    if (operation.conversationId !== destination || operation.fingerprint !== forkFingerprint(String(attached.id), parentId, at, input)) return false;
+    const receipt = await tx.doc(receipts, Number(destination) as Conversation["id"], input.requestId, input.requestId);
+    return !!receipt.submissionId;
+  }, context);
+}
+
+export class NavigationBusy extends Error {}
+class ExistingFork extends Error {
+  readonly conversationId: string;
+  constructor(conversationId: string) {
+    super("Fork already created");
+    this.conversationId = conversationId;
+  }
+}
+
+/** Retry-safe physical fork and admission. Caller validates tree/path membership. */
+export async function forkAndAdmit(harness: DurableHarness, attached: Conversation, parent: Conversation, at: EntryId, input: z.infer<typeof submitInput>, validate?: () => Promise<void>) {
+  if (input.mode !== "prompt") throw new Error("Fork input must be a prompt");
+  const fingerprint = forkFingerprint(String(attached.id), String(parent.id), String(at), input);
+  let fork: Conversation;
+  try {
+    fork = await parent.fork(at, {
+      ownership: { kind: "ownerless" },
+      init: async (tx, id) => {
+        const operation = await tx.doc(forkOperations, input.requestId, input.requestId);
+        if (operation.conversationId) {
+          if (operation.fingerprint !== fingerprint) throw new RequestConflict("Request ID already used with different fork input");
+          throw new ExistingFork(operation.conversationId);
+        }
+        const live = await tx.doc(LiveDoc, attached.id);
+        const inbox = await tx.doc(InboxDoc, attached.id);
+        if (live.run || inbox.items.length) throw new NavigationBusy("Wait for the current conversation and queued messages to finish");
+        operation.fingerprint = fingerprint;
+        operation.conversationId = String(id);
+      },
+    }, context);
+  } catch (error) {
+    if (!(error instanceof ExistingFork)) throw error;
+    const restored = await harness.conversation(Number(error.conversationId) as Conversation["id"], context);
+    if (!restored) throw new Error("Recorded fork is missing");
+    fork = restored;
+  }
+  if (process.env.PI_CRASH_POINT === "fork-created") process.kill(process.pid, "SIGKILL");
+  const submissionId = await admit(fork, input, validate);
+  if (process.env.PI_CRASH_POINT === "fork-admitted") process.kill(process.pid, "SIGKILL");
+  return { conversationId: String(fork.id), submissionId };
 }
 
 const recalls = defineDocFamily({
@@ -214,6 +281,17 @@ export function projectEntries(entries: readonly EntryRecord[]) {
   const targets = new Map<string, string>();
   const projected = entries.map((entry) => projectEntry(entry, targets));
   return { projected, targets };
+}
+
+// Restore the actual user input, not its clipped transcript projection.
+export function entryUserMessage(entry: EntryRecord) {
+  if (entry.kind !== "pi.user") return undefined;
+  const messages = (entry.model ?? []).filter((message) => message.role === "user");
+  if (!messages.length) return undefined;
+  const content = messages.flatMap((message) => typeof message.content === "string"
+    ? [message.content]
+    : message.content.flatMap((block) => block.type === "text" ? [block.text] : [])).join("\n");
+  return { content, images: entryImages(entry) };
 }
 
 export function entryImages(entry: EntryRecord) {

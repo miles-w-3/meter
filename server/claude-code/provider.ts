@@ -10,7 +10,9 @@ import type { ProviderRuntime } from "./vendor/src/provider-runtime.ts";
 import type { ClaudeCwdBridge } from "./bridge.ts";
 
 const ID = "pi-claude-cli";
-export function createClaudeProvider(bridge: ClaudeCwdBridge) {
+export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled = false) {
+  let enabled = initiallyEnabled;
+  let epoch = 0;
   const catalogue = getBuiltinModels("anthropic");
   const piModel = (model: ReturnType<typeof builtinProviderModels>[number]): Model<Api> => ({ ...model, api: ID, provider: ID, baseUrl: ID });
   let models = builtinProviderModels(catalogue).map(piModel);
@@ -26,11 +28,20 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge) {
     const events = createAssistantMessageEventStream();
     void (async () => {
       try {
+        if (!enabled) throw new Error("Claude Code provider is disabled");
         // Compaction bypasses the generation hook; do not reuse a stale mapping.
         if (options?.cacheRetention === "none") throw new Error("Claude Code compaction is not supported by the cwd bridge");
         const cwd = bridge.take(options?.sessionId);
         if (!isAbsolute(cwd) || !(await stat(cwd)).isDirectory()) throw new Error("Claude Code conversation cwd is not an accessible absolute directory");
-        (await runtime()).startEpisode(events, model, context, { ...options, cwd });
+        const activeRuntime = await runtime();
+        if (!enabled) throw new Error("Claude Code provider is disabled");
+        // A request already running when disabled may finish, but must not leave
+        // a newly parked child behind after disable completes.
+        const startedAt = epoch;
+        void events.result().then(() => {
+          if (epoch !== startedAt) void activeRuntime.retireSession(options?.sessionId);
+        });
+        activeRuntime.startEpisode(events, model, context, { ...options, cwd });
       } catch (error) {
         const output = createEventBridge(events, model).getOutput();
         endStreamWithError(events, output, options?.signal?.aborted ? "aborted" : "error", error instanceof Error ? error.message : String(error));
@@ -43,6 +54,7 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge) {
     auth: { apiKey: {
       name: "Claude Code login",
       check: async ({ signal }) => {
+        if (!enabled) return undefined;
         const status = await auth.status(signal);
         return status.loggedIn === true ? providerAuthCheck(status) : undefined;
       },
@@ -53,7 +65,7 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge) {
       refresh: async (credential) => credential,
       toAuth: async () => ({ apiKey: "unused" }),
     } },
-    getModels: () => models,
+    getModels: () => enabled ? models : [],
     refreshModels: async (context) => {
       let discovered = false;
       const refreshed = (await refresh({ ...context, publish: async (publication) => {
@@ -71,6 +83,12 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge) {
     streamSimple: stream,
   };
   return { provider, needsConversationCwd: true, catalogSource: () => source,
+    enabled: () => enabled,
+    setEnabled: async (value: boolean) => {
+      if (enabled !== value) epoch++;
+      enabled = value;
+      if (!value && loaded) await (await loaded).retireParkedProcesses();
+    },
     externalAuth: {
       instruction: "Install Claude Code and run claude auth login on the backend host, then refresh.",
       status: async (signal?: AbortSignal) => {

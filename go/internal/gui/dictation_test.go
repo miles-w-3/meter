@@ -300,3 +300,24 @@ func TestPaneDictationDoesNotStealAnotherTextField(t *testing.T) {
 		t.Fatalf("unexpected focus request or draft: %v %q", p.focusDictatedDraft, p.draft)
 	}
 }
+
+func TestDictationWithCollapsedSelectionMovesCaret(t *testing.T) {
+	id := uuid.New()
+	p := &pane{draft: "hello"}
+	a := &app{panes: map[uuid.UUID]*pane{id: p}, selectedPane: id}
+	driver := ui.NewTester(func(c *ui.Context) {
+		a.composer(c, id, p, form.ComposerOptions{Label: "Message", SubmitLabel: "Send"})
+	}, 400, 200)
+	if err := driver.Click("Message"); err != nil {
+		t.Fatal(err)
+	}
+	driver.Key(0, ui.KeyLeft)
+	recording := &dictationRecording{pane: p, base: p.draft, collapsedSelection: true}
+	a.dictation = recording
+	a.finishDictation(id, recording, "世界", nil, nil)
+	driver.Frame()
+	driver.Type("!")
+	if p.draft != "hello 世界!" {
+		t.Fatalf("typed text should follow the dictation: %q", p.draft)
+	}
+}

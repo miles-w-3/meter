@@ -11,14 +11,15 @@ import (
 )
 
 type dictationRecording struct {
-	pane     *pane
-	release  chan struct{}
-	cancel   context.CancelFunc
-	released bool
-	live     bool
-	preview  string
-	base     string
-	paneOnly bool
+	pane               *pane
+	release            chan struct{}
+	cancel             context.CancelFunc
+	released           bool
+	live               bool
+	preview            string
+	base               string
+	paneOnly           bool
+	collapsedSelection bool
 }
 
 const dictationHold = 350 * time.Millisecond
@@ -155,6 +156,9 @@ func (a *app) cancelDictation() {
 func (a *app) startDictation(id uuid.UUID, p *pane) {
 	ctx, cancel := context.WithCancel(a.ctx)
 	recording := &dictationRecording{pane: p, base: p.draft, release: make(chan struct{}), cancel: cancel, paneOnly: a.spaceHold != nil && a.spaceHold.paneOnly}
+	if hold := a.spaceHold; hold != nil && hold.pane == p && !hold.paneOnly {
+		recording.collapsedSelection = hold.start == hold.end
+	}
 	a.dictation = recording
 	captured := make(chan []byte, 100)
 	micErr := make(chan error, 1)
@@ -229,6 +233,8 @@ func (a *app) finishDictation(id uuid.UUID, recording *dictationRecording, resul
 	// another text field the user chose while transcription was in flight.
 	if recording.paneOnly && strings.TrimSpace(result) != "" && a.selectedPane == id && !a.dictationTextFocused {
 		p.focusDictatedDraft = true
+	} else if !recording.paneOnly && recording.collapsedSelection && strings.TrimSpace(result) != "" {
+		p.moveDictatedCaret = true
 	}
 }
 

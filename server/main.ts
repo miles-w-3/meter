@@ -12,7 +12,7 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-works/pi-durable";
 import { WebSocket, WebSocketServer } from "ws";
-import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, forkInput, layout, projectInput, projectRenameInput, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
+import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, forkInput, layout, projectInput, projectRenameInput, providerSetting, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
 import type { z, ZodType } from "zod";
 import { abortTarget, admit, completedFork, contextTokens, entryText, entryImages, entryUserMessage, forkAndAdmit, historyCursor, NavigationBusy, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
 import type { Provider } from "./durable.ts";
@@ -23,9 +23,11 @@ import { dictation } from "./dictation.ts";
 import { InvalidLayout, LayoutConflict, Workspaces } from "./workspaces.ts";
 
 process.umask(0o077);
+// Prefer longer prompt-cache retention when the provider supports it.
+process.env.PI_CACHE_RETENTION ??= "long";
 const configHome = process.platform === "darwin" ? join(homedir(), "Library", "Application Support") :
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-const data = resolve(process.env.PI_WORKSPACE_HOME || join(configHome, "pi-workspace"));
+const data = resolve(process.env.METER_HOME || join(configHome, "meter"));
 // PI_PROVIDER is only a test-mode switch. Ordinary providers are selected per conversation.
 const provider = process.env.PI_PROVIDER === "fixture" || process.env.PI_PROVIDER === "openai-smoke"
   ? process.env.PI_PROVIDER : "";
@@ -72,7 +74,10 @@ if (!id) {
 }
 const workspaces = new Workspaces(join(data, "app.sqlite"));
 const webSearch = new WebSearch(() => workspaces.toolSettings());
-const { harness, model, models, plugins, refreshTools, closeClaude } = await openHarness(join(data, "durable.sqlite"), provider as Provider, webSearch);
+const claudeProviderId = "pi-claude-cli";
+const { harness, model, models, plugins, refreshTools, setClaudeEnabled, closeClaude } = await openHarness(
+  join(data, "durable.sqlite"), provider as Provider, webSearch, { claudeEnabled: workspaces.providerEnabled(claudeProviderId), computedDiffs: () => workspaces.toolSettings().computedDiffs },
+);
 const generation = randomUUID();
 const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts", "model-inventory", "model-defaults", "conversation-models", "tool-settings"];
 const dictationDir = process.env.PI_DICTATION_DIR ||
@@ -207,21 +212,35 @@ async function inventory() {
     ];
     const externalAuth = plugin?.externalAuth?.instruction;
     const catalogSource = plugin?.catalogSource?.();
+    const enabled = plugin?.enabled?.();
+    if (enabled === false) return { id: item.id, name: item.name, methods, status: "unconfigured", source: "Disabled", externalAuth, catalogSource, enabled };
     try {
       if (plugin?.externalAuth) {
         const status = await plugin.externalAuth.status(AbortSignal.timeout(3000));
-        return { id: item.id, name: item.name, methods, ...status, externalAuth, catalogSource };
+        return { id: item.id, name: item.name, methods, ...status, externalAuth, catalogSource, enabled };
       }
       const check = await models.checkAuth(item.id, { signal: AbortSignal.timeout(3000) });
       return { id: item.id, name: item.name, methods, status: check ? "configured" : "unconfigured", source: check?.source, catalogSource };
     } catch {
-      return { id: item.id, name: item.name, methods, status: "unknown", externalAuth, catalogSource };
+      return { id: item.id, name: item.name, methods, status: "unknown", externalAuth, catalogSource, enabled };
     }
   }));
   return { providers, models: models.getModels().map((item) => ({
     provider: item.provider, modelId: item.id, name: item.name, contextWindow: item.contextWindow,
     reasoning: item.reasoning, thinkingLevels: getSupportedThinkingLevels(item),
   })) };
+}
+
+let providerSettingTail: Promise<void> = Promise.resolve();
+async function changeProviderSetting(enabled: boolean) {
+  const operation = providerSettingTail.then(async () => {
+    const previous = workspaces.providerEnabled(claudeProviderId);
+    await setClaudeEnabled(enabled);
+    try { workspaces.setProviderEnabled(claudeProviderId, enabled); }
+    catch (error) { await setClaudeEnabled(previous); throw error; }
+  });
+  providerSettingTail = operation.catch(() => {});
+  await operation;
 }
 
 let stopping = false;
@@ -248,10 +267,18 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
     return reply(res, 200, await inventory());
   }
+  const providerControl = url.pathname.match(/^\/v1\/providers\/([^/]+)$/);
+  if (providerControl && req.method === "PUT") {
+    if (providerControl[1] !== claudeProviderId) throw new Problem(404, "not_found", "Provider setting is unavailable");
+    const { enabled } = await parseBody(req, providerSetting);
+    await changeProviderSetting(enabled);
+    return reply(res, 200, await inventory());
+  }
   const providerRefresh = url.pathname.match(/^\/v1\/providers\/([^/]+)\/refresh$/);
   if (providerRefresh && req.method === "POST") {
     const plugin = plugins.get(providerRefresh[1]);
     if (!plugin?.externalAuth || !(models instanceof ModelRuntime)) throw new Problem(404, "not_found", "Provider refresh is unavailable");
+    if (plugin.enabled?.() === false) throw new Problem(409, "provider_disabled", "Enable the provider before refreshing it");
     const signal = AbortSignal.timeout(30_000);
     await plugin.externalAuth.refresh(signal);
     const auth = await plugin.externalAuth.status(signal);
@@ -649,7 +676,7 @@ function shutdown() {
   clearInterval(heartbeat);
   for (const ws of sockets.clients) ws.terminate();
   voice.close();
-  void harness.close(context).then(async () => {
+  void providerSettingTail.then(() => harness.close(context)).then(async () => {
     await closeClaude();
     if (models instanceof ModelRuntime) await models.settleCredentialWrites();
     workspaces.db.close();

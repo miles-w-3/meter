@@ -46,7 +46,7 @@ let running;
 async function start({ outage = true, storageRights = true } = {}) {
   let logs = "";
   const child = spawn(process.execPath, ["--import", preload, "server/main.ts"], {
-    env: { ...process.env, PI_WORKSPACE_HOME: data, PI_PROVIDER: "fixture", PI_TRANSPORT: "tcp",
+    env: { ...process.env, METER_HOME: data, PI_PROVIDER: "fixture", PI_TRANSPORT: "tcp",
       BRAVE_SEARCH_API_KEY: "fixture-brave", BRAVE_SEARCH_STORAGE_RIGHTS: storageRights ? "1" : "",
       EXA_API_KEY: "fixture-exa", FIRECRAWL_API_KEY: "fixture-firecrawl", SEARCH_FIXTURE_EFFECTS: effects,
       SEARCH_FIXTURE_OUTAGE: outage === "both" ? outage : outage ? "1" : "" },

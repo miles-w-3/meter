@@ -98,23 +98,12 @@ func (a *app) dialogs(c *ui.Context) {
 					}
 					if action(c, "Save tab", !valid) || (valid && input.Submitted()) {
 						open = false
-						conversationID := ""
-						if i := tabIndex(&a.layout, edit.id); i >= 0 {
-							panes := orderedPanes(&a.layout.Tabs[i])
-							if len(panes) == 1 && panes[0].ConversationId != nil {
-								conversationID = *panes[0].ConversationId
-							}
-						}
-						a.saveThen(func(layout *protocol.Layout) {
+						a.save(func(layout *protocol.Layout) {
 							if edit.id == uuid.Nil {
 								a.paneScroll.X = 0
 								addTab(layout, *layout.ActiveProject, name)
 							} else {
 								layout.Tabs[tabIndex(layout, edit.id)].Name = &name
-							}
-						}, func() {
-							if conversationID != "" {
-								a.renameConversation(conversationID, name)
 							}
 						})
 					}

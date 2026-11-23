@@ -29,11 +29,30 @@ func (a *app) loadToolSettings(load func(context.Context) (protocol.ToolsStatus,
 			a.toolsPending = false
 			if err != nil {
 				a.toolsError = err.Error()
+				if a.toolsLoaded {
+					a.applyDiffSettings(a.toolsStatus)
+				}
 				return
 			}
 			a.toolsStatus, a.toolsLoaded = status, true
+			a.applyDiffSettings(status)
 		})
 	}()
+}
+
+func (a *app) applyDiffSettings(status protocol.ToolsStatus) {
+	a.diffLayout = 0
+	if status.DiffLayout == "unified" {
+		a.diffLayout = 1
+	}
+	switch status.DiffInline {
+	case "characters":
+		a.diffInline = "Characters"
+	case "off":
+		a.diffInline = "Off"
+	default:
+		a.diffInline = "Words"
+	}
 }
 
 func (a *app) toolsPanel(c *ui.Context) {
@@ -66,6 +85,10 @@ func (a *app) toolsPanel(c *ui.Context) {
 			text(c, "Web Search", 14, ink).FontWeight(600).Grow(1)
 			if action(c, toolSwitchLabel(web.Enabled), a.toolsPending) {
 				var change protocol.ToolSettingsChange
+				change.WebSearch = new(struct {
+					Enabled  *bool                          `json:"enabled,omitempty"`
+					Provider *protocol.SearchProviderChange `json:"provider,omitempty"`
+				})
 				enabled := !web.Enabled
 				change.WebSearch.Enabled = &enabled
 				a.updateTools(change)
@@ -81,6 +104,10 @@ func (a *app) toolsPanel(c *ui.Context) {
 				})
 				if action(c, toolSwitchLabel(provider.Enabled), a.toolsPending) {
 					var change protocol.ToolSettingsChange
+					change.WebSearch = new(struct {
+						Enabled  *bool                          `json:"enabled,omitempty"`
+						Provider *protocol.SearchProviderChange `json:"provider,omitempty"`
+					})
 					change.WebSearch.Provider = &protocol.SearchProviderChange{
 						Id: protocol.SearchProviderChangeId(provider.Id), Enabled: !provider.Enabled,
 					}

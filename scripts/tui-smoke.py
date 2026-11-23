@@ -56,7 +56,7 @@ class Terminal:
 
 
 with tempfile.TemporaryDirectory(prefix="pi-m1-tui-") as directory, tempfile.TemporaryDirectory(prefix="pi-m1-tui-project-") as project:
-    env = {**os.environ, "TERM": "xterm-256color", "PI_WORKSPACE_HOME": directory, "PI_PROVIDER": "fixture"}
+    env = {**os.environ, "TERM": "xterm-256color", "METER_HOME": directory, "PI_PROVIDER": "fixture"}
     Path(project, "notes.txt").write_text("Go TUI scratch input\n")
     terminals = []
     try:

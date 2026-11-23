@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 const root = resolve(import.meta.dirname, "..");
 const data = await mkdtemp(join(tmpdir(), "meter-mermaid-preview-"));
 const bin = join(root, ".bin/workspace");
-const env = { ...process.env, PI_WORKSPACE_HOME: data, PI_WORKSPACE_SERVER: join(root, "server/main.ts"), PI_PROVIDER: "fixture", PI_TRANSPORT: "unix" };
+const env = { ...process.env, METER_HOME: data, PI_WORKSPACE_SERVER: join(root, "server/main.ts"), PI_PROVIDER: "fixture", PI_TRANSPORT: "unix" };
 const boot = spawnSync(bin, ["server", "start"], { cwd: root, env, encoding: "utf8" });
 if (boot.status !== 0) throw new Error(boot.stderr || boot.stdout || "Could not start fixture backend");
 const socketPath = join(data, "workspace.sock");
@@ -50,7 +50,7 @@ try {
   gui.unref();
   console.log(`Mermaid preview opened (GUI pid ${gui.pid}, conversation ${conversation.id}).`);
   console.log(`Isolated fixture data: ${data}`);
-  console.log(`Stop its backend: PI_WORKSPACE_HOME='${data}' PI_TRANSPORT=unix '${bin}' server stop`);
+  console.log(`Stop its backend: METER_HOME='${data}' PI_TRANSPORT=unix '${bin}' server stop`);
 } catch (err) {
   spawnSync(bin, ["server", "stop"], { cwd: root, env, stdio: "ignore" });
   throw err;

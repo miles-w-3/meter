@@ -121,6 +121,8 @@ export class WebSearch {
   status() {
     const settings = this.preferences();
     return {
+      computedDiffs: settings.computedDiffs,
+      diffLayout: settings.diffLayout, diffInline: settings.diffInline,
       webSearch: {
         enabled: settings.webSearch.enabled,
         providers: searchProvider.options.map((id) => {

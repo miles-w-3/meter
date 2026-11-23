@@ -1,10 +1,10 @@
 # Claude Code provider prototype
 
-Opt in on the backend host with `PI_CLAUDE_CODE=1`, install Claude Code, and
-run `claude auth login` on that host. Restart the backend to enable the
-provider, then select a Claude model from Meter's inventory or save it as the
-default in Models settings. `PI_PROVIDER` and `PI_MODEL` do not select normal
-providers or models.
+Enable **Claude Code subscription** in Meter's Models settings, install Claude
+Code, and run `claude auth login` on the backend host. Enable and disable take
+effect immediately without a backend restart. Select a Claude model from
+Meter's inventory or save it as the default in Models settings. Disabling the
+provider makes its models unavailable but preserves existing selections.
 In Models settings, use **Refresh login & models** after login or logout. This
 explicitly checks Claude Code auth and probes the account's model catalog. The
 probe can make Claude Code's normal feature-flag network requests; it does not

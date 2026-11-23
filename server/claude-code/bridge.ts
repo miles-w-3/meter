@@ -40,7 +40,9 @@ export class ClaudeCwdBridge {
         const conversation = String(api.conversationId);
         this.clear(conversation);
         const agent = await api.snapshot(AgentDoc, api.conversationId, context);
-        if (!agent?.model || !plugins.get(agent.model.provider)?.needsConversationCwd || !agent.cwd) return;
+        if (!agent?.model || !agent.cwd) return;
+        const plugin = plugins.get(agent.model.provider);
+        if (!plugin?.needsConversationCwd || plugin.enabled?.() === false) return;
         const provider = await api.snapshot(ProviderDoc, api.conversationId, context);
         if (provider?.sessionId) this.set(conversation, provider.sessionId, agent.cwd);
       },

@@ -23,6 +23,7 @@ node scripts/claude-provider-test.mjs
 node scripts/claude-inventory-test.mjs
 node scripts/transcript-error-test.mjs
 node scripts/search-test.mjs
+node scripts/file-diffs-test.mjs
 node scripts/mermaid-catalog-test.mjs
 node scripts/compaction-test.mjs
 node scripts/tree-test.mjs

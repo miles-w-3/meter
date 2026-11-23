@@ -83,3 +83,33 @@ func TestStatusPathUsesAvailableWidthAndContextTooltip(t *testing.T) {
 		t.Fatalf("missing context details: %v", driver.Texts())
 	}
 }
+
+func TestSinglePaneShowsTitle(t *testing.T) {
+	node := emptyPane()
+	tab := protocol.LayoutTab{Id: uuid.New()}
+	setPanes(&tab, []protocol.LayoutNode{node})
+	a := &app{selectedPane: node.Id}
+	driver := ui.NewTester(func(c *ui.Context) {
+		a.paneHeader(c, &tab, node, "Conversation title")
+	}, 500, 80)
+	driver.Frame()
+	if !driver.HasText("Conversation title") || driver.HasText("#1") {
+		t.Fatalf("expected an unnumbered single-pane title: %v", driver.Texts())
+	}
+}
+
+func TestSingleConversationPaneTitleVisibleInSurface(t *testing.T) {
+	id, title := "conversation", "Visible conversation pane title"
+	node := protocol.LayoutNode{Id: uuid.New(), ConversationId: &id, Name: &title}
+	tab := protocol.LayoutTab{Id: uuid.New()}
+	setPanes(&tab, []protocol.LayoutNode{node})
+	a := &app{loaded: true, panes: map[uuid.UUID]*pane{node.Id: {}}}
+	driver := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(theme)
+		ui.Column(c).Fill().Children(func() { a.surface(c, protocol.Project{}, &tab) })
+	}, 850, 550)
+	driver.Frame()
+	if bounds, ok := driver.Find(title); !ok || bounds.W <= 0 || bounds.H <= 0 {
+		t.Fatalf("pane title is missing or clipped: %+v, %v", bounds, ok)
+	}
+}

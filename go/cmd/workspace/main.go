@@ -38,15 +38,26 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: workspace gui [--workspace NAME] | workspace tui [--cwd PATH | --conversation ID] [--workspace NAME] [--no-mouse] [--transparent] | workspace server start|stop|status|logs | workspace dictation")
+		// Finder launches the executable without arguments and normally with / as
+		// its working directory. Start the GUI in the user's home instead.
+		binary, err := os.Executable()
+		if err == nil && isAppExecutable(binary) {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			args = []string{"gui", "--cwd", home}
+		} else {
+			return errors.New("usage: meter gui [--workspace NAME] | meter tui [--cwd PATH | --conversation ID] [--workspace NAME] [--no-mouse] [--transparent] | meter server start|stop|status|logs | meter dictation")
+		}
 	}
-	data := os.Getenv("PI_WORKSPACE_HOME")
+	data := os.Getenv("METER_HOME")
 	if data == "" {
 		config, err := os.UserConfigDir()
 		if err != nil {
 			return err
 		}
-		data = filepath.Join(config, "pi-workspace")
+		data = filepath.Join(config, "meter")
 	}
 	data, err := filepath.Abs(data)
 	if err != nil {
@@ -248,7 +259,18 @@ func launch(data string) error {
 			cmd = exec.Command("node", entry)
 		}
 	}
-	cmd.Env = append(os.Environ(), "PI_WORKSPACE_HOME="+data)
+	cmd.Env = append(os.Environ(), "METER_HOME="+data)
+	// Finder does not inherit the user's shell PATH. For the app bundle only,
+	// use Claude Code's standard user installation if no override was supplied.
+	if _, configured := os.LookupEnv("PI_CLAUDE_CLI_COMMAND"); !configured {
+		binary, binaryErr := os.Executable()
+		home, homeErr := os.UserHomeDir()
+		if binaryErr == nil && homeErr == nil {
+			if command := appClaudeCommand(binary, home); command != "" {
+				cmd.Env = append(cmd.Env, "PI_CLAUDE_CLI_COMMAND="+command)
+			}
+		}
+	}
 	if release != "" && os.Getenv("PI_DICTATION_DIR") == "" && os.Getenv("PI_WORKSPACE_SERVER") == "" {
 		cmd.Env = append(cmd.Env, "PI_DICTATION_DIR="+filepath.Dir(release))
 	}

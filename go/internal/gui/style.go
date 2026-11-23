@@ -67,8 +67,6 @@ var (
 	// Borders carry state, not structure: panes separate from the frame by
 	// their surface step, and only the focused one is outlined.
 	focusBorder = ui.RGBA(143, 174, 122, .55)
-	// The rule beside a user message, in place of a filled bubble.
-	userRule = ui.Hex(palette.Faint)
 )
 
 // Surfaces, each lighter than the one it sits on:

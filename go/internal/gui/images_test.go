@@ -49,6 +49,11 @@ func TestComposerPasteAndRemoveImage(t *testing.T) {
 	if len(p.images) != 1 || !driver.HasText("×") {
 		t.Fatalf("pasted image or remove control missing: %v", driver.Texts())
 	}
+	driver.Key(0, ui.KeyEnter)
+	if submitted != 1 {
+		t.Fatalf("Enter after image paste: %d submissions", submitted)
+	}
+	submitted = 0
 	for range 2 {
 		if err := driver.Click("Message"); err != nil {
 			t.Fatal(err)

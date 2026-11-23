@@ -52,6 +52,26 @@ func (a *app) refreshProvider(id string) {
 	}()
 }
 
+func (a *app) setProvider(id string, enabled bool) {
+	if a.modelsLoading {
+		return
+	}
+	a.modelsLoading = true
+	a.modelsError = ""
+	go func() {
+		inventory, err := a.api.SetProvider(a.ctx, id, enabled)
+		a.update(func() {
+			a.modelsLoading = false
+			if err != nil {
+				a.modelsError = err.Error()
+				return
+			}
+			a.modelsInventory = inventory
+			a.modelsLoaded = true
+		})
+	}()
+}
+
 func (a *app) modelsPanel(c *ui.Context) {
 	ui.Column(c).Fill().Gap(10).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
@@ -124,7 +144,10 @@ func (a *app) modelsPanel(c *ui.Context) {
 
 func (a *app) providerStatus(c *ui.Context, p protocol.ProviderInfo) {
 	status := string(p.Status)
-	if p.Source != nil && *p.Source != "" {
+	if p.Enabled != nil && !*p.Enabled {
+		status = "disabled"
+	}
+	if p.Source != nil && *p.Source != "" && (p.Enabled == nil || *p.Enabled) {
 		status += " · " + *p.Source
 	}
 	if p.CatalogSource != nil {
@@ -134,11 +157,20 @@ func (a *app) providerStatus(c *ui.Context, p protocol.ProviderInfo) {
 		ui.Row(c).Gap(8).Children(func() {
 			text(c, clean(p.Name), 12, ink).Grow(1).SingleLine()
 			text(c, clean(status), 11, muted).SingleLine().MaxWidth(250)
-			if p.ExternalAuth != nil && action(c, "Refresh login & models", a.modelsLoading) {
+			if p.Enabled != nil {
+				label := "Enable"
+				if *p.Enabled {
+					label = "Disable"
+				}
+				if action(c, label, a.modelsLoading) {
+					a.setProvider(p.Id, !*p.Enabled)
+				}
+			}
+			if p.ExternalAuth != nil && (p.Enabled == nil || *p.Enabled) && action(c, "Refresh login & models", a.modelsLoading) {
 				a.refreshProvider(p.Id)
 			}
 		})
-		if p.ExternalAuth != nil && p.Status != protocol.ProviderInfoStatusConfigured {
+		if p.ExternalAuth != nil && (p.Enabled == nil || *p.Enabled) && p.Status != protocol.ProviderInfoStatusConfigured {
 			text(c, clean(*p.ExternalAuth), 11, muted)
 		}
 	})

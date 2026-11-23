@@ -146,6 +146,83 @@
         }
       }
     },
+    "/v1/providers/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "SetProvider",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderSetting"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelInventory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Control conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/providers/{id}/refresh": {
       "parameters": [
         {
@@ -2390,10 +2467,88 @@
           "toolTarget": {
             "type": "string"
           },
+          "toolCommand": {
+            "type": "string"
+          },
+          "diffPatch": {
+            "type": "string"
+          },
+          "computedDiffs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "before": {
+                  "type": "string"
+                },
+                "after": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "writeDiffs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "before": {
+                  "type": "string"
+                },
+                "after": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "diffIncomplete": {
+            "type": "boolean"
+          },
           "durationMs": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          },
+          "timestamp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cacheInput": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cacheRead": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cacheWrite": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cacheModel": {
+            "type": "string"
           },
           "tokens": {
             "type": "integer",
@@ -2628,6 +2783,9 @@
                   "type": "string"
                 },
                 "target": {
+                  "type": "string"
+                },
+                "command": {
                   "type": "string"
                 }
               },
@@ -3320,11 +3478,26 @@
               }
             },
             "additionalProperties": false
+          },
+          "computedDiffs": {
+            "type": "boolean"
+          },
+          "diffLayout": {
+            "type": "string",
+            "enum": [
+              "split",
+              "unified"
+            ]
+          },
+          "diffInline": {
+            "type": "string",
+            "enum": [
+              "words",
+              "characters",
+              "off"
+            ]
           }
         },
-        "required": [
-          "webSearch"
-        ],
         "additionalProperties": false
       },
       "SearchProviderChange": {
@@ -3369,10 +3542,31 @@
               "providers"
             ],
             "additionalProperties": false
+          },
+          "computedDiffs": {
+            "type": "boolean"
+          },
+          "diffLayout": {
+            "type": "string",
+            "enum": [
+              "split",
+              "unified"
+            ]
+          },
+          "diffInline": {
+            "type": "string",
+            "enum": [
+              "words",
+              "characters",
+              "off"
+            ]
           }
         },
         "required": [
-          "webSearch"
+          "webSearch",
+          "computedDiffs",
+          "diffLayout",
+          "diffInline"
         ],
         "additionalProperties": false
       },
@@ -3480,6 +3674,9 @@
               "cached",
               "account"
             ]
+          },
+          "enabled": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -3553,6 +3750,18 @@
         "required": [
           "providers",
           "models"
+        ],
+        "additionalProperties": false
+      },
+      "ProviderSetting": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
         ],
         "additionalProperties": false
       }

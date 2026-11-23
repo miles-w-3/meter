@@ -31,7 +31,7 @@ async function request(path, method = "GET", body) {
 }
 async function start(extra = {}) {
   child = spawn(process.execPath, ["server/main.ts"], {
-    env: { PATH: process.env.PATH, HOME: dir, PI_CODING_AGENT_DIR: agentDir, PI_WORKSPACE_HOME: dir, PI_PROVIDER: "openai", ...extra },
+    env: { PATH: process.env.PATH, HOME: dir, PI_CODING_AGENT_DIR: agentDir, METER_HOME: dir, PI_PROVIDER: "openai", ...extra },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let logs = "";

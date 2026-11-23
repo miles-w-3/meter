@@ -21,6 +21,7 @@ func (a *app) applyBackendInfo(info protocol.ServerInfo) {
 	if info.Generation != nil && (a.backendInfo.Generation == nil || *info.Generation != *a.backendInfo.Generation) {
 		a.toolsLoaded = false
 	}
+	a.loadReadHeads(info.Id)
 	a.backendInfo = info
 	a.backendOnline = bool(info.Ready)
 	if a.backendOnline {
@@ -29,6 +30,9 @@ func (a *app) applyBackendInfo(info protocol.ServerInfo) {
 	a.mayRetry = slices.Contains(info.Capabilities, "retry-submit")
 	a.mayAbort = slices.Contains(info.Capabilities, "abort-target")
 	a.mayDictate = slices.Contains(info.Capabilities, "dictation")
+	if a.update != nil && a.api != nil && a.backendOnline && !a.toolsLoaded {
+		a.refreshTools()
+	}
 }
 
 func backendRevision(revision string, dirty bool) string {
@@ -53,6 +57,7 @@ func (a *app) backendPanel(c *ui.Context) {
 					a.settingsItem(c, "backend", "Backend status")
 					a.settingsItem(c, "models", "Models")
 					a.settingsItem(c, "tools", "Tools")
+					a.settingsItem(c, "diffs", "Diffs")
 				})
 				ui.Box(c).Width(1).Background(theme.Border)
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
@@ -61,6 +66,8 @@ func (a *app) backendPanel(c *ui.Context) {
 						a.modelsPanel(c)
 					case "tools":
 						a.toolsPanel(c)
+					case "diffs":
+						a.diffsPanel(c)
 					default:
 						a.backendStatus(c)
 					}
@@ -84,7 +91,7 @@ func (a *app) settingsItem(c *ui.Context, section, label string) {
 	row.Children(func() { text(c, label, 13, ink) })
 	if row.Clicked() {
 		a.settingsSection = section
-		if section == "tools" {
+		if section == "tools" || section == "diffs" {
 			a.refreshTools()
 		}
 		if section == "models" && !a.modelsLoaded && !a.modelsLoading {

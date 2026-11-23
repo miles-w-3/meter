@@ -4,6 +4,7 @@ import type { Provider } from "@earendil-works/pi-ai";
 export interface ProviderPlugin {
   provider: Provider;
   needsConversationCwd?: boolean;
+  enabled?(): boolean;
   externalAuth?: {
     instruction: string;
     status(signal?: AbortSignal): Promise<{ status: "configured" | "unconfigured" | "unknown"; source?: string }>;

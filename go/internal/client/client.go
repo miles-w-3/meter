@@ -143,6 +143,17 @@ func (c *Client) Models(ctx context.Context) (protocol.ModelInventory, error) {
 	return protocol.ModelInventory{}, responseError(res.StatusCode(), res.GetBody())
 }
 
+func (c *Client) SetProvider(ctx context.Context, id string, enabled bool) (protocol.ModelInventory, error) {
+	res, err := c.longAPI.SetProviderWithResponse(ctx, id, protocol.ProviderSetting{Enabled: enabled})
+	if err != nil {
+		return protocol.ModelInventory{}, err
+	}
+	if body := res.GetJSON200(); body != nil {
+		return *body, nil
+	}
+	return protocol.ModelInventory{}, responseError(res.StatusCode(), res.GetBody())
+}
+
 func (c *Client) RefreshProvider(ctx context.Context, id string) (protocol.ModelInventory, error) {
 	res, err := c.longAPI.RefreshProviderWithResponse(ctx, id)
 	if err != nil {

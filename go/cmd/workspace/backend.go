@@ -22,6 +22,23 @@ func isExecutable(path string) bool {
 	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }
 
+func isAppExecutable(binary string) bool {
+	dir := filepath.Dir(binary)
+	contents := filepath.Dir(dir)
+	return filepath.Base(dir) == "MacOS" && filepath.Base(contents) == "Contents" && filepath.Ext(filepath.Dir(contents)) == ".app"
+}
+
+func appClaudeCommand(binary, home string) string {
+	if !isAppExecutable(binary) {
+		return ""
+	}
+	command := filepath.Join(home, ".local", "bin", "claude")
+	if isExecutable(command) {
+		return command
+	}
+	return ""
+}
+
 func bundledServer() string {
 	binary, err := os.Executable()
 	if err != nil {

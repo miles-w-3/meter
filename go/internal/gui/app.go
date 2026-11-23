@@ -31,6 +31,7 @@ type pane struct {
 	conversation       string
 	expandedTools      map[string]bool
 	transcriptScroll   ui.ScrollState
+	transcriptGuard    transcriptScrollGuard
 	rejected           bool
 	cancel             context.CancelFunc
 	state              client.State
@@ -44,6 +45,7 @@ type pane struct {
 	list               ui.ListState
 	draft              string
 	focusDictatedDraft bool
+	moveDictatedCaret  bool
 	images             []draftImage
 	transcriptImages   map[string]*transcriptImageState
 	notice             string
@@ -84,6 +86,12 @@ type app struct {
 	paneScroll           ui.ScrollState
 	selectedPane         uuid.UUID
 	selectedPaneTab      uuid.UUID
+	lastProjectTabs      map[uuid.UUID]uuid.UUID
+	recentHeads          map[string]string
+	readHeads            map[string]string
+	clientData           string
+	readHeadsPath        string
+	unreadConversations  map[string]bool
 	widthDrag            *paneResize
 	revealPane           uuid.UUID
 	projectForm          bool
@@ -123,6 +131,8 @@ type app struct {
 	backendNotice        string
 	backendOnline        bool
 	settingsSection      string
+	diffLayout           int
+	diffInline           string
 	toolsStatus          protocol.ToolsStatus
 	toolsLoaded          bool
 	toolsPending         bool
@@ -156,7 +166,7 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	a := &app{
-		ctx: ctx, api: api, name: name, provider: info.Provider, projectPath: cwd,
+		ctx: ctx, api: api, name: name, clientData: data, provider: info.Provider, projectPath: cwd,
 		panes: make(map[uuid.UUID]*pane), backend: backend,
 		terminals: make(map[uuid.UUID]terminalSession), terminalErrors: make(map[uuid.UUID]string),
 	}
@@ -181,6 +191,7 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 			MinWidth: 850, MinHeight: 550, Content: ui.View(a.view),
 		})
 		a.update = a.window.Update
+		a.refreshTools()
 		if err := a.window.SetIcon(appIcon); err != nil {
 			log.Printf("set window icon: %v", err)
 		}
@@ -242,9 +253,13 @@ func (a *app) reload() {
 				a.layout, a.loaded, a.conflict = layout, true, false
 				a.tabEditor, a.cwdEditor = nil, nil
 				a.scopePrototypeTabs()
+				a.rememberActiveTab()
 				a.syncPanes()
 			}
 			a.notice = ""
+			if layoutErr == nil {
+				a.saveNewPaneTitles()
+			}
 			if err := errors.Join(layoutErr, catalogErr); err != nil {
 				a.notice = err.Error()
 			}
@@ -323,6 +338,7 @@ func (a *app) syncPanes() {
 						if err == nil && p.conversation == conversation {
 							if _, exists := a.metadata(conversation); !exists {
 								a.catalog.Conversations = append(a.catalog.Conversations, info)
+								a.saveNewPaneTitles()
 							}
 						}
 					})
@@ -338,12 +354,17 @@ func (a *app) syncPanes() {
 							p.connected = event.View != nil
 							old := p.state.Current.Entries
 							p.state.Apply(event)
+							if event.View != nil {
+								a.noteRecentHead(conversation, p.state.Current.Entries)
+							}
 							if p.connected && p.pendingFirst {
 								p.pendingFirst, p.starting = false, false
 								a.send(p, p.conversation, "prompt", false)
 							}
 							p.updateMeter(time.Now())
-							a.captureTitle(p)
+							if a.captureTitle(p) {
+								a.saveNewPaneTitles()
+							}
 							a.updateBadge()
 							current := p.state.Current.Entries
 							if !event.Reset && len(current) > 0 && (len(old) == 0 || old[len(old)-1].Id != current[len(current)-1].Id) {
@@ -460,13 +481,13 @@ func (a *app) updateBadge() {
 	}
 }
 
-func (a *app) captureTitle(p *pane) {
+func (a *app) captureTitle(p *pane) bool {
 	for i, conversation := range a.catalog.Conversations {
 		if conversation.Id != p.conversation {
 			continue
 		}
-		if conversation.Title != nil {
-			return
+		if conversation.Title != nil && *conversation.Title != "" {
+			return false
 		}
 		for _, entry := range p.state.Current.Entries {
 			if entry.Kind != "pi.user" && entry.Kind != "user" {
@@ -480,9 +501,56 @@ func (a *app) captureTitle(p *pane) {
 				title = strings.TrimSpace(string(chars[:47])) + "…"
 			}
 			a.catalog.Conversations[i].Title = &title
-			return
+			return true
 		}
+		return false
+	}
+	return false
+}
+
+// seedPaneTitles copies a canonical title only once. Existing pane names
+// belong to the layout, so they survive renames elsewhere and tree remapping.
+func (a *app) seedPaneTitles(layout *protocol.Layout) bool {
+	changed := false
+	for i := range layout.Tabs {
+		for j := range layout.Tabs[i].Nodes {
+			node := &layout.Tabs[i].Nodes[j]
+			if node.Name != nil || node.ConversationId == nil {
+				continue
+			}
+			conversation, _ := a.metadata(*node.ConversationId)
+			if conversation.Title == nil {
+				continue
+			}
+			name := strings.TrimSpace(clean(*conversation.Title))
+			// The layout schema limits names to 80 UTF-16 code units.
+			units := 0
+			for offset, r := range name {
+				units++
+				if r > 0xffff {
+					units++
+				}
+				if units > 80 {
+					name = strings.TrimSpace(name[:offset])
+					break
+				}
+			}
+			if name != "" {
+				node.Name = &name
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+func (a *app) saveNewPaneTitles() {
+	if a.busy() {
 		return
+	}
+	next := copyLayout(a.layout)
+	if a.seedPaneTitles(&next) {
+		a.saveLayout(next, nil)
 	}
 }
 
@@ -496,6 +564,11 @@ func (a *app) saveThen(edit func(*protocol.Layout), done func()) {
 	}
 	next := copyLayout(a.layout)
 	edit(&next)
+	a.seedPaneTitles(&next)
+	a.saveLayout(next, done)
+}
+
+func (a *app) saveLayout(next protocol.Layout, done func()) {
 	a.saving = true
 	go func() {
 		layout, err := a.api.SaveLayout(a.ctx, a.name, next)
@@ -514,30 +587,13 @@ func (a *app) saveThen(edit func(*protocol.Layout), done func()) {
 				return
 			}
 			a.layout = layout
+			a.rememberActiveTab()
 			a.notice = ""
 			a.syncPanes()
 			if done != nil {
 				done()
 			}
-		})
-	}()
-}
-
-func (a *app) renameConversation(id, name string) {
-	go func() {
-		updated, err := a.api.RenameConversation(a.ctx, id, name)
-		a.update(func() {
-			if err != nil {
-				a.notice = "Tab renamed, but conversation rename failed: " + err.Error()
-				return
-			}
-			for i, item := range a.catalog.Conversations {
-				if item.Id == id {
-					a.catalog.Conversations[i] = updated
-					return
-				}
-			}
-			a.catalog.Conversations = append(a.catalog.Conversations, updated)
+			a.saveNewPaneTitles()
 		})
 	}()
 }
@@ -598,10 +654,50 @@ func (a *app) activeTab() *protocol.LayoutTab {
 	return nil
 }
 
+func (a *app) rememberActiveTab() {
+	if a.layout.ActiveProject == nil || a.layout.ActiveTab == nil {
+		return
+	}
+	if a.lastProjectTabs == nil {
+		a.lastProjectTabs = make(map[uuid.UUID]uuid.UUID)
+	}
+	a.lastProjectTabs[*a.layout.ActiveProject] = *a.layout.ActiveTab
+}
+
+func (a *app) restoreProjectTab(layout *protocol.Layout, project uuid.UUID) {
+	selectProject(layout, project)
+	if id, ok := a.lastProjectTabs[project]; ok {
+		if i := tabIndex(layout, id); i >= 0 && layout.Tabs[i].ProjectId != nil && *layout.Tabs[i].ProjectId == project {
+			layout.ActiveTab = &id
+		}
+	}
+}
+
+// Compare the live head with the last head this client actually viewed.
+func (a *app) noteRecentHead(conversation string, entries []protocol.Entry) {
+	if len(entries) == 0 {
+		return
+	}
+	head := entries[len(entries)-1].Id
+	if a.recentHeads[conversation] == head {
+		return
+	}
+	if a.recentHeads == nil {
+		a.recentHeads = make(map[string]string)
+		a.unreadConversations = make(map[string]bool)
+	}
+	a.recentHeads[conversation] = head
+	if a.readHeads[conversation] != head {
+		a.unreadConversations[conversation] = true
+	} else {
+		delete(a.unreadConversations, conversation)
+	}
+}
+
 func (a *app) selectProject(id uuid.UUID) {
 	a.tabEditor, a.cwdEditor = nil, nil
 	a.paneScroll.X = 0
-	a.save(func(layout *protocol.Layout) { selectProject(layout, id) })
+	a.save(func(layout *protocol.Layout) { a.restoreProjectTab(layout, id) })
 }
 
 func (a *app) register() {

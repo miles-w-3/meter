@@ -69,6 +69,9 @@ export class Workspaces {
       CREATE TABLE IF NOT EXISTS tool_settings (
         id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS provider_settings (
+        id TEXT PRIMARY KEY, enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
+      ) STRICT;
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY, cwd TEXT NOT NULL UNIQUE, name TEXT NOT NULL
       ) STRICT;
@@ -100,11 +103,23 @@ export class Workspaces {
     });
   }
 
-  updateToolSettings({ webSearch: change }: z.infer<typeof toolSettingsChange>) {
+  updateToolSettings({ webSearch: change, computedDiffs, diffLayout, diffInline }: z.infer<typeof toolSettingsChange>) {
     const value = this.toolSettings();
-    if (change.enabled !== undefined) value.webSearch.enabled = change.enabled;
-    if (change.provider) value.webSearch.providers[change.provider.id] = change.provider.enabled;
+    if (change?.enabled !== undefined) value.webSearch.enabled = change.enabled;
+    if (change?.provider) value.webSearch.providers[change.provider.id] = change.provider.enabled;
+    if (computedDiffs !== undefined) value.computedDiffs = computedDiffs;
+    if (diffLayout !== undefined) value.diffLayout = diffLayout;
+    if (diffInline !== undefined) value.diffInline = diffInline;
     this.db.prepare("INSERT INTO tool_settings VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET body=excluded.body").run(JSON.stringify(value));
+  }
+
+  providerEnabled(id: string): boolean {
+    const row = this.db.prepare("SELECT enabled FROM provider_settings WHERE id=?").get(id);
+    return row?.enabled === 1;
+  }
+
+  setProviderEnabled(id: string, enabled: boolean) {
+    this.db.prepare("INSERT INTO provider_settings VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled").run(id, Number(enabled));
   }
 
   projects() {

@@ -19,7 +19,7 @@ const project = await mkdtemp(join(tmpdir(), "pi-m1-project-"));
 const children = new Set();
 const sockets = new Set();
 const credentials = process.argv.includes("--provider") ? "openai-smoke" : "fixture";
-const env = { ...process.env, PI_WORKSPACE_HOME: directory, PI_PROVIDER: credentials, PI_TRANSPORT: transport, PI_CRASH_POINT: "" };
+const env = { ...process.env, METER_HOME: directory, PI_PROVIDER: credentials, PI_TRANSPORT: transport, PI_CRASH_POINT: "" };
 const pathOf = (id) => "/v1/conversations/" + id;
 
 async function until(predicate, name, timeout = 15_000) {
@@ -168,6 +168,7 @@ async function regular() {
   const write = entries(finished).find((entry) => entry.toolName === "write" && entry.toolSucceeded === true);
   assert.ok(write);
   assert.equal(write.toolTarget, "result.txt");
+  assert.ok(write.writeDiffs?.some(d => d.path === "result.txt" && d.after === "written by Durable\n"));
   assert.ok(Number.isInteger(write.durationMs));
   const stored = await request(pathOf(conversation) + "/entries/" + write.id + "/output");
   assert.equal(stored.status, 200);
@@ -175,10 +176,34 @@ async function regular() {
   assert.ok(finished.view.contextUsage.tokens > 0);
   assert.ok(finished.view.contextUsage.window > finished.view.contextUsage.tokens);
   assert.equal(await readFile(join(project, "result.txt"), "utf8"), "written by Durable\n");
+  // Bash snapshot diffs are retained with tool results; disabling them prevents collection.
+  assert.equal((await request("/v1/settings/tools")).value.computedDiffs, true);
+  await writeFile(join(project, "diff-fixture.txt"), "original\n");
+  const diffConversation = await create();
+  const diffWatch = await watch(diffConversation);
+  assert.equal((await submit(diffConversation, input("fixture:bash-diff", "bash-diff-on"))).status, 202);
+  const withDiff = await waitFor(diffWatch, f => f.view.status === "idle" && entries(f).some(e => e.toolName === "bash"), "bash diff");
+  const bash = entries(withDiff).find(e => e.toolName === "bash");
+  assert.match(bash.toolCommand, /diff-fixture/);
+  assert.deepEqual(bash.computedDiffs.find(d => d.path === "diff-fixture.txt"), { path: "diff-fixture.txt", before: "original\n", after: "updated\n" });
+  assert.equal((await request("/v1/settings/tools", "PATCH", { computedDiffs: false })).value.computedDiffs, false);
+  await writeFile(join(project, "diff-fixture.txt"), "again\n");
+  const disabledConversation = await create();
+  const disabledWatch = await watch(disabledConversation);
+  assert.equal((await submit(disabledConversation, input("fixture:bash-diff", "bash-diff-off"))).status, 202);
+  const noDiff = await waitFor(disabledWatch, f => f.view.status === "idle" && entries(f).some(e => e.toolName === "bash"), "disabled bash diff");
+  assert.equal(entries(noDiff).find(e => e.toolName === "bash").computedDiffs, undefined);
+  assert.equal(await readFile(join(project, "diff-fixture.txt"), "utf8"), "updated\n");
+  diffWatch.ws.close(); disabledWatch.ws.close();
   await kill(server);
 
   server = start();
   await server.ready;
+  assert.equal((await request("/v1/settings/tools")).value.computedDiffs, false, "setting survives restart");
+  const diffReload = await watch(diffConversation);
+  assert.deepEqual(entries(diffReload.frames[0]).find(e => e.toolName === "bash").computedDiffs, bash.computedDiffs, "diff survives restart");
+  diffReload.ws.close();
+  assert.equal((await request("/v1/settings/tools", "PATCH", { computedDiffs: true })).value.computedDiffs, true);
   await recovered(conversation, active.generation, replay.value.submissionId, prompt, "Fixture completed");
   assert.equal((await submit(conversation, { ...prompt, content: "different" })).value.code, "request_conflict");
 

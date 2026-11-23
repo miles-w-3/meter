@@ -10,12 +10,13 @@ import { ClaudeCwdBridge } from "../server/claude-code/bridge.ts";
 import { ProviderPlugins } from "../server/provider-plugins.ts";
 
 const root = await mkdtemp(join(tmpdir(), "meter-claude-test-"));
-const a = join(root, "a"), b = join(root, "b"), log = join(root, "cwd.log");
+const a = join(root, "a"), b = join(root, "b"), log = join(root, "cwd.log"), pidFile = join(root, "claude.pid");
 await mkdir(a); await mkdir(b);
 process.env.PI_CLAUDE_CLI_COMMAND = resolve("scripts/fixtures/claude-stub.cjs");
 process.env.PI_CLAUDE_CLI_RELAY = "off";
 process.env.PI_CLAUDE_CLI_TRACE = "off";
 process.env.METER_STUB_CWD = log;
+process.env.CLAUDE_STUB_PID_FILE = pidFile;
 process.env.PI_CODING_AGENT_DIR = root;
 let opened;
 const bridge = new ClaudeCwdBridge();
@@ -35,7 +36,7 @@ await handlers.beforeRequest({}, hookApi(1, "claude-test"), context);
 handlers.afterResponse({}, hookApi(1, "claude-test"));
 assert.throws(() => bridge.take("session-1"), /no trusted/, "unused mapping is cleared after response");
 try {
-  opened = await openHarness(join(root, "db.sqlite"), "pi-claude-cli");
+  opened = await openHarness(join(root, "db.sqlite"), "", undefined, { claudeEnabled: true });
   const { harness, models } = opened;
   const model = models.getModels("pi-claude-cli")[0];
   assert.ok(model, "Claude provider registers models");
@@ -73,7 +74,7 @@ try {
   const deleted = db.prepare("DELETE FROM documents WHERE json_extract(kind, '$') = 'pi.provider' AND owner_id = ?").run(conversationId);
   assert.equal(deleted.changes, 1);
   db.close();
-  opened = await openHarness(join(root, "db.sqlite"), "pi-claude-cli");
+  opened = await openHarness(join(root, "db.sqlite"), "", undefined, { claudeEnabled: true });
   assert.ok((await opened.harness.snapshot(ProviderDoc, conversationId, context))?.sessionId, "legacy provider session migrated before resume");
   const reopened = await opened.harness.conversation(conversationId, context);
   await send(reopened, "restart");
@@ -85,6 +86,17 @@ try {
   await Promise.all([send(reopened, "parallel-a"), send(other, "parallel-b")]);
   const parallel = (await readFile(log, "utf8")).trim().split("\n");
   assert.equal(parallel.at(-1), await realpath(a), "other conversation launches in its own directory");
+  const pid = Number((await readFile(pidFile, "utf8")).trim());
+  await opened.setClaudeEnabled(false);
+  assert.equal(opened.models.getModels("pi-claude-cli").length, 0, "disabled models are unavailable");
+  for (let i = 0; i < 100; i++) {
+    try { process.kill(pid, 0); await new Promise((resolve) => setTimeout(resolve, 20)); }
+    catch (error) { if (error.code === "ESRCH") break; throw error; }
+  }
+  assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "disabling retires parked processes");
+  assert.equal((await other.agent(context)).model.provider, "pi-claude-cli", "disabling preserves selection");
+  await opened.setClaudeEnabled(true);
+  await send(other, "reenabled");
   console.log("Claude provider: fail-closed mapping, tool handoff, cwd switch, restart and concurrent conversations passed");
 } finally {
   if (opened) { await opened.harness.close(context); await opened.closeClaude(); }

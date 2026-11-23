@@ -74,7 +74,7 @@ func (a *app) viewWithDictation(c *ui.Context, beginDictation func(uuid.UUID, *p
 						}
 					}
 					if iconButton(c, settingsIcon, "Settings", false).Clicked() {
-						if a.settingsSection == "tools" {
+						if a.settingsSection == "tools" || a.settingsSection == "diffs" {
 							a.refreshTools()
 						}
 						a.backendOpen = true
@@ -195,11 +195,11 @@ func (a *app) sidebarView(c *ui.Context, project protocol.Project) {
 				}
 				for _, entry := range conversations {
 					conversation := entry.conversation
-					title := a.title(conversation)
+					title := a.conversationPaneTitle(entry.node, conversation)
 					row := sidebarRow(c.Key(entry.node.Id.String()), title, a.busy()).Tooltip(title)
 					row.Children(func() {
 						ui.Row(c).Size(sidebarIconWidth, sidebarIconWidth).Shrink(0).Center().Children(func() {
-							if color, ok := conversationLight(a.panes[entry.node.Id]); ok {
+							if color, ok := conversationLight(a.panes[entry.node.Id], a.unreadConversations[conversation.Id]); ok {
 								ui.Box(c).Size(7, 7).Radius(4).Background(color)
 							}
 						})
@@ -328,7 +328,10 @@ type recentEntry struct {
 	node         protocol.LayoutNode
 }
 
-func conversationLight(p *pane) (ui.Color, bool) {
+func conversationLight(p *pane, unread bool) (ui.Color, bool) {
+	if unread {
+		return rain, true
+	}
 	if p == nil || !p.connected {
 		return ui.Transparent, false
 	}
@@ -359,7 +362,7 @@ func (a *app) recentConversations() []recentEntry {
 				continue
 			}
 			conversation, _ := a.metadata(*node.ConversationId)
-			if strings.Contains(strings.ToLower(a.title(conversation)+" "+conversation.Cwd), needle) {
+			if strings.Contains(strings.ToLower(a.conversationPaneTitle(node, conversation)+" "+a.title(conversation)+" "+conversation.Cwd), needle) {
 				recent = append(recent, recentEntry{conversation, tab, node})
 			}
 		}
@@ -560,8 +563,17 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					}
 				})
 				if a.revealPane == node.Id {
+					if a.selectedPane != node.Id {
+						a.cancelDictation()
+						a.selectedPane = node.Id
+						column.Focus(ui.FocusOptions{PreventScroll: true})
+					}
 					column.ScrollIntoView()
 					a.revealPane = uuid.Nil
+				}
+				if a.selectedPane == node.Id && node.ConversationId != nil && node.TreePosition == nil && (a.tree == nil || a.tree.pane != node.Id) && a.unreadConversations[*node.ConversationId] {
+					a.markRecentRead(*node.ConversationId)
+					c.Invalidate()
 				}
 			}
 			a.dropGap(c, tab, panes, len(panes), gap, widths)
@@ -642,10 +654,13 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 	if p == nil {
 		return
 	}
+	id := *node.ConversationId
+	conversation, _ := a.metadata(id)
+	title := a.conversationPaneTitle(node, conversation)
 	if node.TreePosition != nil {
 		position := *node.TreePosition
 		a.loadPinnedHistory(p, position)
-		a.paneHeader(c, tab, node, paneTitle(node, "Tree preview"))
+		a.paneHeader(c, tab, node, title)
 		ui.Column(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Row(c).FillWidth().Padding(8, 16).Children(func() {
 				text(c, "Tree preview · send a message to branch conversation", 12, warning)
@@ -679,9 +694,6 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		})
 		return
 	}
-	id := *node.ConversationId
-	conversation, _ := a.metadata(id)
-	title := paneTitle(node, a.title(conversation))
 	running := p.connected && p.state.Current.Status == "running"
 	a.paneHeader(c, tab, node, title)
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Background(contentSurface).Children(func() {
@@ -757,10 +769,11 @@ func (a *app) composerWithStop(c *ui.Context, id uuid.UUID, p *pane, options for
 		border = dictationBorder(a.dictation)
 	}
 	ui.Column(c).FillWidth().MinWidth(0).Radius(inputRadius).Clip().Background(panel).Border(1, border).Children(func() {
-		imagePreviews(c, p)
-		ui.Row(c).Padding(8, paneGutter, 8, paneTextInset).Gap(8).AlignItems(ui.Start).Children(func() {
+		// Keep the editor row mounted when the first attachment appears.
+		imagePreviews(c.Key("attachments"), p)
+		ui.Row(c.Key("editor-row")).Padding(0, paneGutter, 0, 0).Gap(8).AlignItems(ui.Start).Children(func() {
 			input := ui.TextAreaBase(c, draft).Grow(1).MinWidth(0).Lines(1, 8).Label(options.Label).
-				Placeholder(options.Placeholder).PlaceholderColor(ui.Hex("#abbcb0")).Padding(0).
+				Placeholder(options.Placeholder).PlaceholderColor(ui.Hex("#abbcb0")).Padding(8, 0, 8, paneTextInset).MinHeight(48).
 				ReadOnly(options.ReadOnly || recording).FontSize(14).TextColor(ink).
 				OnPaste(func(text string) bool { return !recording && p.pasteImage(services, text) }).
 				OnTextKey(func(k ui.TextKey) bool {
@@ -785,6 +798,13 @@ func (a *app) composerWithStop(c *ui.Context, id uuid.UUID, p *pane, options for
 				input.Focus(ui.FocusOptions{PreventScroll: true})
 				end := len([]rune(p.draft))
 				input.SetTextSelection(end, end)
+			}
+			if p.moveDictatedCaret {
+				p.moveDictatedCaret = false
+				if input.Focused() {
+					end := len([]rune(p.draft))
+					input.SetTextSelection(end, end)
+				}
 			}
 			if input.Focused() {
 				a.dictationTextFocused = true
@@ -818,6 +838,10 @@ func composerArea(c *ui.Context, children func()) {
 	paneContent(c, func() {
 		ui.Column(c).FillWidth().MinWidth(0).Padding(8, 0, 4).Gap(5).Children(children)
 	})
+}
+
+func (a *app) conversationPaneTitle(node protocol.LayoutNode, conversation protocol.Conversation) string {
+	return paneTitle(node, a.title(conversation))
 }
 
 func paneTitle(node protocol.LayoutNode, fallback string) string {

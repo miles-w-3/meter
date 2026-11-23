@@ -31,7 +31,7 @@ func TestProjectClosePersistsAcrossDaemonRestart(t *testing.T) {
 	start := func() *exec.Cmd {
 		cmd := exec.CommandContext(ctx, "node", "server/main.ts")
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "PI_PROVIDER=fixture", "PI_TRANSPORT=tcp", "PI_WORKSPACE_HOME="+data)
+		cmd.Env = append(os.Environ(), "PI_PROVIDER=fixture", "PI_TRANSPORT=tcp", "METER_HOME="+data)
 		var logs strings.Builder
 		cmd.Stdout, cmd.Stderr = &logs, &logs
 		if err := cmd.Start(); err != nil {

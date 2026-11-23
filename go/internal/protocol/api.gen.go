@@ -601,6 +601,84 @@ func (e SubmitInputMode) Valid() bool {
 	}
 }
 
+// Defines values for ToolSettingsChangeDiffInline.
+const (
+	ToolSettingsChangeDiffInlineCharacters ToolSettingsChangeDiffInline = "characters"
+	ToolSettingsChangeDiffInlineOff        ToolSettingsChangeDiffInline = "off"
+	ToolSettingsChangeDiffInlineWords      ToolSettingsChangeDiffInline = "words"
+)
+
+// Valid indicates whether the value is a known member of the ToolSettingsChangeDiffInline enum.
+func (e ToolSettingsChangeDiffInline) Valid() bool {
+	switch e {
+	case ToolSettingsChangeDiffInlineCharacters:
+		return true
+	case ToolSettingsChangeDiffInlineOff:
+		return true
+	case ToolSettingsChangeDiffInlineWords:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ToolSettingsChangeDiffLayout.
+const (
+	ToolSettingsChangeDiffLayoutSplit   ToolSettingsChangeDiffLayout = "split"
+	ToolSettingsChangeDiffLayoutUnified ToolSettingsChangeDiffLayout = "unified"
+)
+
+// Valid indicates whether the value is a known member of the ToolSettingsChangeDiffLayout enum.
+func (e ToolSettingsChangeDiffLayout) Valid() bool {
+	switch e {
+	case ToolSettingsChangeDiffLayoutSplit:
+		return true
+	case ToolSettingsChangeDiffLayoutUnified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ToolsStatusDiffInline.
+const (
+	ToolsStatusDiffInlineCharacters ToolsStatusDiffInline = "characters"
+	ToolsStatusDiffInlineOff        ToolsStatusDiffInline = "off"
+	ToolsStatusDiffInlineWords      ToolsStatusDiffInline = "words"
+)
+
+// Valid indicates whether the value is a known member of the ToolsStatusDiffInline enum.
+func (e ToolsStatusDiffInline) Valid() bool {
+	switch e {
+	case ToolsStatusDiffInlineCharacters:
+		return true
+	case ToolsStatusDiffInlineOff:
+		return true
+	case ToolsStatusDiffInlineWords:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ToolsStatusDiffLayout.
+const (
+	ToolsStatusDiffLayoutSplit   ToolsStatusDiffLayout = "split"
+	ToolsStatusDiffLayoutUnified ToolsStatusDiffLayout = "unified"
+)
+
+// Valid indicates whether the value is a known member of the ToolsStatusDiffLayout enum.
+func (e ToolsStatusDiffLayout) Valid() bool {
+	switch e {
+	case ToolsStatusDiffLayoutSplit:
+		return true
+	case ToolsStatusDiffLayoutUnified:
+		return true
+	default:
+		return false
+	}
+}
+
 // AbortInput defines model for AbortInput.
 type AbortInput struct {
 	Target string `json:"target"`
@@ -680,6 +758,7 @@ type ConversationView struct {
 	Status         ConversationViewStatus `json:"status"`
 	Tools          []struct {
 		CallId  *string `json:"callId,omitempty"`
+		Command *string `json:"command,omitempty"`
 		EntryId *string `json:"entryId,omitempty"`
 		Name    string  `json:"name"`
 		Output  *string `json:"output,omitempty"`
@@ -719,19 +798,37 @@ type DefaultSettingsThinkingLevel string
 // Entry defines model for Entry.
 type Entry struct {
 	Added         *int    `json:"added,omitempty"`
-	DurationMs    *int    `json:"durationMs,omitempty"`
-	Error         *string `json:"error,omitempty"`
-	Id            string  `json:"id"`
-	ImageCount    *int    `json:"imageCount,omitempty"`
-	Kind          string  `json:"kind"`
-	OutputClipped *bool   `json:"outputClipped,omitempty"`
-	Removed       *int    `json:"removed,omitempty"`
-	Text          string  `json:"text"`
-	Tokens        *int    `json:"tokens,omitempty"`
-	ToolCallId    *string `json:"toolCallId,omitempty"`
-	ToolName      *string `json:"toolName,omitempty"`
-	ToolSucceeded *bool   `json:"toolSucceeded,omitempty"`
-	ToolTarget    *string `json:"toolTarget,omitempty"`
+	CacheInput    *int    `json:"cacheInput,omitempty"`
+	CacheModel    *string `json:"cacheModel,omitempty"`
+	CacheRead     *int    `json:"cacheRead,omitempty"`
+	CacheWrite    *int    `json:"cacheWrite,omitempty"`
+	ComputedDiffs *[]struct {
+		After  string `json:"after"`
+		Before string `json:"before"`
+		Path   string `json:"path"`
+	} `json:"computedDiffs,omitempty"`
+	DiffIncomplete *bool   `json:"diffIncomplete,omitempty"`
+	DiffPatch      *string `json:"diffPatch,omitempty"`
+	DurationMs     *int    `json:"durationMs,omitempty"`
+	Error          *string `json:"error,omitempty"`
+	Id             string  `json:"id"`
+	ImageCount     *int    `json:"imageCount,omitempty"`
+	Kind           string  `json:"kind"`
+	OutputClipped  *bool   `json:"outputClipped,omitempty"`
+	Removed        *int    `json:"removed,omitempty"`
+	Text           string  `json:"text"`
+	Timestamp      *int    `json:"timestamp,omitempty"`
+	Tokens         *int    `json:"tokens,omitempty"`
+	ToolCallId     *string `json:"toolCallId,omitempty"`
+	ToolCommand    *string `json:"toolCommand,omitempty"`
+	ToolName       *string `json:"toolName,omitempty"`
+	ToolSucceeded  *bool   `json:"toolSucceeded,omitempty"`
+	ToolTarget     *string `json:"toolTarget,omitempty"`
+	WriteDiffs     *[]struct {
+		After  string `json:"after"`
+		Before string `json:"before"`
+		Path   string `json:"path"`
+	} `json:"writeDiffs,omitempty"`
 }
 
 // EntryImages defines model for EntryImages.
@@ -895,6 +992,7 @@ type ProjectRenameInput struct {
 // ProviderInfo defines model for ProviderInfo.
 type ProviderInfo struct {
 	CatalogSource *ProviderInfoCatalogSource `json:"catalogSource,omitempty"`
+	Enabled       *bool                      `json:"enabled,omitempty"`
 	ExternalAuth  *string                    `json:"externalAuth,omitempty"`
 	Id            string                     `json:"id"`
 	Methods       []AuthMethod               `json:"methods"`
@@ -908,6 +1006,11 @@ type ProviderInfoCatalogSource string
 
 // ProviderInfoStatus defines model for ProviderInfo.Status.
 type ProviderInfoStatus string
+
+// ProviderSetting defines model for ProviderSetting.
+type ProviderSetting struct {
+	Enabled bool `json:"enabled"`
+}
 
 // QueuedMessage defines model for QueuedMessage.
 type QueuedMessage struct {
@@ -1053,19 +1156,37 @@ type ToolOutput struct {
 
 // ToolSettingsChange defines model for ToolSettingsChange.
 type ToolSettingsChange struct {
-	WebSearch struct {
+	ComputedDiffs *bool                         `json:"computedDiffs,omitempty"`
+	DiffInline    *ToolSettingsChangeDiffInline `json:"diffInline,omitempty"`
+	DiffLayout    *ToolSettingsChangeDiffLayout `json:"diffLayout,omitempty"`
+	WebSearch     *struct {
 		Enabled  *bool                 `json:"enabled,omitempty"`
 		Provider *SearchProviderChange `json:"provider,omitempty"`
-	} `json:"webSearch"`
+	} `json:"webSearch,omitempty"`
 }
+
+// ToolSettingsChangeDiffInline defines model for ToolSettingsChange.DiffInline.
+type ToolSettingsChangeDiffInline string
+
+// ToolSettingsChangeDiffLayout defines model for ToolSettingsChange.DiffLayout.
+type ToolSettingsChangeDiffLayout string
 
 // ToolsStatus defines model for ToolsStatus.
 type ToolsStatus struct {
-	WebSearch struct {
+	ComputedDiffs bool                  `json:"computedDiffs"`
+	DiffInline    ToolsStatusDiffInline `json:"diffInline"`
+	DiffLayout    ToolsStatusDiffLayout `json:"diffLayout"`
+	WebSearch     struct {
 		Enabled   bool                   `json:"enabled"`
 		Providers []SearchProviderStatus `json:"providers"`
 	} `json:"webSearch"`
 }
+
+// ToolsStatusDiffInline defines model for ToolsStatus.DiffInline.
+type ToolsStatusDiffInline string
+
+// ToolsStatusDiffLayout defines model for ToolsStatus.DiffLayout.
+type ToolsStatusDiffLayout string
 
 // TreePosition defines model for TreePosition.
 type TreePosition struct {
@@ -1121,6 +1242,9 @@ type RegisterProjectJSONRequestBody = ProjectInput
 
 // RenameProjectJSONRequestBody defines body for RenameProject for application/json ContentType.
 type RenameProjectJSONRequestBody = ProjectRenameInput
+
+// SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
+type SetProviderJSONRequestBody = ProviderSetting
 
 // SetDefaultsJSONRequestBody defines body for SetDefaults for application/json ContentType.
 type SetDefaultsJSONRequestBody = DefaultSettings
@@ -1418,6 +1542,14 @@ type ClientInterface interface {
 	// RenameProject performs a PUT /v1/projects/{id} (the `RenameProject` operationId) request.
 	// Takes a body of the `application/json` content type.
 	RenameProject(ctx context.Context, id string, body RenameProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProviderWithBody performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request,
+	// with any type of body and a specified content type.
+	SetProviderWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProvider performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request.
+	// Takes a body of the `application/json` content type.
+	SetProvider(ctx context.Context, id string, body SetProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RefreshProvider performs a POST /v1/providers/{id}/refresh (the `RefreshProvider` operationId) request.
 	RefreshProvider(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1875,6 +2007,34 @@ func (c *Client) RenameProjectWithBody(ctx context.Context, id string, contentTy
 // Takes a body of the `application/json` content type.
 func (c *Client) RenameProject(ctx context.Context, id string, body RenameProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRenameProjectRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProviderWithBody performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request,
+// with any type of body and a specified content type.
+func (c *Client) SetProviderWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProviderRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProvider performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request.
+// Takes a body of the `application/json` content type.
+func (c *Client) SetProvider(ctx context.Context, id string, body SetProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProviderRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2953,6 +3113,53 @@ func NewRenameProjectRequestWithBody(server string, id string, contentType strin
 	return req, nil
 }
 
+// NewSetProviderRequest calls the generic SetProvider builder with application/json body
+func NewSetProviderRequest(server string, id string, body SetProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProviderRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewSetProviderRequestWithBody constructs an http.Request for the SetProvider method, with any body, and a specified content type
+func NewSetProviderRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/providers/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewRefreshProviderRequest constructs an http.Request for the RefreshProvider method
 func NewRefreshProviderRequest(server string, id string) (*http.Request, error) {
 	var err error
@@ -3454,6 +3661,16 @@ type ClientWithResponsesInterface interface {
 	// RenameProjectWithResponse performs a PUT /v1/projects/{id} (the `RenameProject` operationId) request.
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	RenameProjectWithResponse(ctx context.Context, id string, body RenameProjectJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameProjectResponse, error)
+
+	// SetProviderWithBodyWithResponse performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	SetProviderWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProviderResponse, error)
+
+	// SetProviderWithResponse performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	SetProviderWithResponse(ctx context.Context, id string, body SetProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProviderResponse, error)
 
 	// RefreshProviderWithResponse performs a POST /v1/providers/{id}/refresh (the `RefreshProvider` operationId) request.
 	//
@@ -4951,6 +5168,75 @@ func (r RenameProjectResponse) ContentType() string {
 	return ""
 }
 
+type SetProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ModelInventory
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProviderResponse) GetJSON200() *ModelInventory {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SetProviderResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetProviderResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r SetProviderResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r SetProviderResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProviderResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProviderResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type RefreshProviderResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5848,6 +6134,28 @@ func (c *ClientWithResponses) RenameProjectWithResponse(ctx context.Context, id 
 		return nil, err
 	}
 	return ParseRenameProjectResponse(rsp)
+}
+
+// SetProviderWithBodyWithResponse performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request,
+// with any type of body and a specified content type.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SetProviderWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProviderResponse, error) {
+	rsp, err := c.SetProviderWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProviderResponse(rsp)
+}
+
+// SetProviderWithResponse performs a PUT /v1/providers/{id} (the `SetProvider` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) SetProviderWithResponse(ctx context.Context, id string, body SetProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProviderResponse, error) {
+	rsp, err := c.SetProvider(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProviderResponse(rsp)
 }
 
 // RefreshProviderWithResponse performs a POST /v1/providers/{id}/refresh (the `RefreshProvider` operationId) request.
@@ -7070,6 +7378,60 @@ func ParseRenameProjectResponse(rsp *http.Response) (*RenameProjectResponse, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Project
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProviderResponse parses an HTTP response from a SetProviderWithResponse call
+func ParseSetProviderResponse(rsp *http.Response) (*SetProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ModelInventory
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

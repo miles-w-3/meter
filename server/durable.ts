@@ -13,12 +13,13 @@ import { ProviderPlugins } from "./provider-plugins.ts";
 import type { AgentState, Conversation, ContextView, ConversationView, EntryId, EntryRecord, Harness as DurableHarness, InboxState, LiveState } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { CodingTools, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
+import { createBashTool, createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { contextUsage, submitInput, view } from "../contracts/schemas.ts";
 
 import type { WebSearch } from "./tools/web-search.ts";
+import { snapshot, compare } from "./tools/file-diffs.ts";
 
 const answer = () => fauxAssistantMessage([fauxText("Fixture completed after running the coding tools.")]);
 const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
@@ -39,6 +40,10 @@ function fixtureProvider() {
     if (prompt === "fixture:web-search" && !results.length) {
       return tool("web_search", { query: "Meter search fixture", limit: 2 });
     }
+    if (prompt.includes("fixture:bash-diff")) {
+      if (!results.length) return tool("bash", { command: "printf 'updated\\n' > diff-fixture.txt" });
+      return answer();
+    }
     if (prompt.includes("fixture:tools")) {
       if (!results.length) return tool("read", { path: "notes.txt" });
       if (results.length === 1) return tool("write", { path: "result.txt", content: "written by Durable\n" });
@@ -46,7 +51,18 @@ function fixtureProvider() {
     if (prompt.includes("fixture:tools-slow")) return fauxAssistantMessage([fauxText("Fixture completed after running the coding tools. " + "streamed model output ".repeat(45))]);
     return answer();
   }));
-  return faux.provider;
+  // The preview can deliberately simulate a cache miss without touching real providers.
+  const provider = faux.provider;
+  const fixture: typeof provider = {
+    ...provider,
+    streamSimple(model, request, options) {
+      const last = request.messages.findLast((message) => message.role === "user");
+      const content = last?.role === "user" ? (typeof last.content === "string" ? last.content : last.content.flatMap((block) => block.type === "text" ? [block.text] : []).join("")) : "";
+      const miss = content.trim() === "fixture:cache-miss";
+      return provider.streamSimple(model, request, miss ? { ...options, cacheRetention: "none" } : options);
+    },
+  };
+  return fixture;
 }
 
 class CrashProbeEnv extends NodeExecutionEnv {
@@ -80,7 +96,7 @@ class LiveProbeEnv extends NodeExecutionEnv {
 
 export type Provider = string;
 
-export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch) {
+export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch, options?: { claudeEnabled?: boolean; computedDiffs?: () => boolean }) {
   const useOpenAI = provider !== "fixture";
   // An empty provider is the normal server mode: it has no environment default.
   // Explicit providers are still accepted by direct harness callers and the live smoke test.
@@ -92,15 +108,72 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
     return fixtureModels;
   })();
   const plugins = new ProviderPlugins();
-  const claudeEnabled = provider === "pi-claude-cli" || process.env.PI_CLAUDE_CODE === "1";
-  const bridge = claudeEnabled ? new ClaudeCwdBridge() : undefined;
-  const claude = bridge ? (await import("./claude-code/provider.ts")).createClaudeProvider(bridge) : undefined;
-  if (claude && models instanceof ModelRuntime) { plugins.register(claude); models.registerNativeProvider(claude.provider); }
+  const bridge = new ClaudeCwdBridge();
+  const claude = (await import("./claude-code/provider.ts")).createClaudeProvider(bridge, options?.claudeEnabled === true);
+  plugins.register(claude);
+  function registerClaude() {
+    if (models instanceof ModelRuntime) models.registerNativeProvider(claude.provider);
+    else models.setProvider(claude.provider);
+  }
+  registerClaude();
   const registry = createRegistry();
-  if (bridge) registry.install(bridge.extension(plugins));
+  registry.install(bridge.extension(plugins));
+  const write = createWriteTool();
+  const trackedWrite: typeof write = {
+    ...write,
+    async execute(args, api, context) {
+      const env = api.env;
+      if (!env || args.content.length > 128_000 || args.content.includes("\0")) return write.execute(args, api, context);
+      // Match the built-in write tool's path normalization.
+      const normalized = args.path.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
+      const path = await env.absolutePath(normalized.startsWith("@") ? normalized.slice(1) : normalized, context);
+      if (!path.ok) return write.execute(args, api, context);
+      const info = await env.fileInfo(path.value, context);
+      let before: string | undefined;
+      if (!info.ok && info.error.code === "not_found") before = "";
+      else if (info.ok && info.value.kind === "file" && info.value.size <= 128_000) {
+        const contents = await env.readTextFile(path.value, context);
+        if (contents.ok && !contents.value.includes("\0")) before = contents.value;
+      }
+      const result = await write.execute(args, api, context);
+      return before === undefined || before === args.content ? result : {
+        ...result, details: { writeDiffs: [{ path: args.path, before, after: args.content }] },
+      };
+    },
+  };
+  const bash = createBashTool();
+  const trackedBash: typeof bash = {
+    ...bash,
+    async execute(args, api, context) {
+      if (!options?.computedDiffs?.() || !api.env) return bash.execute(args, api, context);
+      const root = api.env.cwd;
+      // Snapshot failure must never prevent the requested shell command.
+      const before = await snapshot(root).catch(() => undefined);
+      let result: Awaited<ReturnType<typeof bash.execute>>;
+      try {
+        result = await bash.execute(args, api, context);
+      } catch (error) {
+        // Retain a diff for errors such as timeouts when the invocation still
+        // permits progress; cancellation can invalidate the execution API.
+        if (!context.abortSignal?.aborted && before) {
+          const after = await snapshot(root).catch(() => undefined);
+          if (after) {
+            const changes = compare(before, after);
+            await api.details({ computedDiffs: changes.diffs, diffIncomplete: changes.incomplete }, context).catch(() => {});
+          }
+        }
+        throw error;
+      }
+      if (!before) return { ...result, details: { computedDiffs: [], diffIncomplete: true } };
+      const after = await snapshot(root).catch(() => undefined);
+      if (!after) return { ...result, details: { computedDiffs: [], diffIncomplete: true } };
+      const changes = compare(before, after);
+      return { ...result, details: { computedDiffs: changes.diffs, diffIncomplete: changes.incomplete } };
+    },
+  };
   registry.install(provider === "openai-smoke"
     ? defineExtension({ name: "live-probe-tools", tools: [createReadTool(), createWriteTool()] })
-    : CodingTools);
+    : defineExtension({ name: "coding-tools", tools: [createReadTool(), trackedWrite, createEditTool(), trackedBash] }));
   registry.install(defineExtension({ name: "mermaid-catalog", tools: [mermaidCatalogTool()] }));
   const searchExtension = webSearch && defineExtension({ name: "web-search", tools: [webSearch.tool()] });
   let searchInstalled = false;
@@ -127,9 +200,9 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
       return new NodeExecutionEnv({ cwd, shellEnv });
     },
   }, context);
-  // Older databases may predate pi.provider. Initialize before resume so the
-  // beforeRequest hook can resolve its session even for interrupted runs.
-  if (bridge) {
+  // Older databases may predate pi.provider. Initialize before the provider
+  // can serve requests, including interrupted runs resumed on startup.
+  async function migrateProviderSessions() {
     let cursor: import("@earendil-works/pi-durable").Cursor | undefined;
     do {
       const page = await storage.scanConversations({}, 100, cursor, context);
@@ -142,7 +215,14 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
       cursor = page.next;
     } while (cursor);
   }
-  return { harness, models, plugins, refreshTools, closeClaude: () => claude?.close(), model: modelId ? { provider: useOpenAI ? providerId : "faux", modelId } : undefined };
+  if (options?.claudeEnabled) await migrateProviderSessions();
+  async function setClaudeEnabled(enabled: boolean) {
+    if (enabled === claude.enabled()) return;
+    if (enabled) await migrateProviderSessions();
+    await claude.setEnabled(enabled);
+    registerClaude();
+  }
+  return { harness, models, plugins, refreshTools, setClaudeEnabled, closeClaude: () => claude.close(), model: modelId ? { provider: useOpenAI ? providerId : "faux", modelId } : undefined };
 }
 
 export class RequestConflict extends Error {}
@@ -307,8 +387,9 @@ export function entryText(entry: EntryRecord) {
 
 export function projectEntries(entries: readonly EntryRecord[]) {
   const targets = new Map<string, string>();
-  const projected = entries.map((entry) => projectEntry(entry, targets));
-  return { projected, targets };
+  const inputs = new Map<string, string>();
+  const projected = entries.map((entry) => projectEntry(entry, targets, inputs));
+  return { projected, targets, inputs };
 }
 
 // Restore the actual user input, not its clipped transcript projection.
@@ -329,14 +410,16 @@ export function entryImages(entry: EntryRecord) {
       : []);
 }
 
-function projectEntry(entry: EntryRecord, targets: Map<string, string>) {
+function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: Map<string, string>) {
   const messages = entry.model ?? [];
   const assistant = messages.findLast((message) => message.role === "assistant");
   const tool = messages.find((message) => message.role === "toolResult");
   for (const block of assistant?.content ?? []) {
     if (block.type !== "toolCall") continue;
     const target = block.arguments.path ?? block.arguments.file_path ?? block.arguments.command ?? block.arguments.query;
-    if (typeof target === "string") targets.set(block.id, clip(target.replace(/\s+/g, " ").trim(), 400));
+    if (typeof target === "string") targets.set(block.id, target);
+    const input = block.arguments.command;
+    inputs.set(block.id, typeof input === "string" ? input : JSON.stringify(block.arguments, null, 2));
   }
   const text = entryText(entry);
   const details = tool?.details;
@@ -348,8 +431,20 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>) {
     error: assistant?.stopReason === "error" && assistant.errorMessage ? clip(assistant.errorMessage) : undefined,
     imageCount: entryImages(entry).length || undefined,
     toolName: tool?.toolName, toolSucceeded: tool ? !tool.isError : undefined,
-    toolCallId: tool?.toolCallId, toolTarget: tool && targets.get(tool.toolCallId),
+    toolCallId: tool?.toolCallId,
+    toolTarget: tool && targets.get(tool.toolCallId) ? clip(targets.get(tool.toolCallId)!.replace(/\s+/g, " ").trim(), 400) : undefined,
+    toolCommand: tool && inputs.get(tool.toolCallId),
+    writeDiffs: details && typeof details === "object" && "writeDiffs" in details && Array.isArray(details.writeDiffs)
+      ? details.writeDiffs.flatMap((item) => item && typeof item === "object" && typeof item.path === "string" && typeof item.before === "string" && typeof item.after === "string" ? [{ path: item.path, before: item.before, after: item.after }] : []) : undefined,
+    computedDiffs: details && typeof details === "object" && "computedDiffs" in details && Array.isArray(details.computedDiffs)
+      ? details.computedDiffs.flatMap((item) => item && typeof item === "object" && typeof item.path === "string" && typeof item.before === "string" && typeof item.after === "string" ? [{ path: item.path, before: item.before, after: item.after }] : []) : undefined,
+    diffIncomplete: details && typeof details === "object" && "diffIncomplete" in details && details.diffIncomplete === true ? true : undefined,
+    // Preserve complete patches only: a clipped unified patch is not parseable.
+    diffPatch: details && typeof details === "object" && "patch" in details && typeof details.patch === "string" && details.patch.length <= 100_000 ? details.patch : undefined,
     durationMs: tool?.durationMs ?? assistant?.durationMs,
+    timestamp: assistant?.timestamp ?? messages.find((message) => message.role === "user")?.timestamp,
+    cacheInput: assistant?.usage.input, cacheRead: assistant?.usage.cacheRead, cacheWrite: assistant?.usage.cacheWrite,
+    cacheModel: assistant ? `${assistant.provider}/${assistant.model}` : undefined,
     tokens: assistant?.usage.totalTokens,
     added: changes?.filter((line) => /^\+(?!\+\+)/.test(line)).length,
     removed: changes?.filter((line) => /^-(?!--)/.test(line)).length,
@@ -376,7 +471,7 @@ export function contextTokens(active: ContextView) {
 export function project(value: ConversationView, usage?: z.infer<typeof contextUsage>) {
   const live = value.docs["pi.live"] as LiveState | undefined;
   const partial = live?.generation?.message?.content?.flatMap((block) => block.type === "text" ? [block.text] : []).join("");
-  const { projected, targets } = projectEntries(value.entries);
+  const { projected, targets, inputs } = projectEntries(value.entries);
   const agent = value.docs["pi.agent"] as AgentState | undefined;
   return view.parse({
     conversationId: String(value.conversation.id), selection: { model: agent?.model ?? null, thinkingLevel: agent?.thinkingLevel ?? "off" },
@@ -395,7 +490,7 @@ export function project(value: ConversationView, usage?: z.infer<typeof contextU
     tools: live?.tools?.slice(0, 24).map((slot) => ({
       callId: slot.callId, taskId: slot.taskId === undefined ? undefined : String(slot.taskId),
       entryId: slot.entry === undefined ? undefined : String(slot.entry),
-      name: slot.name, status: slot.status, output: slot.output && clip(slot.output, 2500), target: targets.get(slot.callId),
+      name: slot.name, status: slot.status, output: slot.output && clip(slot.output, 2500), command: inputs.get(slot.callId), target: targets.get(slot.callId) && clip(targets.get(slot.callId)!.replace(/\s+/g, " ").trim(), 400),
     })) ?? [],
   });
 }

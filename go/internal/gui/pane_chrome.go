@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
@@ -13,19 +12,7 @@ import (
 
 func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, title string) {
 	panes := orderedPanes(tab)
-	target := float32(0)
-	if len(panes) > 1 {
-		target = 28
-	}
-	shell := ui.Column(c.Key("pane-header"))
-	height := target
-	if !c.Preferences().ReduceMotion {
-		height = shell.Animate("height", target, 150*time.Millisecond)
-	}
-	shell.Height(height).Clip().Children(func() {
-		if target == 0 {
-			return
-		}
+	ui.Column(c.Key("pane-header")).Height(28).Clip().Children(func() {
 		paneContent(c, func() {
 			row := ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center)
 			row.Children(func() {
@@ -37,7 +24,7 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 					}
 				}
 				handle := ui.Row(c.Key("handle")).Grow(1).MinWidth(0).AlignItems(ui.Center)
-				if !a.busy() {
+				if len(panes) > 1 && !a.busy() {
 					handle.Label("Drag " + title).Cursor(ui.CursorGrab).Drag(paneDrag{tab: tab.Id, pane: node.Id})
 				}
 				titleColor := ink
@@ -45,7 +32,11 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 					titleColor = muted
 				}
 				handle.Children(func() {
-					text(c, fmt.Sprintf("#%d", index), 11, muted).Font(monoFont).Width(paneTextInset).Shrink(0).Padding(0, 0, 0, 3)
+					if len(panes) > 1 {
+						text(c, fmt.Sprintf("#%d", index), 11, muted).Font(monoFont).Width(paneTextInset).Shrink(0).Padding(0, 0, 0, 3)
+					} else {
+						handle.Padding(0, 0, 0, paneTextInset)
+					}
 					text(c, title, 13, titleColor).Grow(1).MinWidth(0).SingleLine()
 				})
 				if row.Hovered() && iconButton(c, closeIcon, "Close pane", a.busy()).Clicked() {

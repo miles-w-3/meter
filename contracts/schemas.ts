@@ -17,6 +17,9 @@ export const toolSettings = z.strictObject({
   webSearch: z.strictObject({
     enabled: z.boolean(), providers: z.record(searchProvider, z.boolean()),
   }),
+  computedDiffs: z.boolean().default(true),
+  diffLayout: z.enum(["split", "unified"]).default("split"),
+  diffInline: z.enum(["words", "characters", "off"]).default("words"),
 });
 export type ToolSettings = z.infer<typeof toolSettings>;
 export const searchProviderChange = z.strictObject({ id: searchProvider, enabled: z.boolean() });
@@ -24,7 +27,10 @@ export const toolSettingsChange = z.strictObject({
   webSearch: z.strictObject({
     enabled: z.boolean().optional(),
     provider: searchProviderChange.optional(),
-  }),
+  }).optional(),
+  computedDiffs: z.boolean().optional(),
+  diffLayout: z.enum(["split", "unified"]).optional(),
+  diffInline: z.enum(["words", "characters", "off"]).optional(),
 });
 export const searchProviderStatus = z.object({
   id: searchProvider, enabled: z.boolean(), configured: z.boolean(), retryAt: z.iso.datetime().optional(),
@@ -32,18 +38,22 @@ export const searchProviderStatus = z.object({
 });
 export const toolsStatus = z.object({
   webSearch: z.object({ enabled: z.boolean(), providers: z.array(searchProviderStatus) }),
+  computedDiffs: z.boolean(),
+  diffLayout: z.enum(["split", "unified"]),
+  diffInline: z.enum(["words", "characters", "off"]),
 });
 const authMethod = z.object({ type: z.enum(["api_key", "oauth"]), name: z.string(), interactive: z.boolean() });
 const providerInfo = z.object({
   id: z.string(), name: z.string(), methods: z.array(authMethod),
   status: z.enum(["configured", "unconfigured", "unknown"]), source: z.string().optional(),
-  externalAuth: z.string().optional(), catalogSource: z.enum(["builtin", "cached", "account"]).optional(),
+  externalAuth: z.string().optional(), catalogSource: z.enum(["builtin", "cached", "account"]).optional(), enabled: z.boolean().optional(),
 });
 const modelInfo = z.object({
   provider: z.string(), modelId: z.string(), name: z.string(), contextWindow: z.number(),
   reasoning: z.boolean(), thinkingLevels: z.array(thinkingLevel),
 });
 export const modelInventory = z.object({ providers: z.array(providerInfo), models: z.array(modelInfo) });
+export const providerSetting = z.strictObject({ enabled: z.boolean() });
 const cwd = z.string().min(1).max(4096);
 export const cwdInput = z.strictObject({ cwd });
 export const selection = z.strictObject({ model: modelRef.nullable(), thinkingLevel });
@@ -74,7 +84,8 @@ export const abortInput = z.strictObject({ target: opaque });
 export const problem = z.object({ code: z.string(), message: z.string() });
 export const entry = z.object({
   id: opaque, kind: z.string(), text: z.string(), error: z.string().optional(), imageCount: z.number().int().positive().optional(), toolName: z.string().optional(), toolSucceeded: z.boolean().optional(),
-  toolCallId: z.string().optional(), toolTarget: z.string().optional(), durationMs: z.number().int().nonnegative().optional(),
+  toolCallId: z.string().optional(), toolTarget: z.string().optional(), toolCommand: z.string().optional(), diffPatch: z.string().optional(), computedDiffs: z.array(z.object({ path: z.string(), before: z.string(), after: z.string() })).optional(), writeDiffs: z.array(z.object({ path: z.string(), before: z.string(), after: z.string() })).optional(), diffIncomplete: z.boolean().optional(), durationMs: z.number().int().nonnegative().optional(),
+  timestamp: z.number().int().nonnegative().optional(), cacheInput: z.number().int().nonnegative().optional(), cacheRead: z.number().int().nonnegative().optional(), cacheWrite: z.number().int().nonnegative().optional(), cacheModel: z.string().optional(),
   tokens: z.number().int().nonnegative().optional(), added: z.number().int().nonnegative().optional(),
   removed: z.number().int().nonnegative().optional(), outputClipped: z.boolean().optional(),
 });
@@ -85,7 +96,7 @@ export const historyBranch = z.object({ conversationId: opaque, parentConversati
 export const historyTree = z.object({ rootConversationId: opaque, branches: z.array(historyBranch) });
 export const historicalPath = z.object({ entries: z.array(entry), before: opaque.optional(), contextTokens: z.number().int().nonnegative() });
 export const contextUsage = z.object({ tokens: z.number().int().nonnegative(), window: z.number().int().positive() });
-const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional(), target: z.string().optional() });
+const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional(), target: z.string().optional(), command: z.string().optional() });
 export const queuedMessage = z.object({ id: opaque, text: z.string(), images: z.number().int().nonnegative(), mode: z.enum(["followUp", "steer"]) });
 export const view = z.object({
   conversationId: opaque, status: z.enum(["idle", "running", "failed"]),
@@ -124,5 +135,5 @@ export const models = {
   TreePosition: treePosition, PendingFork: pendingFork, LayoutNode: layoutNode, LayoutTab: layoutTab, Layout: layout,
   ModelRef: modelRef, Selection: selection, SelectionInput: selectionInput, SelectionChange: selectionChange, DefaultSettings: defaultSettings, Settings: settings,
   ToolSettingsChange: toolSettingsChange, SearchProviderChange: searchProviderChange, ToolsStatus: toolsStatus, SearchProviderStatus: searchProviderStatus,
-  AuthMethod: authMethod, ProviderInfo: providerInfo, ModelInfo: modelInfo, ModelInventory: modelInventory,
+  AuthMethod: authMethod, ProviderInfo: providerInfo, ModelInfo: modelInfo, ModelInventory: modelInventory, ProviderSetting: providerSetting,
 };

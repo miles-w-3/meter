@@ -368,7 +368,7 @@ func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg mes
 						if !set {
 							expanded = true
 						}
-						thinkingBlock(c.Key(key), block.text, expanded, func() {
+						a.thinkingBlock(c.Key(key), p, block.text, msg.id == "partial", expanded, func() {
 							if p.thinkingExpanded == nil {
 								p.thinkingExpanded = make(map[string]bool)
 							}
@@ -392,10 +392,12 @@ func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg mes
 }
 
 // A small plus/minus control keeps the trace collapsible without a heading or rail.
-func thinkingBlock(c *ui.Context, body string, expanded bool, toggle func()) {
+func (a *app) thinkingBlock(c *ui.Context, p *pane, body string, streaming, expanded bool, toggle func()) {
 	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Start).Padding(3, 0, 12, 0).Gap(8).Children(func() {
 		if expanded {
-			text(c, strings.TrimSpace(body), 14, ui.Hex("#a3aea6")).Font("Source Serif 4").Italic().Selectable().LineHeight(1.6).Grow(1).MinWidth(0)
+			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+				a.renderProse(c, strings.TrimSpace(body), streaming, true, p)
+			})
 		} else {
 			ui.Box(c).Grow(1)
 		}
@@ -424,6 +426,10 @@ type proseState struct {
 type proseKey struct{}
 
 func (a *app) prose(c *ui.Context, body string, streaming bool, panes ...*pane) {
+	a.renderProse(c, body, streaming, false, panes...)
+}
+
+func (a *app) renderProse(c *ui.Context, body string, streaming, thinking bool, panes ...*pane) {
 	root := ui.Column(c).FillWidth().MinWidth(0)
 	st := *ui.Local(root, proseKey{}, func() *proseState {
 		s := &proseState{}
@@ -448,6 +454,10 @@ func (a *app) prose(c *ui.Context, body string, streaming bool, panes ...*pane) 
 		Text: ui.Hex("#e0e9dc"), Muted: muted, Link: rain, Strong: ui.Hex("#e0e9dc"), Code: ink, CodeBackground: panel,
 		QuoteBar: theme.Border, QuoteText: muted, Rule: theme.Border, TableBorder: theme.Border,
 		TableHeader: panel, Checkbox: accent, BlockSpacing: .6}
+	if thinking {
+		color := ui.Hex("#a3aea6")
+		st.theme.FontSize, st.theme.Text, st.theme.Strong, st.theme.Code = 14, color, color, color
+	}
 	if st.body != body {
 		st.body, st.columns = body, 0
 		doc := parser.Parse(body)

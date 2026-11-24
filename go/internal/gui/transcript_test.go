@@ -317,3 +317,32 @@ func TestDiffHeaderTruncatesLongPathBeforeControls(t *testing.T) {
 		})
 	}
 }
+
+func TestThinkingRendersMarkdown(t *testing.T) {
+	p := &pane{connected: true}
+	if err := json.Unmarshal([]byte(`{"conversationId":"1","status":"running","partial":null,"abortTarget":"run-1","entries":[],"tools":[],"partialBlocks":[{"type":"thinking","text":"**Clarifying environment marker**\n\n- First item\n- Second item"}]}`), &p.state.Current); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) { c.SetTheme(theme); a.transcript(c, p, "1") }, 600, 400)
+	driver.Frame()
+	joined := strings.Join(driver.Texts(), " ")
+	if !strings.Contains(joined, "Clarifying environment marker") || !strings.Contains(joined, "First item") || !strings.Contains(joined, "Second item") {
+		t.Fatalf("missing markdown text: %v", driver.Texts())
+	}
+	if strings.Contains(joined, "**Clarifying") || strings.Contains(joined, "- First item") {
+		t.Fatalf("raw markdown markers visible: %v", driver.Texts())
+	}
+	(*p.state.Current.PartialBlocks)[0].Text = "**Updated reasoning**"
+	driver.Frame()
+	joined = strings.Join(driver.Texts(), " ")
+	if !strings.Contains(joined, "Updated reasoning") || strings.Contains(joined, "**Updated") {
+		t.Fatalf("streaming markdown did not update: %v", driver.Texts())
+	}
+	if err := driver.Click("Collapse thinking"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(driver.Texts(), " "), "Updated reasoning") {
+		t.Fatal("collapsed thinking remains visible")
+	}
+}

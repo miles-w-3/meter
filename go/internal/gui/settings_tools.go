@@ -81,6 +81,21 @@ func (a *app) toolsPanel(c *ui.Context) {
 			}
 			return
 		}
+		if fetch := a.toolsStatus.WebFetch; fetch != nil {
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				text(c, "Web Fetch", 14, ink).FontWeight(600).Grow(1)
+				if action(c, toolSwitchLabel(fetch.Enabled), a.toolsPending) {
+					var change protocol.ToolSettingsChange
+					change.WebFetch = new(struct {
+						Enabled *bool `json:"enabled,omitempty"`
+					})
+					enabled := !fetch.Enabled
+					change.WebFetch.Enabled = &enabled
+					a.updateTools(change)
+				}
+			})
+			text(c, "Fetch public URLs directly. Pages are untrusted and may contain instructions.", 12, muted)
+		}
 		web := a.toolsStatus.WebSearch
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			text(c, "Web Search", 14, ink).FontWeight(600).Grow(1)

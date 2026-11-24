@@ -255,7 +255,7 @@ func TestLayoutRhythmAndMeter(t *testing.T) {
 		percent float64
 		fill    string
 	}{{0, ""}, {1, theme.Muted}, {71, theme.Chanterelle}, {91, theme.Madrone}} {
-		meter := m.colors.contextMeter(test.percent)
+		meter := m.colors.contextMeter(test.percent, -1)
 		if ansi.StringWidth(meter) != 10 {
 			t.Fatalf("meter width: %q", meter)
 		}
@@ -311,18 +311,42 @@ func TestModelPickerListsAndSelectsLevels(t *testing.T) {
 	}
 }
 
-func TestRunningStatusShowsSpinnerOnly(t *testing.T) {
+func TestRunningStatusSweepsTheMeter(t *testing.T) {
 	m := testModel()
 	m.connected = true
 	m.conversation.Model = "model"
 	m.state.Current.Status = "running"
-	m.spark = []float64{0, 20, 70}
 	status := ansi.Strip(m.status(80))
-	if !strings.Contains(status, ansi.Strip(m.spinner.View())) || strings.Contains(status, "running") || strings.Contains(status, "▁▃█") || !strings.Contains(status, "model") {
-		t.Fatalf("unexpected status: %q", status)
+	if !strings.Contains(status, "ctx ") || strings.Contains(status, "running") || !strings.Contains(status, "model") {
+		t.Fatalf("a running turn should show the meter before usage arrives: %q", status)
+	}
+	m.plain = true
+	m.colors.set(true, false, colorprofile.TrueColor)
+	var cells []int
+	for range 2 * (theme.MeterCells - 1) {
+		cell := -1
+		for i, r := range []rune(ansi.Strip(m.colors.contextMeter(0, m.sweepCell()))) {
+			if r == '█' {
+				cell = i
+			}
+		}
+		cells = append(cells, cell)
+		m.stepSweep(sweepTick{m.sweep.epoch})
+	}
+	if cells[0] != 0 || cells[theme.MeterCells-1] != theme.MeterCells-1 || cells[len(cells)-1] != 1 {
+		t.Fatalf("the sweep should go out and back across the meter: %v", cells)
+	}
+	if cmd := m.startSweep(); cmd == nil || m.startSweep() != nil {
+		t.Fatal("one sweep loop should run per conversation")
+	}
+	if m.stepSweep(sweepTick{m.sweep.epoch - 1}) != nil {
+		t.Fatal("a stale loop should stop")
 	}
 	m.state.Current.Status = "idle"
-	if strings.Contains(ansi.Strip(m.status(80)), ansi.Strip(m.spinner.View())) {
-		t.Fatal("spinner remained after run")
+	if m.sweepCell() != -1 || strings.Contains(ansi.Strip(m.status(80)), "ctx ") {
+		t.Fatal("the sweep and the empty meter should go after the run")
+	}
+	if m.stepSweep(sweepTick{m.sweep.epoch}) != nil || m.sweep.active {
+		t.Fatal("the loop should stop after the run")
 	}
 }

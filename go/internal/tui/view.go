@@ -312,7 +312,8 @@ func (m *Model) toolGutter(b Block, selected bool) string {
 	case "✗":
 		state = c.errorStyle.Render("✗")
 	case "running":
-		state = c.warning.Render(m.spinner.View())
+		// Steady: the meter's sweep already shows that the turn is working.
+		state = c.rain.Render("○")
 	case "pending":
 		state = c.faint.Render("○")
 	}
@@ -369,9 +370,13 @@ func (m *Model) status(width int) string {
 	}
 	path := homePath(clean(m.conversation.Cwd))
 	right := c.muted.Render(m.modelLabel())
+	// A running turn shows the meter before its first usage report, so the
+	// sweep has somewhere to move.
 	if usage := m.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
 		pct := theme.Percent(usage.Tokens, usage.Window)
-		right += "  " + c.muted.Render("ctx ") + c.contextMeter(pct) + " " + c.muted.Render(fmt.Sprintf("%.0f%%", math.Ceil(pct)))
+		right += "  " + c.muted.Render("ctx ") + c.contextMeter(pct, m.sweepCell()) + " " + c.muted.Render(fmt.Sprintf("%.0f%%", math.Ceil(pct)))
+	} else if m.running() {
+		right += "  " + c.muted.Render("ctx ") + c.contextMeter(0, m.sweepCell())
 	}
 	if r := m.recording; r != nil && !r.released {
 		indicator := " "
@@ -381,8 +386,6 @@ func (m *Model) status(width int) string {
 			indicator = c.warning.Render("■")
 		}
 		right = indicator + "  " + right
-	} else if m.running() {
-		right = c.warning.Render(m.spinner.View()) + "  " + right
 	}
 	// Preserve the useful end of a long directory, while reserving the right side.
 	available := max(0, width-ansi.StringWidth(right)-1)
@@ -412,7 +415,9 @@ func columns(left, right string, width int) string {
 	return left + strings.Repeat(" ", max(0, remain-ansi.StringWidth(left))) + right
 }
 
-func (t terminalTheme) contextMeter(percent float64) string {
+// contextMeter draws context fill, with the generation sweep's cell in Rain
+// when sweep is a cell; -1 draws no sweep.
+func (t terminalTheme) contextMeter(percent float64, sweep int) string {
 	steps := int(math.Ceil(percent * theme.MeterCells / 100))
 	fill := t.muted
 	if percent > 90 {
@@ -422,9 +427,14 @@ func (t terminalTheme) contextMeter(percent float64) string {
 	}
 	var meter strings.Builder
 	for i := range theme.MeterCells {
-		if i < steps {
+		switch {
+		case i == sweep && t.plain:
+			meter.WriteString("█") // Without color, a shape marks the sweep.
+		case i == sweep:
+			meter.WriteString(t.rain.Bold(true).Render("━"))
+		case i < steps:
 			meter.WriteString(fill.Render("━"))
-		} else {
+		default:
 			meter.WriteString(t.faint.Render("─"))
 		}
 	}

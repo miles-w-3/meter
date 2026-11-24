@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/protocol"
+	palette "pi-workspace.local/workspace/internal/theme"
 )
 
 //go:embed assets/meter.png
@@ -55,9 +56,7 @@ type pane struct {
 	starting           bool
 	pendingFirst       bool
 	loading            bool
-	meterLevel         float32
-	meterAt            time.Time
-	partialLength      int
+	activity           palette.Activity
 	modelDraft         *protocol.SelectionInput
 	modelPicker        modelPickerState
 	queuePending       string

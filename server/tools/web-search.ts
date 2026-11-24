@@ -121,6 +121,7 @@ export class WebSearch {
   status() {
     const settings = this.preferences();
     return {
+      webFetch: settings.webFetch,
       showThinking: settings.showThinking,
       computedDiffs: settings.computedDiffs,
       diffLayout: settings.diffLayout, diffInline: settings.diffInline,

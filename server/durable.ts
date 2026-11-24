@@ -19,6 +19,7 @@ import type { z } from "zod";
 import { contextUsage, submitInput, view } from "../contracts/schemas.ts";
 
 import type { WebSearch } from "./tools/web-search.ts";
+import { webFetchTool } from "./tools/web-fetch.ts";
 import { snapshot, compare } from "./tools/file-diffs.ts";
 
 const answer = () => fauxAssistantMessage([fauxText("Fixture completed after running the coding tools.")]);
@@ -38,6 +39,9 @@ function fixtureProvider() {
     if (prompt === "fixture:thinking") return fauxAssistantMessage([fauxThinking("Let me consider the request and check the relevant details.\n\nFirst, I should understand what the user is asking and identify the constraints. The answer should be clear, direct, and grounded in the available information.\n\nNext, I can compare the possible approaches:\n- Keep the explanation concise.\n- Include an example where it helps.\n- Call out any uncertainty rather than making assumptions.\n\nWith those points in mind, I can put together a useful response."), fauxText("Here is the answer after considering it.")]);
     if (prompt.includes("fixture:demo")) return fauxAssistantMessage([fauxText("desktop reconnect output ".repeat(200))]);
     if (prompt.includes("fixture:slow")) return fauxAssistantMessage([fauxText("streamed model output ".repeat(45))]);
+    if (prompt === "fixture:web-fetch" && !results.length) {
+      return tool("web_fetch", { url: "http://127.0.0.1/" });
+    }
     if (prompt === "fixture:web-search" && !results.length) {
       return tool("web_search", { query: "Meter search fixture", limit: 2 });
     }
@@ -97,7 +101,7 @@ class LiveProbeEnv extends NodeExecutionEnv {
 
 export type Provider = string;
 
-export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch, options?: { claudeEnabled?: boolean; computedDiffs?: () => boolean }) {
+export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch, options?: { claudeEnabled?: boolean; computedDiffs?: () => boolean; webFetchEnabled?: () => boolean }) {
   const useOpenAI = provider !== "fixture";
   // An empty provider is the normal server mode: it has no environment default.
   // Explicit providers are still accepted by direct harness callers and the live smoke test.
@@ -178,7 +182,16 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
   registry.install(defineExtension({ name: "mermaid-catalog", tools: [mermaidCatalogTool()] }));
   const searchExtension = webSearch && defineExtension({ name: "web-search", tools: [webSearch.tool()] });
   let searchInstalled = false;
+  const fetchEnabled = () => options?.webFetchEnabled?.() ?? true;
+  const fetchExtension = defineExtension({ name: "web-fetch", tools: [webFetchTool(fetchEnabled)] });
+  let fetchInstalled = false;
   function refreshTools() {
+    const fetchAvailable = provider !== "openai-smoke" && fetchEnabled();
+    if (fetchAvailable !== fetchInstalled) {
+      fetchInstalled = fetchAvailable;
+      if (fetchAvailable) registry.install(fetchExtension);
+      else registry.uninstall(fetchExtension);
+    }
     if (!webSearch || !searchExtension) return;
     const available = provider !== "openai-smoke" && webSearch.available();
     if (available === searchInstalled) return;
@@ -417,7 +430,7 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: 
   const tool = messages.find((message) => message.role === "toolResult");
   for (const block of assistant?.content ?? []) {
     if (block.type !== "toolCall") continue;
-    const target = block.arguments.path ?? block.arguments.file_path ?? block.arguments.command ?? block.arguments.query;
+    const target = block.arguments.path ?? block.arguments.file_path ?? block.arguments.command ?? block.arguments.query ?? block.arguments.url;
     if (typeof target === "string") targets.set(block.id, target);
     const input = block.arguments.command;
     inputs.set(block.id, typeof input === "string" ? input : JSON.stringify(block.arguments, null, 2));

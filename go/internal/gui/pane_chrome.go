@@ -121,12 +121,26 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 			// Where on the left; what is answering, and how full it is, on the right.
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
 				a.modelChip(c, node, p, locked || a.busy())
-				if usage := p.state.Current.ContextUsage; usage != nil && usage.Window > 0 {
-					pct := palette.Percent(usage.Tokens, usage.Window)
-					ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))).Children(func() {
+				usage := p.state.Current.ContextUsage
+				known := usage != nil && usage.Window > 0
+				running := p.connected && p.state.Current.Status == protocol.Running
+				if known || running {
+					pct, tooltip := 0.0, "Context: not reported yet"
+					if known {
+						pct = palette.Percent(usage.Tokens, usage.Window)
+						tooltip = fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))
+					}
+					meter := ui.Row(c).Gap(meterGap).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(tooltip)
+					if running {
+						activity, reduceMotion := &p.activity, c.Preferences().ReduceMotion
+						meter.DrawOver(func(painter *ui.Painter, bounds ui.Rect) {
+							drawMeterWave(painter, bounds, activity, reduceMotion)
+						})
+					}
+					meter.Children(func() {
 						for i := range palette.MeterCells {
 							color := ui.Hex(palette.MeterCellColor(i, pct))
-							ui.Box(c.Key(i)).Size(4, 10).Radius(1).Background(color)
+							ui.Box(c.Key(i)).Size(meterCellWidth, meterCellHeight).Radius(1).Background(color)
 						}
 					})
 				}

@@ -94,16 +94,16 @@ async function toggle(webSearch) {
   return res.value.webSearch;
 }
 
-async function runSearch() {
+async function runSearch(name = "web-search") {
   const created = await request("/v1/conversations", "POST", { cwd: data });
   assert.equal(created.status, 201);
   const path = "/v1/conversations/" + created.value.id;
   assert.equal((await request(path + "/messages", "POST", {
-    content: "fixture:web-search", mode: "prompt", requestId: "one-search",
+    content: "fixture:" + name, mode: "prompt", requestId: "one-search",
   })).status, 202);
   for (let i = 0; i < 200; i++) {
     const page = await request(path + "/entries");
-    const result = page.value.entries.find(entry => entry.toolName === "web_search");
+    const result = page.value.entries.find(entry => entry.toolName === name.replace("-", "_"));
     if (result) return result;
     await sleep(25);
   }
@@ -117,6 +117,14 @@ try {
   const initial = await request(settings);
   assert.equal(initial.status, 200);
   assert.equal(initial.value.webSearch.enabled, true);
+  assert.equal(initial.value.webFetch.enabled, true);
+  const fetch = await runSearch("web-fetch");
+  assert.equal(fetch.toolSucceeded, false);
+  assert.match(fetch.text, /blocked_destination/);
+  assert.equal(fetch.toolTarget, "http://127.0.0.1/");
+  assert.equal((await request(settings, "PATCH", { webFetch: { enabled: false } })).value.webFetch.enabled, false);
+  assert.equal((await runSearch("web-fetch")).toolSucceeded, false);
+  assert.equal((await request(settings, "PATCH", { webFetch: { enabled: true } })).value.webFetch.enabled, true);
   assert.ok(initial.value.webSearch.providers.every(p => p.status === "ready"));
   assert.ok(!JSON.stringify(initial.value).includes("fixture-brave"));
   assert.deepEqual(JSON.parse((await runSearch()).text), {

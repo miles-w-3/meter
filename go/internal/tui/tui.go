@@ -9,13 +9,13 @@ import (
 	"unicode"
 
 	"charm.land/bubbles/v2/help"
-	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/protocol"
+	"pi-workspace.local/workspace/internal/theme"
 )
 
 type Options struct {
@@ -56,7 +56,7 @@ type Model struct {
 	recording                     *tuiRecording
 	stopUntil, quitUntil          time.Time
 	stopTarget                    string
-	spinner                       spinner.Model
+	sweep                         sweep
 	help                          help.Model
 	mouseHintUntil                time.Time
 	scrollbarUntil                time.Time
@@ -66,11 +66,6 @@ type Model struct {
 	searchPending, searchBackward bool
 	directory                     map[string]conversationItem
 	catalogEpoch                  int
-	spark                         []float64
-	lastPartial                   int
-	lastDelta                     time.Time
-	runTarget                     string
-	rate                          float64
 }
 
 func New(ctx context.Context, api *client.Client, conversation protocol.Conversation, info protocol.ServerInfo, options Options) *Model {
@@ -83,9 +78,6 @@ func New(ctx context.Context, api *client.Client, conversation protocol.Conversa
 		ctx: ctx, api: api, info: info, options: options, dumb: dumb, plain: dumb || noColor,
 		width: 80, height: 24, focused: true,
 		sessions: make(map[string]*session), help: help.New(), search: textinput.New(),
-		spinner: spinner.New(spinner.WithSpinner(spinner.Spinner{
-			Frames: strings.Split("▁▃▄▅▆▇▆▅▄▃", ""), FPS: 100 * time.Millisecond,
-		})),
 	}
 	m.colors.set(m.plain, m.options.Transparent, colorprofile.Env(os.Environ()))
 	m.search.Prompt = "/ "
@@ -162,7 +154,6 @@ func (m *Model) open(conversation protocol.Conversation) {
 	m.connected, m.reconnecting = false, false
 	m.streamEpoch = int(streamEpochs.Add(1))
 	m.pending = nil
-	m.spark, m.lastPartial, m.lastDelta, m.rate, m.runTarget = nil, 0, time.Time{}, 0, ""
 	m.stopUntil, m.quitUntil, m.stopTarget = time.Time{}, time.Time{}, ""
 	m.query, m.searchPending = "", false
 	m.focusComposer()
@@ -236,13 +227,10 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		wasRunning := m.running()
 		m.flush(time.Now())
 		if !wasRunning && m.running() {
-			cmd = m.spinner.Tick
+			cmd = m.startSweep()
 		}
-	case spinner.TickMsg:
-		if m.running() {
-			m.spinner, cmd = m.spinner.Update(msg)
-			m.addSpark(time.Now())
-		}
+	case sweepTick:
+		cmd = m.stepSweep(msg)
 	case sentMsg:
 		msg.session.handleSent(msg.err, m.mayRetry)
 		m.resizeComposer()
@@ -314,32 +302,56 @@ func (m *Model) flush(now time.Time) {
 		m.state.Apply(event)
 	}
 	m.pending = nil
-	m.trackDelta(now)
 	m.refresh()
 }
 
-func (m *Model) trackDelta(now time.Time) {
-	target := value(m.state.Current.AbortTarget)
-	if target != m.runTarget || !m.running() {
-		m.runTarget, m.spark, m.rate, m.lastPartial, m.lastDelta = target, nil, 0, 0, time.Time{}
-	}
-	length := len([]rune(value(m.state.Current.Partial)))
-	if m.running() && length != m.lastPartial {
-		if elapsed := now.Sub(m.lastDelta).Seconds(); !m.lastDelta.IsZero() && elapsed > 0 && length > m.lastPartial {
-			m.rate = float64(length-m.lastPartial) / elapsed / 4
-		}
-		m.lastPartial, m.lastDelta = length, now
-	}
+// While a turn runs, one Rain cell sweeps back and forth over the context
+// meter, as the GUI's wave does; a round trip takes about two seconds.
+const sweepStep = theme.SweepPeriod / (2 * (theme.MeterCells - 1))
+
+type sweep struct {
+	epoch, step int
+	active      bool
 }
 
-func (m *Model) addSpark(now time.Time) {
-	if now.Sub(m.lastDelta) > 350*time.Millisecond {
-		m.rate = 0
+type sweepTick struct{ epoch int }
+
+// startSweep starts the tick loop for the open conversation, once.
+func (m *Model) startSweep() tea.Cmd {
+	if m.sweep.active && m.sweep.epoch == m.streamEpoch {
+		return nil
 	}
-	m.spark = append(m.spark, m.rate)
-	if len(m.spark) > 8 {
-		m.spark = m.spark[1:]
+	m.sweep = sweep{epoch: m.streamEpoch, active: true}
+	return sweepAfter(m.streamEpoch)
+}
+
+func (m *Model) stepSweep(msg sweepTick) tea.Cmd {
+	if msg.epoch != m.sweep.epoch {
+		return nil // A loop for a conversation no longer open.
 	}
+	if !m.running() {
+		m.sweep.active = false
+		return nil
+	}
+	m.sweep.step++
+	return sweepAfter(msg.epoch)
+}
+
+func sweepAfter(epoch int) tea.Cmd {
+	return tea.Tick(sweepStep, func(time.Time) tea.Msg { return sweepTick{epoch} })
+}
+
+// sweepCell is the moving cell, or -1 when no turn runs.
+func (m *Model) sweepCell() int {
+	if !m.running() {
+		return -1
+	}
+	span := theme.MeterCells - 1
+	cell := m.sweep.step % (2 * span)
+	if cell > span {
+		cell = 2*span - cell
+	}
+	return cell
 }
 
 func (s *session) handleSent(err error, mayRetry bool) {

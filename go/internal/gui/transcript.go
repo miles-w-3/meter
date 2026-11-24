@@ -21,31 +21,9 @@ func ghost(c *ui.Context, label string, disabled bool) bool {
 	return mygoui.Button(c, mygoui.ButtonOptions{Label: label, Variant: mygoui.ButtonGhost, Size: uitheme.ButtonExtraSmall, Disabled: disabled}).Clicked()
 }
 
-// updateMeter keeps the level in the pane model. During generation it estimates
-// throughput from streamed text; otherwise it displays estimated context fill.
+// updateMeter keeps the activity wave in sync with the running turn.
 func (p *pane) updateMeter(now time.Time) {
-	usage := p.state.Current.ContextUsage
-	if !p.connected {
-		p.meterLevel = 0
-	} else if p.state.Current.Status == "running" {
-		length := 0
-		if p.state.Current.Partial != nil {
-			length = len([]rune(*p.state.Current.Partial))
-		}
-		if elapsed := now.Sub(p.meterAt).Seconds(); !p.meterAt.IsZero() && elapsed > 0 && length > p.partialLength {
-			// Roughly four characters per token, normalized to 80 tokens/sec.
-			p.meterLevel = min(1, float32(float64(length-p.partialLength)/elapsed/320))
-		} else if length < p.partialLength {
-			p.meterLevel = 0
-		}
-		p.partialLength = length
-	} else {
-		p.partialLength, p.meterLevel = 0, 0
-		if usage != nil && usage.Window > 0 {
-			p.meterLevel = min(1, max(0, float32(usage.Tokens)/float32(usage.Window)))
-		}
-	}
-	p.meterAt = now
+	p.activity.Observe(now, p.connected && p.state.Current.Status == "running")
 }
 
 func valueOrEmpty(value *string) string {

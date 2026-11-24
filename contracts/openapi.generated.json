@@ -3519,6 +3519,15 @@
       "ToolSettingsChange": {
         "type": "object",
         "properties": {
+          "webFetch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
           "webSearch": {
             "type": "object",
             "properties": {
@@ -3579,6 +3588,18 @@
       "ToolsStatus": {
         "type": "object",
         "properties": {
+          "webFetch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          },
           "showThinking": {
             "type": "boolean"
           },

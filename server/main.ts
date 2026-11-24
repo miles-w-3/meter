@@ -77,7 +77,7 @@ const workspaces = new Workspaces(join(data, "app.sqlite"));
 const webSearch = new WebSearch(() => workspaces.toolSettings());
 const claudeProviderId = "pi-claude-cli";
 const { harness, model, models, plugins, refreshTools, setClaudeEnabled, closeClaude } = await openHarness(
-  join(data, "durable.sqlite"), provider as Provider, webSearch, { claudeEnabled: workspaces.providerEnabled(claudeProviderId), computedDiffs: () => workspaces.toolSettings().computedDiffs },
+  join(data, "durable.sqlite"), provider as Provider, webSearch, { claudeEnabled: workspaces.providerEnabled(claudeProviderId), computedDiffs: () => workspaces.toolSettings().computedDiffs, webFetchEnabled: () => workspaces.toolSettings().webFetch.enabled },
 );
 const generation = randomUUID();
 const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts", "model-inventory", "model-defaults", "conversation-models", "tool-settings"];

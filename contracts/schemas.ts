@@ -15,6 +15,7 @@ export const defaultSettings = z.strictObject({ model: modelRef.nullable(), thin
 export const settings = defaultSettings.extend({ source: z.enum(["saved", "environment", "fixture", "unconfigured"]) });
 export const searchProvider = z.enum(["brave", "exa", "firecrawl"]);
 export const toolSettings = z.strictObject({
+  webFetch: z.strictObject({ enabled: z.boolean() }).default({ enabled: true }),
   webSearch: z.strictObject({
     enabled: z.boolean(), providers: z.record(searchProvider, z.boolean()),
   }),
@@ -26,6 +27,7 @@ export const toolSettings = z.strictObject({
 export type ToolSettings = z.infer<typeof toolSettings>;
 export const searchProviderChange = z.strictObject({ id: searchProvider, enabled: z.boolean() });
 export const toolSettingsChange = z.strictObject({
+  webFetch: z.strictObject({ enabled: z.boolean().optional() }).optional(),
   webSearch: z.strictObject({
     enabled: z.boolean().optional(),
     provider: searchProviderChange.optional(),
@@ -40,6 +42,7 @@ export const searchProviderStatus = z.object({
   status: z.enum(["ready", "disabled", "missing_key", "storage_rights_required", "rate_limited", "unavailable", "auth_error", "quota_exhausted"]),
 });
 export const toolsStatus = z.object({
+  webFetch: z.object({ enabled: z.boolean() }).optional(),
   showThinking: z.boolean().optional(),
   webSearch: z.object({ enabled: z.boolean(), providers: z.array(searchProviderStatus) }),
   computedDiffs: z.boolean(),

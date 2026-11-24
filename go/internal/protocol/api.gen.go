@@ -1212,7 +1212,10 @@ type ToolSettingsChange struct {
 	DiffInline    *ToolSettingsChangeDiffInline `json:"diffInline,omitempty"`
 	DiffLayout    *ToolSettingsChangeDiffLayout `json:"diffLayout,omitempty"`
 	ShowThinking  *bool                         `json:"showThinking,omitempty"`
-	WebSearch     *struct {
+	WebFetch      *struct {
+		Enabled *bool `json:"enabled,omitempty"`
+	} `json:"webFetch,omitempty"`
+	WebSearch *struct {
 		Enabled  *bool                 `json:"enabled,omitempty"`
 		Provider *SearchProviderChange `json:"provider,omitempty"`
 	} `json:"webSearch,omitempty"`
@@ -1230,7 +1233,10 @@ type ToolsStatus struct {
 	DiffInline    ToolsStatusDiffInline `json:"diffInline"`
 	DiffLayout    ToolsStatusDiffLayout `json:"diffLayout"`
 	ShowThinking  *bool                 `json:"showThinking,omitempty"`
-	WebSearch     struct {
+	WebFetch      *struct {
+		Enabled bool `json:"enabled"`
+	} `json:"webFetch,omitempty"`
+	WebSearch struct {
 		Enabled   bool                   `json:"enabled"`
 		Providers []SearchProviderStatus `json:"providers"`
 	} `json:"webSearch"`

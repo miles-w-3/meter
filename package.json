@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@types/node": "24.19.2",
+    "@types/turndown": "^5.0.6",
     "@types/ws": "8.18.2",
     "typescript": "7.0.2"
   },
@@ -17,7 +18,11 @@
     "@earendil-works/pi-coding-agent": "1.5.2",
     "@earendil-works/pi-durable": "1.5.2",
     "@effect/platform-node-shared": "4.0.3",
+    "@mozilla/readability": "^0.6.0",
     "effect": "4.0.3",
+    "ipaddr.js": "^2.5.0",
+    "linkedom": "^0.18.15",
+    "turndown": "^7.2.5",
     "ws": "8.21.0",
     "zod": "4.6.7"
   }

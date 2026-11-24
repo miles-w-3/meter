@@ -540,12 +540,6 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					border = focusBorder
 				}
 				column.Border(1, border)
-				if p := a.panes[node.Id]; p != nil && p.connected && p.state.Current.Status == "running" {
-					reduceMotion := c.Preferences().ReduceMotion
-					column.DrawOver(func(painter *ui.Painter, bounds ui.Rect) {
-						drawActivityTrace(painter, bounds, reduceMotion)
-					})
-				}
 				if focusFirst && a.selectedPane == node.Id {
 					column.Focus(ui.FocusOptions{PreventScroll: true})
 				}

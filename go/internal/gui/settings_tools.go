@@ -41,6 +41,7 @@ func (a *app) loadToolSettings(load func(context.Context) (protocol.ToolsStatus,
 }
 
 func (a *app) applyDiffSettings(status protocol.ToolsStatus) {
+	a.hideThinking = status.ShowThinking != nil && !*status.ShowThinking
 	a.diffLayout = 0
 	if status.DiffLayout == "unified" {
 		a.diffLayout = 1

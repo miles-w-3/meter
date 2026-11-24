@@ -176,6 +176,20 @@ async function regular() {
   assert.ok(finished.view.contextUsage.tokens > 0);
   assert.ok(finished.view.contextUsage.window > finished.view.contextUsage.tokens);
   assert.equal(await readFile(join(project, "result.txt"), "utf8"), "written by Durable\n");
+  // Thinking is streamed and retained as distinct, ordered transcript blocks.
+  const thinkingConversation = await create();
+  const thinkingWatch = await watch(thinkingConversation);
+  assert.equal((await submit(thinkingConversation, input("fixture:thinking", "thinking-fixture"))).status, 202);
+  await waitFor(thinkingWatch, (f) => f.view.partialBlocks?.some((b) => b.type === "thinking" && b.text.length > 0), "streaming thinking");
+  const thought = await waitFor(thinkingWatch, (f) => f.view.status === "idle" && entries(f).some((e) => e.blocks?.some((b) => b.type === "thinking")), "completed thinking");
+  const blocks = entries(thought).find((e) => e.blocks?.some((b) => b.type === "thinking")).blocks;
+  assert.deepEqual(blocks.map((b) => b.type), ["thinking", "text"]);
+  const thoughtHistory = (await request(pathOf(thinkingConversation) + "/entries")).value;
+  assert.ok(thoughtHistory.entries.some((e) => e.blocks?.some((b) => b.type === "thinking")));
+  assert.equal((await request("/v1/settings/tools")).value.showThinking, true);
+  assert.equal((await request("/v1/settings/tools", "PATCH", { showThinking: false })).value.showThinking, false);
+  assert.equal((await request("/v1/settings/tools")).value.showThinking, false);
+  await request("/v1/settings/tools", "PATCH", { showThinking: true });
   // Bash snapshot diffs are retained with tool results; disabling them prevents collection.
   assert.equal((await request("/v1/settings/tools")).value.computedDiffs, true);
   await writeFile(join(project, "diff-fixture.txt"), "original\n");

@@ -11,7 +11,7 @@ if [[ $# -gt 1 ]]; then
   echo "Usage: $0 [output-directory]" >&2
   exit 1
 fi
-for tool in "${BUN_EXE:-bun}" "${GO_EXE:-go}" "${CMAKE_EXE:-cmake}" pnpm git ditto; do
+for tool in "${BUN_EXE:-bun}" "${GO_EXE:-go}" "${CMAKE_EXE:-cmake}" pnpm git ditto sips iconutil; do
   command -v "$tool" >/dev/null || { echo "Missing build tool: $tool" >&2; exit 1; }
 done
 output=${1:-.bin}
@@ -24,6 +24,7 @@ app="$stage/Meter.app"
 macos="$app/Contents/MacOS"
 resources="$app/Contents/Resources"
 mkdir -p "$macos" "$resources/licenses"
+"$repo/scripts/macos-icon.sh" "$repo/go/internal/gui/assets/meter.png" "$resources/Meter.icns"
 
 parakeet_commit=2eac2e77d9c7ef8899f7a86a46e693ac5ac1a5cd
 source_dir=${PARAKEET_SOURCE:-$cache/parakeet-cpp}
@@ -72,6 +73,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>Meter</string>
   <key>CFBundleDisplayName</key><string>Meter</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>Meter</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>NSHighResolutionCapable</key><true/>

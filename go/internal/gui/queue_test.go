@@ -30,6 +30,22 @@ func TestRunningComposerQueuesOnEnterAndStopsWithButton(t *testing.T) {
 	}
 }
 
+func TestStopButtonKeepsComposerBottomInset(t *testing.T) {
+	p := &pane{draft: "first line\nsecond line\nthird line"}
+	driver := ui.NewTester(func(c *ui.Context) {
+		(&app{}).composerWithStop(c, uuid.Nil, p, form.ComposerOptions{Label: "Message", SubmitLabel: "Send", OnSubmit: func(string) {}}, true, func() {}, false)
+	}, 500, 200)
+	driver.Frame()
+	input, inputOK := driver.Find("Message")
+	button, buttonOK := driver.Find("Stop")
+	if !inputOK || !buttonOK {
+		t.Fatal("composer controls missing")
+	}
+	if gap := input.Y + input.H - (button.Y + button.H); gap < 7 || gap > 9 {
+		t.Fatalf("stop button should match send's bottom inset: input=%+v button=%+v gap=%v", input, button, gap)
+	}
+}
+
 func TestEscapeRecallsLatestQueuedMessage(t *testing.T) {
 	items := []protocol.QueuedMessage{{Id: "1", Mode: "followUp", Text: "first"}, {Id: "2", Mode: "followUp", Text: "last"}}
 	p := &pane{connected: true, draft: "existing draft"}

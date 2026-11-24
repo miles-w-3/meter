@@ -60,7 +60,10 @@ type fileDiff struct {
 	computed            bool
 }
 
+type transcriptBlock struct{ kind, text string }
+
 type message struct {
+	blocks                                    []transcriptBlock
 	id, label, text, target, stats, errorText string
 	diffPatch                                 string
 	toolCommand                               string
@@ -179,6 +182,16 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 
 func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, state *client.State, older func(), loading bool) {
 	entries := state.Entries()
+	// A collapse during one stream must not make the next run start collapsed.
+	run := valueOrEmpty(state.Current.AbortTarget)
+	if run != p.thinkingRun {
+		for key := range p.thinkingExpanded {
+			if strings.HasPrefix(key, "partial:") {
+				delete(p.thinkingExpanded, key)
+			}
+		}
+		p.thinkingRun = run
+	}
 	messages := make([]message, 0, len(entries)+len(state.Current.Tools)+1)
 	completed := make(map[string]bool)
 	notices := cacheNotices(entries)
@@ -186,7 +199,15 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 		if notice := notices[entry.Id]; notice != "" {
 			messages = append(messages, message{id: "cache:" + entry.Id, text: notice, cacheNotice: true})
 		}
-		if entry.Text == "" && entry.ToolName == nil && (entry.Error == nil || *entry.Error == "") && (entry.ImageCount == nil || *entry.ImageCount == 0) {
+		var blocks []transcriptBlock
+		if entry.Blocks != nil {
+			for _, block := range *entry.Blocks {
+				if block.Text != "" && (!a.hideThinking || string(block.Type) != "thinking") {
+					blocks = append(blocks, transcriptBlock{string(block.Type), clean(block.Text)})
+				}
+			}
+		}
+		if entry.Text == "" && len(blocks) == 0 && entry.ToolName == nil && (entry.Error == nil || *entry.Error == "") && (entry.ImageCount == nil || *entry.ImageCount == 0) {
 			continue
 		}
 		label := strings.TrimPrefix(entry.Kind, "pi.")
@@ -199,7 +220,7 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 			if entry.Error != nil {
 				errorText = clean(*entry.Error)
 			}
-			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), errorText: errorText, user: label == "user", imageCount: imageCount,
+			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), blocks: blocks, errorText: errorText, user: label == "user", imageCount: imageCount,
 				stats: messageStats(entry)})
 			continue
 		}
@@ -255,7 +276,17 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 		}
 		messages = append(messages, message{id: key, label: tool.Name + " · " + tool.Status, text: output, tool: true, target: valueOrEmpty(tool.Target), toolCommand: valueOrEmpty(tool.Command)})
 	}
-	if partial := state.Current.Partial; partial != nil {
+	var partialBlocks []transcriptBlock
+	if state.Current.PartialBlocks != nil {
+		for _, block := range *state.Current.PartialBlocks {
+			if block.Text != "" && (!a.hideThinking || string(block.Type) != "thinking") {
+				partialBlocks = append(partialBlocks, transcriptBlock{string(block.Type), clean(block.Text)})
+			}
+		}
+	}
+	if len(partialBlocks) > 0 {
+		messages = append(messages, message{id: "partial", label: "assistant · streaming", blocks: partialBlocks})
+	} else if partial := state.Current.Partial; partial != nil {
 		messages = append(messages, message{id: "partial", label: "assistant · streaming", text: clean(*partial) + " ▍"})
 	}
 	if len(messages) == 0 && state.Before == nil {
@@ -324,20 +355,61 @@ func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg mes
 		if msg.user && msg.imageCount > 0 {
 			a.messageImages(c, p, conversationID, msg.id, msg.imageCount)
 		}
-		if body := strings.TrimSpace(msg.text); body != "" {
-			if msg.user {
+		if msg.user {
+			if body := strings.TrimSpace(msg.text); body != "" {
 				text(c, body, 14, ink).Selectable().LineHeight(1.5)
-			} else {
-				a.prose(c, body, msg.id == "partial", p)
-				if msg.stats != "" {
-					ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
-						text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum")
-					})
+			}
+		} else {
+			if len(msg.blocks) > 0 {
+				for i, block := range msg.blocks {
+					if block.kind == "thinking" {
+						key := fmt.Sprintf("%s:%d", msg.id, i)
+						expanded, set := p.thinkingExpanded[key]
+						if !set {
+							expanded = true
+						}
+						thinkingBlock(c.Key(key), block.text, expanded, func() {
+							if p.thinkingExpanded == nil {
+								p.thinkingExpanded = make(map[string]bool)
+							}
+							p.thinkingExpanded[key] = !expanded
+						})
+					} else if strings.TrimSpace(block.text) != "" {
+						a.prose(c, block.text, msg.id == "partial", p)
+					}
 				}
+			} else if body := strings.TrimSpace(msg.text); body != "" {
+				a.prose(c, body, msg.id == "partial", p)
+			}
+			if msg.stats != "" {
+				ui.Row(c).FillWidth().Justify(ui.End).Children(func() { text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum") })
 			}
 		}
 		if msg.errorText != "" {
 			text(c, "Error: "+msg.errorText, 13, warning).Selectable().LineHeight(1.5)
+		}
+	})
+}
+
+// A small plus/minus control keeps the trace collapsible without a heading or rail.
+func thinkingBlock(c *ui.Context, body string, expanded bool, toggle func()) {
+	ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Start).Padding(3, 0, 12, 0).Gap(8).Children(func() {
+		if expanded {
+			text(c, strings.TrimSpace(body), 14, ui.Hex("#a3aea6")).Font("Source Serif 4").Italic().Selectable().LineHeight(1.6).Grow(1).MinWidth(0)
+		} else {
+			ui.Box(c).Grow(1)
+		}
+		label, symbol := "Expand thinking", "+"
+		if expanded {
+			label, symbol = "Collapse thinking", "−"
+		}
+		button := ui.ButtonBase(c).Label(label).Tooltip(label).Size(22, 22).Shrink(0).Radius(5).Center()
+		if button.Hovered() {
+			button.Background(highlight)
+		}
+		button.Children(func() { text(c, symbol, 15, faint) })
+		if button.Clicked() {
+			toggle()
 		}
 	})
 }

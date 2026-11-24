@@ -5,7 +5,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { createModels } from "@earendil-works/pi-ai/models";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai/providers/faux";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createRegistry, defineDocFamily, defineExtension, Harness, InboxDoc, LiveDoc, ProviderDoc } from "@earendil-works/pi-durable";
 import { ClaudeCwdBridge } from "./claude-code/bridge.ts";
@@ -35,6 +35,7 @@ function fixtureProvider() {
     const results = messages.filter((message) => message.role === "toolResult");
     const preview = /^fixture:mermaid:(tiny|wide|tall|square)$/.exec(prompt.trim());
     if (preview) return fauxAssistantMessage([fauxText(mermaidPreview[preview[1]])]);
+    if (prompt === "fixture:thinking") return fauxAssistantMessage([fauxThinking("Let me consider the request and check the relevant details.\n\nFirst, I should understand what the user is asking and identify the constraints. The answer should be clear, direct, and grounded in the available information.\n\nNext, I can compare the possible approaches:\n- Keep the explanation concise.\n- Include an example where it helps.\n- Call out any uncertainty rather than making assumptions.\n\nWith those points in mind, I can put together a useful response."), fauxText("Here is the answer after considering it.")]);
     if (prompt.includes("fixture:demo")) return fauxAssistantMessage([fauxText("desktop reconnect output ".repeat(200))]);
     if (prompt.includes("fixture:slow")) return fauxAssistantMessage([fauxText("streamed model output ".repeat(45))]);
     if (prompt === "fixture:web-search" && !results.length) {
@@ -427,6 +428,7 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: 
   const changes = diff?.split("\n");
   return {
     id: String(entry.id), kind: entry.kind,
+    blocks: assistant?.content.flatMap<{ type: "text" | "thinking"; text: string }>((block) => block.type === "text" ? [{ type: "text" as const, text: clip(block.text) }] : block.type === "thinking" && block.thinking ? [{ type: "thinking" as const, text: clip(block.thinking) }] : []),
     text: clip(text),
     error: assistant?.stopReason === "error" && assistant.errorMessage ? clip(assistant.errorMessage) : undefined,
     imageCount: entryImages(entry).length || undefined,
@@ -471,6 +473,7 @@ export function contextTokens(active: ContextView) {
 export function project(value: ConversationView, usage?: z.infer<typeof contextUsage>) {
   const live = value.docs["pi.live"] as LiveState | undefined;
   const partial = live?.generation?.message?.content?.flatMap((block) => block.type === "text" ? [block.text] : []).join("");
+  const partialBlocks = live?.generation?.message?.content?.flatMap<{ type: "text" | "thinking"; text: string }>((block) => block.type === "text" ? [{ type: "text" as const, text: clip(block.text) }] : block.type === "thinking" && block.thinking ? [{ type: "thinking" as const, text: clip(block.thinking) }] : []);
   const { projected, targets, inputs } = projectEntries(value.entries);
   const agent = value.docs["pi.agent"] as AgentState | undefined;
   return view.parse({
@@ -479,7 +482,7 @@ export function project(value: ConversationView, usage?: z.infer<typeof contextU
     failure: live?.runFailure?.reason,
     abortTarget: live?.run && String(live.run.taskId),
     before: value.before && value.entries.length ? historyCursor(value.entries[0].id) : undefined,
-    partial: partial ? clip(partial) : null,
+    partial: partial ? clip(partial) : null, partialBlocks,
     entries: projected, contextUsage: usage,
     queued: ((value.docs["pi.inbox"] as InboxState | undefined)?.items ?? [])
       .filter((item) => item.mode !== "write").map((item) => {

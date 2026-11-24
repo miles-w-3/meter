@@ -2436,6 +2436,29 @@
       "Entry": {
         "type": "object",
         "properties": {
+          "blocks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "thinking"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
           "id": {
             "type": "string",
             "minLength": 1,
@@ -2735,6 +2758,29 @@
               "string",
               "null"
             ]
+          },
+          "partialBlocks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "thinking"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ],
+              "additionalProperties": false
+            }
           },
           "failure": {
             "type": "string"
@@ -3479,6 +3525,9 @@
             },
             "additionalProperties": false
           },
+          "showThinking": {
+            "type": "boolean"
+          },
           "computedDiffs": {
             "type": "boolean"
           },
@@ -3524,6 +3573,9 @@
       "ToolsStatus": {
         "type": "object",
         "properties": {
+          "showThinking": {
+            "type": "boolean"
+          },
           "webSearch": {
             "type": "object",
             "properties": {

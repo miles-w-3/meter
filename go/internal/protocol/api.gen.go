@@ -67,6 +67,24 @@ func (e ConversationUpdateType) Valid() bool {
 	}
 }
 
+// Defines values for ConversationViewPartialBlocksType.
+const (
+	ConversationViewPartialBlocksTypeText     ConversationViewPartialBlocksType = "text"
+	ConversationViewPartialBlocksTypeThinking ConversationViewPartialBlocksType = "thinking"
+)
+
+// Valid indicates whether the value is a known member of the ConversationViewPartialBlocksType enum.
+func (e ConversationViewPartialBlocksType) Valid() bool {
+	switch e {
+	case ConversationViewPartialBlocksTypeText:
+		return true
+	case ConversationViewPartialBlocksTypeThinking:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConversationViewStatus.
 const (
 	Failed  ConversationViewStatus = "failed"
@@ -115,6 +133,24 @@ func (e DefaultSettingsThinkingLevel) Valid() bool {
 	case DefaultSettingsThinkingLevelOff:
 		return true
 	case DefaultSettingsThinkingLevelXhigh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EntryBlocksType.
+const (
+	EntryBlocksTypeText     EntryBlocksType = "text"
+	EntryBlocksTypeThinking EntryBlocksType = "thinking"
+)
+
+// Valid indicates whether the value is a known member of the EntryBlocksType enum.
+func (e EntryBlocksType) Valid() bool {
+	switch e {
+	case EntryBlocksTypeText:
+		return true
+	case EntryBlocksTypeThinking:
 		return true
 	default:
 		return false
@@ -746,17 +782,21 @@ type ConversationUpdateType string
 
 // ConversationView defines model for ConversationView.
 type ConversationView struct {
-	AbortTarget    *string                `json:"abortTarget,omitempty"`
-	Before         *string                `json:"before,omitempty"`
-	ContextUsage   *ContextUsage          `json:"contextUsage,omitempty"`
-	ConversationId string                 `json:"conversationId"`
-	Entries        []Entry                `json:"entries"`
-	Failure        *string                `json:"failure,omitempty"`
-	Partial        *string                `json:"partial"`
-	Queued         *[]QueuedMessage       `json:"queued,omitempty"`
-	Selection      *Selection             `json:"selection,omitempty"`
-	Status         ConversationViewStatus `json:"status"`
-	Tools          []struct {
+	AbortTarget    *string       `json:"abortTarget,omitempty"`
+	Before         *string       `json:"before,omitempty"`
+	ContextUsage   *ContextUsage `json:"contextUsage,omitempty"`
+	ConversationId string        `json:"conversationId"`
+	Entries        []Entry       `json:"entries"`
+	Failure        *string       `json:"failure,omitempty"`
+	Partial        *string       `json:"partial"`
+	PartialBlocks  *[]struct {
+		Text string                            `json:"text"`
+		Type ConversationViewPartialBlocksType `json:"type"`
+	} `json:"partialBlocks,omitempty"`
+	Queued    *[]QueuedMessage       `json:"queued,omitempty"`
+	Selection *Selection             `json:"selection,omitempty"`
+	Status    ConversationViewStatus `json:"status"`
+	Tools     []struct {
 		CallId  *string `json:"callId,omitempty"`
 		Command *string `json:"command,omitempty"`
 		EntryId *string `json:"entryId,omitempty"`
@@ -767,6 +807,9 @@ type ConversationView struct {
 		TaskId  *string `json:"taskId,omitempty"`
 	} `json:"tools"`
 }
+
+// ConversationViewPartialBlocksType defines model for ConversationView.PartialBlocks.Type.
+type ConversationViewPartialBlocksType string
 
 // ConversationViewStatus defines model for ConversationView.Status.
 type ConversationViewStatus string
@@ -797,7 +840,11 @@ type DefaultSettingsThinkingLevel string
 
 // Entry defines model for Entry.
 type Entry struct {
-	Added         *int    `json:"added,omitempty"`
+	Added  *int `json:"added,omitempty"`
+	Blocks *[]struct {
+		Text string          `json:"text"`
+		Type EntryBlocksType `json:"type"`
+	} `json:"blocks,omitempty"`
 	CacheInput    *int    `json:"cacheInput,omitempty"`
 	CacheModel    *string `json:"cacheModel,omitempty"`
 	CacheRead     *int    `json:"cacheRead,omitempty"`
@@ -830,6 +877,9 @@ type Entry struct {
 		Path   string `json:"path"`
 	} `json:"writeDiffs,omitempty"`
 }
+
+// EntryBlocksType defines model for Entry.Blocks.Type.
+type EntryBlocksType string
 
 // EntryImages defines model for EntryImages.
 type EntryImages struct {
@@ -1159,6 +1209,7 @@ type ToolSettingsChange struct {
 	ComputedDiffs *bool                         `json:"computedDiffs,omitempty"`
 	DiffInline    *ToolSettingsChangeDiffInline `json:"diffInline,omitempty"`
 	DiffLayout    *ToolSettingsChangeDiffLayout `json:"diffLayout,omitempty"`
+	ShowThinking  *bool                         `json:"showThinking,omitempty"`
 	WebSearch     *struct {
 		Enabled  *bool                 `json:"enabled,omitempty"`
 		Provider *SearchProviderChange `json:"provider,omitempty"`
@@ -1176,6 +1227,7 @@ type ToolsStatus struct {
 	ComputedDiffs bool                  `json:"computedDiffs"`
 	DiffInline    ToolsStatusDiffInline `json:"diffInline"`
 	DiffLayout    ToolsStatusDiffLayout `json:"diffLayout"`
+	ShowThinking  *bool                 `json:"showThinking,omitempty"`
 	WebSearch     struct {
 		Enabled   bool                   `json:"enabled"`
 		Providers []SearchProviderStatus `json:"providers"`

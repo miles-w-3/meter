@@ -17,6 +17,7 @@ export const toolSettings = z.strictObject({
   webSearch: z.strictObject({
     enabled: z.boolean(), providers: z.record(searchProvider, z.boolean()),
   }),
+  showThinking: z.boolean().default(true),
   computedDiffs: z.boolean().default(true),
   diffLayout: z.enum(["split", "unified"]).default("split"),
   diffInline: z.enum(["words", "characters", "off"]).default("words"),
@@ -28,6 +29,7 @@ export const toolSettingsChange = z.strictObject({
     enabled: z.boolean().optional(),
     provider: searchProviderChange.optional(),
   }).optional(),
+  showThinking: z.boolean().optional(),
   computedDiffs: z.boolean().optional(),
   diffLayout: z.enum(["split", "unified"]).optional(),
   diffInline: z.enum(["words", "characters", "off"]).optional(),
@@ -37,6 +39,7 @@ export const searchProviderStatus = z.object({
   status: z.enum(["ready", "disabled", "missing_key", "storage_rights_required", "rate_limited", "unavailable", "auth_error", "quota_exhausted"]),
 });
 export const toolsStatus = z.object({
+  showThinking: z.boolean().optional(),
   webSearch: z.object({ enabled: z.boolean(), providers: z.array(searchProviderStatus) }),
   computedDiffs: z.boolean(),
   diffLayout: z.enum(["split", "unified"]),
@@ -82,7 +85,9 @@ export const userMessage = z.object({ content: z.string(), images: z.array(image
 export const receipt = z.object({ submissionId: opaque });
 export const abortInput = z.strictObject({ target: opaque });
 export const problem = z.object({ code: z.string(), message: z.string() });
+const transcriptBlock = z.object({ type: z.enum(["text", "thinking"]), text: z.string() });
 export const entry = z.object({
+  blocks: z.array(transcriptBlock).optional(),
   id: opaque, kind: z.string(), text: z.string(), error: z.string().optional(), imageCount: z.number().int().positive().optional(), toolName: z.string().optional(), toolSucceeded: z.boolean().optional(),
   toolCallId: z.string().optional(), toolTarget: z.string().optional(), toolCommand: z.string().optional(), diffPatch: z.string().optional(), computedDiffs: z.array(z.object({ path: z.string(), before: z.string(), after: z.string() })).optional(), writeDiffs: z.array(z.object({ path: z.string(), before: z.string(), after: z.string() })).optional(), diffIncomplete: z.boolean().optional(), durationMs: z.number().int().nonnegative().optional(),
   timestamp: z.number().int().nonnegative().optional(), cacheInput: z.number().int().nonnegative().optional(), cacheRead: z.number().int().nonnegative().optional(), cacheWrite: z.number().int().nonnegative().optional(), cacheModel: z.string().optional(),
@@ -100,7 +105,7 @@ const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional()
 export const queuedMessage = z.object({ id: opaque, text: z.string(), images: z.number().int().nonnegative(), mode: z.enum(["followUp", "steer"]) });
 export const view = z.object({
   conversationId: opaque, status: z.enum(["idle", "running", "failed"]),
-  partial: z.string().nullable(), failure: z.string().optional(),
+  partial: z.string().nullable(), partialBlocks: z.array(transcriptBlock).optional(), failure: z.string().optional(),
   abortTarget: opaque.optional(), before: opaque.optional(),
   entries: z.array(entry), tools: z.array(tool), queued: z.array(queuedMessage).optional(),
   contextUsage: contextUsage.optional(), selection: selection.optional(),

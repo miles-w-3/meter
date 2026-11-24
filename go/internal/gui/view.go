@@ -818,14 +818,14 @@ func (a *app) composerWithStop(c *ui.Context, id uuid.UUID, p *pane, options for
 				options.Actions()
 			}
 			if running {
-				button := ui.ButtonBase(c).Label("Stop").Size(32, 32).AlignSelf(ui.End).Radius(16).Background(accent).Center().Disabled(stopDisabled).KeepFocus()
+				button := ui.ButtonBase(c).Label("Stop").Size(32, 32).AlignSelf(ui.End).Margin(0, 0, 8, 0).Radius(16).Background(accent).Center().Disabled(stopDisabled).KeepFocus()
 				button.Children(func() { ui.Box(c).Size(10, 10).Radius(1).Background(background) })
 				if button.Clicked() && !stopDisabled {
 					stop()
 				}
 				return
 			}
-			button := ui.ButtonBase(c).Label(options.SubmitLabel).Size(32, 32).AlignSelf(ui.End).Radius(16).Background(accent).Center().Disabled(!canSend(*draft)).KeepFocus()
+			button := ui.ButtonBase(c).Label(options.SubmitLabel).Size(32, 32).AlignSelf(ui.End).Margin(0, 0, 8, 0).Radius(16).Background(accent).Center().Disabled(!canSend(*draft)).KeepFocus()
 			button.Children(func() { text(c, "↑", 18, background).FontWeight(650) })
 			if button.Clicked() && canSend(*draft) {
 				options.OnSubmit(*draft)

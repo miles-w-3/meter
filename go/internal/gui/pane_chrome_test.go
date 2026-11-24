@@ -113,3 +113,45 @@ func TestSingleConversationPaneTitleVisibleInSurface(t *testing.T) {
 		t.Fatalf("pane title is missing or clipped: %+v, %v", bounds, ok)
 	}
 }
+
+func TestThinkingToggleIsGlobalAndImmediate(t *testing.T) {
+	id := "1"
+	node := protocol.LayoutNode{Id: uuid.New(), ConversationId: &id}
+	tab := protocol.LayoutTab{Id: uuid.New()}
+	setPanes(&tab, []protocol.LayoutNode{node})
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) { c.SetTheme(theme); a.paneHeader(c, &tab, node, "Chat") }, 500, 80)
+	driver.Frame()
+	bulb, ok := driver.Find("Hide thinking traces")
+	if !ok {
+		t.Fatal("thinking toggle missing")
+	}
+	closeBefore, ok := driver.Find("Close pane")
+	if !ok {
+		t.Fatal("close control must have a stable position")
+	}
+	driver.Move(bulb.X+bulb.W/2, bulb.Y+bulb.H/2)
+	bulbAfter, ok := driver.Find("Hide thinking traces")
+	if !ok || bulbAfter.X != bulb.X || bulbAfter.W != bulb.W {
+		t.Fatalf("thinking toggle moved on hover: %v -> %v", bulb, bulbAfter)
+	}
+	closeAfter, ok := driver.Find("Close pane")
+	if !ok || closeAfter.X != closeBefore.X || closeAfter.X < bulbAfter.X+bulbAfter.W {
+		t.Fatalf("close control shifted or overlaps toggle: %v -> %v", closeBefore, closeAfter)
+	}
+	if err := driver.Click("Hide thinking traces"); err != nil {
+		t.Fatal(err)
+	}
+	driver.Frame()
+	if !a.hideThinking {
+		t.Fatal("thinking must be hidden immediately")
+	}
+	driver.Frame()
+	if err := driver.Click("Show thinking traces"); err != nil {
+		t.Fatal(err)
+	}
+	driver.Frame()
+	if a.hideThinking {
+		t.Fatal("thinking must be shown again")
+	}
+}

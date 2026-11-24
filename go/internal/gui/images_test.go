@@ -125,15 +125,15 @@ func TestComposerStartsAtTopAndButtonStaysAtBottom(t *testing.T) {
 	if !ok {
 		t.Fatal("send button missing")
 	}
-	if input.Y > button.Y+1 {
-		t.Fatalf("input is not top aligned: input=%+v button=%+v", input, button)
+	if gap := input.Y + input.H - (button.Y + button.H); gap < 7 || gap > 9 {
+		t.Fatalf("send button should have an 8px bottom inset: input=%+v button=%+v gap=%v", input, button, gap)
 	}
 	p.draft = "first line\nsecond line\nthird line"
 	driver.Frame()
 	input, _ = driver.Find("Message")
 	button, _ = driver.Find("Send")
-	if input.Y+input.H > button.Y+button.H+1 {
-		t.Fatalf("button is not bottom aligned with multiline input: input=%+v button=%+v", input, button)
+	if gap := input.Y + input.H - (button.Y + button.H); gap < 7 || gap > 9 {
+		t.Fatalf("multiline send button should retain its bottom inset: input=%+v button=%+v gap=%v", input, button, gap)
 	}
 }
 

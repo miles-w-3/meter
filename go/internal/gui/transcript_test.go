@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -178,5 +179,67 @@ func TestCacheNoticesSuppressNoiseAndReset(t *testing.T) {
 				t.Fatalf("got %d notices, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestThinkingTranscriptFixture(t *testing.T) {
+	var entry protocol.Entry
+	if err := json.Unmarshal([]byte(`{"id":"thinking-1","kind":"pi.assistant","text":"Answer","blocks":[{"type":"thinking","text":"Visible reasoning"},{"type":"text","text":"Answer"}]}`), &entry); err != nil {
+		t.Fatal(err)
+	}
+	p := &pane{connected: true}
+	p.state.Current.Entries = []protocol.Entry{entry}
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) { c.SetTheme(theme); a.transcript(c, p, "1") }, 600, 400)
+	driver.Frame()
+	if driver.HasText("Thinking") || !driver.HasText("Answer") || !driver.HasText("Visible reasoning") {
+		t.Fatalf("expected thinking expanded by default: %v", driver.Texts())
+	}
+	if err := driver.Click("Collapse thinking"); err != nil {
+		t.Fatal(err)
+	}
+	if driver.HasText("Visible reasoning") {
+		t.Fatalf("thinking should collapse: %v", driver.Texts())
+	}
+	if err := driver.Click("Expand thinking"); err != nil {
+		t.Fatal(err)
+	}
+	if !driver.HasText("Visible reasoning") {
+		t.Fatalf("thinking should expand: %v", driver.Texts())
+	}
+	a.hideThinking = true
+	driver.Frame()
+	if driver.HasText("Visible reasoning") || driver.HasText("Thinking") || !driver.HasText("Answer") {
+		t.Fatalf("thinking must be hidden without hiding answer: %v", driver.Texts())
+	}
+	a.hideThinking = false
+	driver.Frame()
+	if !driver.HasText("Visible reasoning") {
+		t.Fatalf("thinking should return when enabled: %v", driver.Texts())
+	}
+}
+
+func TestStreamingThinkingOpensForEachRun(t *testing.T) {
+	p := &pane{connected: true}
+	if err := json.Unmarshal([]byte(`{"conversationId":"1","status":"running","partial":null,"abortTarget":"run-1","entries":[],"tools":[],"partialBlocks":[{"type":"thinking","text":"Reasoning in progress"}]}`), &p.state.Current); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) { c.SetTheme(theme); a.transcript(c, p, "1") }, 600, 400)
+	driver.Frame()
+	if !driver.HasText("Reasoning in progress") {
+		t.Fatalf("streaming thinking should start open: %v", driver.Texts())
+	}
+	if err := driver.Click("Collapse thinking"); err != nil {
+		t.Fatal(err)
+	}
+	if driver.HasText("Reasoning in progress") {
+		t.Fatal("manual collapse was ignored")
+	}
+	next := "run-2"
+	p.state.Current.AbortTarget = &next
+	driver.Frame()
+	if !driver.HasText("Reasoning in progress") {
+		t.Fatal("a new run should start open")
 	}
 }

@@ -30,6 +30,8 @@ var menuIcon []byte
 type pane struct {
 	conversation       string
 	expandedTools      map[string]bool
+	thinkingExpanded   map[string]bool
+	thinkingRun        string
 	transcriptScroll   ui.ScrollState
 	transcriptGuard    transcriptScrollGuard
 	rejected           bool
@@ -72,6 +74,7 @@ type paneDrag struct {
 }
 
 type app struct {
+	hideThinking         bool
 	mermaidCache         map[string]*mermaidEntry
 	ctx                  context.Context
 	api                  *client.Client

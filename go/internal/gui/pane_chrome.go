@@ -39,7 +39,26 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 					}
 					text(c, title, 13, titleColor).Grow(1).MinWidth(0).SingleLine()
 				})
-				if row.Hovered() && iconButton(c, closeIcon, "Close pane", a.busy()).Clicked() {
+				if node.ConversationId != nil {
+					label := "Hide thinking traces"
+					if a.hideThinking {
+						label = "Show thinking traces"
+					}
+					// Both controls keep a fixed position as hover changes. In particular,
+					// the destructive close target must never appear under the pointer.
+					button := iconButton(c, bulbIcon, label, a.toolsPending).Margin(0, 8, 0, 0)
+					if !a.hideThinking {
+						button.Background(panel)
+					}
+					if button.Clicked() {
+						a.hideThinking = !a.hideThinking
+						show := !a.hideThinking
+						if a.api != nil {
+							a.updateTools(protocol.ToolSettingsChange{ShowThinking: &show})
+						}
+					}
+				}
+				if iconButton(c, closeIcon, "Close pane", a.busy()).Clicked() {
 					a.requestClosePane(tab.Id, node.Id)
 				}
 			})

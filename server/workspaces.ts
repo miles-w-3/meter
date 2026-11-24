@@ -103,10 +103,11 @@ export class Workspaces {
     });
   }
 
-  updateToolSettings({ webSearch: change, computedDiffs, diffLayout, diffInline }: z.infer<typeof toolSettingsChange>) {
+  updateToolSettings({ webSearch: change, showThinking, computedDiffs, diffLayout, diffInline }: z.infer<typeof toolSettingsChange>) {
     const value = this.toolSettings();
     if (change?.enabled !== undefined) value.webSearch.enabled = change.enabled;
     if (change?.provider) value.webSearch.providers[change.provider.id] = change.provider.enabled;
+    if (showThinking !== undefined) value.showThinking = showThinking;
     if (computedDiffs !== undefined) value.computedDiffs = computedDiffs;
     if (diffLayout !== undefined) value.diffLayout = diffLayout;
     if (diffInline !== undefined) value.diffInline = diffInline;

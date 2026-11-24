@@ -9,6 +9,7 @@ for file in "${files[@]}"; do cp "$file" "$before/$(basename "$file")"; done
 ./scripts/generate.sh
 for file in "${files[@]}"; do cmp "$file" "$before/$(basename "$file")"; done
 ./node_modules/.bin/tsc --noEmit
+if [[ $(uname -s) == Darwin ]]; then ./scripts/macos-icon-test.sh; fi
 mkdir -p .bin
 (
   cd go

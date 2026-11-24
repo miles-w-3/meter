@@ -1,3 +1,4 @@
+import "./oauth-setup.ts";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
@@ -251,6 +252,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const status = voice.status;
     return reply(res, 200, {
       id, protocol: "v1", ready: true, provider, revision, dirty, generation, transport, dictation: status,
+      agentPath: process.env.PATH, agentPathSource: process.env.METER_AGENT_PATH_SOURCE,
       capabilities: status === "ready" ? [...capabilities, "dictation"] : capabilities,
     });
   }

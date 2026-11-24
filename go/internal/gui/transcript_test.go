@@ -243,3 +243,77 @@ func TestStreamingThinkingOpensForEachRun(t *testing.T) {
 		t.Fatal("a new run should start open")
 	}
 }
+
+func TestDiffCopiesFilePathWithoutToggling(t *testing.T) {
+	cases := []struct {
+		name     string
+		msg      message
+		computed *fileDiff
+		want     string
+	}{
+		{"patch", message{target: "src/greeting.go", diffPatch: "--- a/src/greeting.go\n+++ b/src/greeting.go\n@@ -1 +1 @@\n-before\n+after\n"}, nil, "src/greeting.go"},
+		{"computed", message{target: "ignored"}, &fileDiff{path: "dir with spaces/file.txt", before: "before\n", after: "after\n", computed: true}, "dir with spaces/file.txt"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			driver := ui.NewTester(func(c *ui.Context) {
+				c.SetTheme(theme)
+				toolDiff(c, tc.msg, tc.computed)
+			}, 600, 400)
+			driver.Frame()
+			if !driver.HasText("⌄") {
+				t.Fatalf("diff should start open: %v", driver.Texts())
+			}
+			if err := driver.Click("Copy file path"); err != nil {
+				t.Fatal(err)
+			}
+			if got := driver.Clipboard(); got != tc.want {
+				t.Fatalf("clipboard = %q, want %q", got, tc.want)
+			}
+			if !driver.HasText("⌄") {
+				t.Fatal("copying path toggled diff")
+			}
+			if err := driver.Click("Toggle file diff"); err != nil {
+				t.Fatal(err)
+			}
+			if !driver.HasText("›") {
+				t.Fatal("diff did not close")
+			}
+		})
+	}
+}
+
+func TestDiffHeaderTruncatesLongPathBeforeControls(t *testing.T) {
+	path := "a/very/long/project/directory/" + strings.Repeat("nested-directory/", 12) + "filename.txt"
+	diff := &fileDiff{path: path, before: "before\n", after: "after\n", computed: true}
+	for _, width := range []int{320, 600} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			driver := ui.NewTester(func(c *ui.Context) {
+				c.SetTheme(theme)
+				toolDiff(c, message{label: "bash"}, diff)
+			}, width, 300)
+			driver.Frame()
+			labels := []string{path, "Copy file path", "Computed", "+1", "−1"}
+			var right float32
+			for _, label := range labels {
+				bounds, ok := driver.Find(label)
+				if !ok || bounds.W <= 0 {
+					t.Fatalf("missing %q: %+v", label, bounds)
+				}
+				if bounds.X < right-0.5 || bounds.X+bounds.W > float32(width)-0.5 {
+					t.Fatalf("%q overflows or overlaps: %+v (previous right %v)", label, bounds, right)
+				}
+				if bounds.H > 28 {
+					t.Fatalf("%q wrapped: %+v", label, bounds)
+				}
+				right = bounds.X + bounds.W
+			}
+			if err := driver.Click("Copy file path"); err != nil {
+				t.Fatal(err)
+			}
+			if got := driver.Clipboard(); got != path {
+				t.Fatalf("copied truncated path: %q", got)
+			}
+		})
+	}
+}

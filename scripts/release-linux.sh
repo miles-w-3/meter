@@ -98,6 +98,7 @@ fi
   -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DBUILD_SHARED_LIBS=OFF
 "${CMAKE_EXE:-cmake}" --build "$cache/parakeet-build" --target meter-dictation --parallel "${BUILD_JOBS:-4}"
 pnpm install --frozen-lockfile
+node scripts/bun-oauth-test.mjs
 
 install -m 755 "$cache/parakeet-build/meter-dictation" "$folder/meter-dictation"
 strip --strip-unneeded "$folder/meter-dictation"

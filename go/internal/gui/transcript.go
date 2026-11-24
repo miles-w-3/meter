@@ -622,36 +622,44 @@ func toolDiff(c *ui.Context, msg message, computed *fileDiff) {
 		state.diff.Inline = diffeditor.DiffInlineWordAlt
 	}
 	root.Children(func() {
-		row := ui.ButtonBase(c).Label("Toggle file diff").AlignSelf(ui.Stretch).MinHeight(26).AlignItems(ui.Center).Radius(6).Padding(0, 4)
-		if row.Hovered() {
-			row.Background(sidebar)
+		path := msg.target
+		if computed != nil {
+			path = computed.path
 		}
-		row.Children(func() {
-			glyph := "›"
-			if state.open {
-				glyph = "⌄"
+		ui.Row(c).FillWidth().MinWidth(0).MinHeight(26).AlignItems(ui.Center).Children(func() {
+			toggle := ui.ButtonBase(c).Label("Toggle file diff").MinWidth(0).Shrink(1).MinHeight(26).AlignItems(ui.Center).Radius(6).Padding(0, 4)
+			if toggle.Hovered() {
+				toggle.Background(sidebar)
 			}
-			text(c, glyph, 13, muted).Margin(0, 6, 0, 0)
-			path := msg.target
-			if computed != nil {
-				path = computed.path
-			}
-			text(c, path, 11, ink).Font(monoFont).Grow(1).SingleLine()
-			if computed != nil && computed.computed {
-				text(c, "Computed", 11, faint).Margin(0, 6, 0, 0)
-				tip := "This diff is computed from best-effort snapshots around bash calls"
-				if msg.label == "write" {
-					tip = "This diff is computed from file contents observed before the write and the content supplied to the tool."
+			toggle.Children(func() {
+				glyph := "›"
+				if state.open {
+					glyph = "⌄"
 				}
-				text(c, "ⓘ", 12, muted).Tooltip(tip).Margin(0, 6, 0, 0)
+				text(c, glyph, 13, muted).Shrink(0).Margin(0, 6, 0, 0)
+				text(c, path, 11, ink).Font(monoFont).MinWidth(0).Shrink(1).SingleLine().Tooltip(path)
+			})
+			if toggle.Clicked() {
+				state.open = !state.open
 			}
-			added, removed := state.diff.Stats()
-			text(c, fmt.Sprintf("+%d", added), 11, theme.Success).Font(monoFont).Margin(0, 6, 0, 0)
-			text(c, fmt.Sprintf("−%d", removed), 11, theme.Danger).Font(monoFont)
+			if path != "" {
+				content.CopyButton(c, content.CopyButtonOptions{Text: path, Label: "Copy file path", Size: uitheme.ButtonExtraSmall})
+			}
+			ui.Box(c).Grow(1)
+			ui.Row(c).Shrink(0).AlignItems(ui.Center).Children(func() {
+				if computed != nil && computed.computed {
+					text(c, "Computed", 11, faint).SingleLine().Shrink(0).Margin(0, 6, 0, 0)
+					tip := "This diff is computed from best-effort snapshots around bash calls"
+					if msg.label == "write" {
+						tip = "This diff is computed from file contents observed before the write and the content supplied to the tool."
+					}
+					text(c, "ⓘ", 12, muted).SingleLine().Shrink(0).Tooltip(tip).Margin(0, 6, 0, 0)
+				}
+				added, removed := state.diff.Stats()
+				text(c, fmt.Sprintf("+%d", added), 11, theme.Success).Font(monoFont).SingleLine().Shrink(0).Margin(0, 6, 0, 0)
+				text(c, fmt.Sprintf("−%d", removed), 11, theme.Danger).Font(monoFont).SingleLine().Shrink(0)
+			})
 		})
-		if row.Clicked() {
-			state.open = !state.open
-		}
 		if state.open {
 			ui.Column(c).FillWidth().MinWidth(0).Background(panel).Radius(controlRadius).Clip().Children(func() {
 				diffeditor.DiffView(c, state.diff).FillWidth()

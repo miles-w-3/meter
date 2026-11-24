@@ -4,17 +4,21 @@ import (
 	"context"
 	"slices"
 
+	"github.com/Cyenoch/mygoui/content"
+	uitheme "github.com/Cyenoch/mygoui/theme"
 	"github.com/egoist/mygo/ui"
 	"pi-workspace.local/workspace/internal/protocol"
 )
 
 type BackendControls struct {
-	Revision     string
-	Dirty        bool
-	StartupError error
-	CanRedeploy  bool
-	Restart      func(context.Context, bool) (protocol.ServerInfo, error)
-	Download     func(context.Context) error
+	Revision      string
+	Dirty         bool
+	StartupError  error
+	CanRedeploy   bool
+	Restart       func(context.Context, bool) (protocol.ServerInfo, error)
+	Download      func(context.Context) error
+	LoadAgentPath func() (string, error)
+	SaveAgentPath func(string) error
 }
 
 func (a *app) applyBackendInfo(info protocol.ServerInfo) {
@@ -69,7 +73,7 @@ func (a *app) backendPanel(c *ui.Context) {
 					case "diffs":
 						a.diffsPanel(c)
 					default:
-						a.backendStatus(c)
+						ui.Scroll(c).Grow(1).MinHeight(0).Children(func() { a.backendStatus(c) })
 					}
 				})
 			})
@@ -140,6 +144,7 @@ func (a *app) backendStatus(c *ui.Context) {
 				a.runBackendAction("Download model")
 			}
 		}
+		a.agentPathSettings(c)
 		if a.backendNotice != "" {
 			text(c, clean(a.backendNotice), 12, muted)
 		}
@@ -169,6 +174,53 @@ func (a *app) backendStatus(c *ui.Context) {
 				a.backendConfirm = "Redeploy bundled backend"
 			}
 		})
+	})
+}
+
+func (a *app) agentPathSettings(c *ui.Context) {
+	if a.backend.LoadAgentPath == nil || a.backend.SaveAgentPath == nil {
+		return
+	}
+	if !a.agentPathLoaded {
+		path, err := a.backend.LoadAgentPath()
+		a.agentPathSaved, a.agentPathDraft = path, path
+		if err != nil {
+			a.agentPathNotice = err.Error()
+		}
+		a.agentPathLoaded = true
+	}
+	pending := a.backendPending != ""
+	ui.Column(c.Key("agent-path")).Gap(4).MinWidth(0).Children(func() {
+		text(c, "Agent PATH", 12, muted)
+		if source := a.backendInfo.AgentPathSource; source != nil {
+			text(c, "Source: "+clean(*source), 12, muted)
+		}
+		if current := a.backendInfo.AgentPath; current != nil {
+			display := *current
+			if display == "" {
+				display = "(empty)"
+			}
+			ui.Row(c).FillWidth().MinWidth(0).AlignItems(ui.Center).Children(func() {
+				text(c, "Running PATH: "+clean(display), 12, muted).Font(monoFont).Grow(1).MinWidth(0).SingleLine().Tooltip(clean(display))
+				content.CopyButton(c, content.CopyButtonOptions{Text: *current, Label: "Copy running PATH", Size: uitheme.ButtonExtraSmall})
+			})
+		}
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.TextInputBase(c, &a.agentPathDraft).Label("Agent PATH").Placeholder("Automatic").
+				Grow(1).MinWidth(0).Padding(7, 9).Radius(6).Background(panel).ReadOnly(pending)
+			if action(c, "Save PATH", pending || a.agentPathDraft == a.agentPathSaved) {
+				if err := a.backend.SaveAgentPath(a.agentPathDraft); err != nil {
+					a.agentPathNotice = err.Error()
+				} else {
+					a.agentPathSaved = a.agentPathDraft
+					a.agentPathNotice = ""
+				}
+			}
+		})
+		if a.agentPathNotice != "" {
+			text(c, clean(a.agentPathNotice), 12, warning)
+		}
+		text(c, "Override replaces PATH. Use colon-separated directories; blank means automatic. Restart backend to apply.", 12, muted)
 	})
 }
 

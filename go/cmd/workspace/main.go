@@ -9,16 +9,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/term"
 	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/gui"
 	"pi-workspace.local/workspace/internal/mermaid"
 	"pi-workspace.local/workspace/internal/protocol"
 	"pi-workspace.local/workspace/internal/tui"
-	"regexp"
 )
 
 var bundledRevision, bundledDirty string
@@ -37,6 +39,7 @@ func main() {
 }
 
 func run(args []string) error {
+	useLoginPath := false
 	if len(args) == 0 {
 		// Finder launches the executable without arguments and normally with / as
 		// its working directory. Start the GUI in the user's home instead.
@@ -46,6 +49,7 @@ func run(args []string) error {
 			if err != nil {
 				return err
 			}
+			useLoginPath = !term.IsTerminal(os.Stdin.Fd()) && !term.IsTerminal(os.Stdout.Fd())
 			args = []string{"gui", "--cwd", home}
 		} else {
 			return errors.New("usage: meter gui [--workspace NAME] | meter tui [--cwd PATH | --conversation ID] [--workspace NAME] [--no-mouse] [--transparent] | meter server start|stop|status|logs | meter dictation")
@@ -75,7 +79,7 @@ func run(args []string) error {
 		}
 		switch args[1] {
 		case "start":
-			info, err := ensureServer(ctx, api, data)
+			info, err := ensureServer(ctx, api, data, useLoginPath)
 			if err == nil {
 				fmt.Println("Workspace ready", info.Id, info.Provider)
 			}
@@ -95,7 +99,7 @@ func run(args []string) error {
 		if len(args) != 1 {
 			return errors.New("usage: workspace dictation < audio.pcm (16 kHz mono signed 16-bit little-endian)")
 		}
-		if _, err := ensureServer(ctx, api, data); err != nil {
+		if _, err := ensureServer(ctx, api, data, useLoginPath); err != nil {
 			return err
 		}
 		text, err := api.Dictate(ctx, os.Stdin, nil)
@@ -117,15 +121,17 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		info, startErr := ensureServer(ctx, api, data)
+		info, startErr := ensureServer(ctx, api, data, useLoginPath)
 		release := bundledServer()
 		return gui.Run(ctx, api, info, data, *name, cwd, gui.BackendControls{
 			Revision: bundledRevision, Dirty: bundledDirty == "true", StartupError: startErr,
 			CanRedeploy: release != "" && os.Getenv("PI_WORKSPACE_SERVER") == "",
 			Restart: func(ctx context.Context, redeploy bool) (protocol.ServerInfo, error) {
-				return restartBackend(ctx, api, data, release, redeploy)
+				return restartBackend(ctx, api, data, release, redeploy, useLoginPath)
 			},
-			Download: func(ctx context.Context) error { return downloadModel(ctx, data) },
+			Download:      func(ctx context.Context) error { return downloadModel(ctx, data) },
+			LoadAgentPath: func() (string, error) { return loadAgentPath(data) },
+			SaveAgentPath: func(path string) error { return saveAgentPath(data, path) },
 		})
 	case "tui":
 		flags := flag.NewFlagSet("tui", flag.ContinueOnError)
@@ -140,7 +146,7 @@ func run(args []string) error {
 		if flags.NArg() != 0 || (*id != "" && *cwd != "") {
 			return errors.New("usage: workspace tui [--cwd PATH | --conversation ID] [--workspace NAME] [--no-mouse] [--transparent]")
 		}
-		info, err := ensureServer(ctx, api, data)
+		info, err := ensureServer(ctx, api, data, useLoginPath)
 		if err != nil {
 			return err
 		}
@@ -173,7 +179,7 @@ func run(args []string) error {
 	return errors.New("expected workspace gui, tui, server, or dictation")
 }
 
-func ensureServer(ctx context.Context, api *client.Client, data string) (protocol.ServerInfo, error) {
+func ensureServer(ctx context.Context, api *client.Client, data string, useLoginPath bool) (protocol.ServerInfo, error) {
 	info, err := api.Info(ctx)
 	if err == nil {
 		return info, nil
@@ -181,7 +187,7 @@ func ensureServer(ctx context.Context, api *client.Client, data string) (protoco
 	if !errors.Is(err, syscall.ENOENT) && !errors.Is(err, syscall.ECONNREFUSED) {
 		return info, err
 	}
-	if err := launch(data); err != nil {
+	if err := launch(ctx, data, useLoginPath); err != nil {
 		return info, err
 	}
 	deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -216,8 +222,12 @@ func privateData(data string) error {
 	return nil
 }
 
-func launch(data string) error {
+func launch(ctx context.Context, data string, useLoginPath bool) error {
 	if err := privateData(data); err != nil {
+		return err
+	}
+	path, pathSource, err := agentPath(ctx, data, useLoginPath)
+	if err != nil {
 		return err
 	}
 	entry := os.Getenv("PI_WORKSPACE_SERVER")
@@ -236,7 +246,6 @@ func launch(data string) error {
 			entry = filepath.Join(filepath.Dir(binary), "..", "server", "main.ts")
 		}
 	}
-	var err error
 	entry, err = filepath.Abs(entry)
 	if err != nil {
 		return err
@@ -259,10 +268,14 @@ func launch(data string) error {
 			cmd = exec.Command("node", entry)
 		}
 	}
-	cmd.Env = append(os.Environ(), "METER_HOME="+data)
+	cmd.Env = append(os.Environ(), "METER_HOME="+data, "METER_AGENT_PATH_SOURCE="+pathSource)
+	if path != "" {
+		cmd.Env = append(cmd.Env, "PATH="+path)
+	}
 	// Finder does not inherit the user's shell PATH. For the app bundle only,
-	// use Claude Code's standard user installation if no override was supplied.
-	if _, configured := os.LookupEnv("PI_CLAUDE_CLI_COMMAND"); !configured {
+	// fall back to Claude Code's standard user installation when PATH and
+	// the explicit provider command do not resolve it.
+	if _, configured := os.LookupEnv("PI_CLAUDE_CLI_COMMAND"); !configured && !pathHasClaude(path) {
 		binary, binaryErr := os.Executable()
 		home, homeErr := os.UserHomeDir()
 		if binaryErr == nil && homeErr == nil {
@@ -282,6 +295,15 @@ func launch(data string) error {
 	// Reap a startup loser while this client is still running.
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+func pathHasClaude(path string) bool {
+	for dir := range strings.SplitSeq(path, string(os.PathListSeparator)) {
+		if isExecutable(filepath.Join(dir, "claude")) {
+			return true
+		}
+	}
+	return false
 }
 
 func showLogs(data string) error {

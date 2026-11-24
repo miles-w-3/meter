@@ -2116,6 +2116,12 @@
           "dirty": {
             "type": "boolean"
           },
+          "agentPath": {
+            "type": "string"
+          },
+          "agentPathSource": {
+            "type": "string"
+          },
           "generation": {
             "type": "string",
             "format": "uuid",

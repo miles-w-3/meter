@@ -1148,16 +1148,18 @@ type SelectionInputThinkingLevel string
 
 // ServerInfo defines model for ServerInfo.
 type ServerInfo struct {
-	Capabilities []string             `json:"capabilities"`
-	Dictation    *ServerInfoDictation `json:"dictation,omitempty"`
-	Dirty        *bool                `json:"dirty,omitempty"`
-	Generation   *openapi_types.UUID  `json:"generation,omitempty"`
-	Id           openapi_types.UUID   `json:"id"`
-	Protocol     ServerInfoProtocol   `json:"protocol"`
-	Provider     string               `json:"provider"`
-	Ready        ServerInfoReady      `json:"ready"`
-	Revision     *string              `json:"revision,omitempty"`
-	Transport    *ServerInfoTransport `json:"transport,omitempty"`
+	AgentPath       *string              `json:"agentPath,omitempty"`
+	AgentPathSource *string              `json:"agentPathSource,omitempty"`
+	Capabilities    []string             `json:"capabilities"`
+	Dictation       *ServerInfoDictation `json:"dictation,omitempty"`
+	Dirty           *bool                `json:"dirty,omitempty"`
+	Generation      *openapi_types.UUID  `json:"generation,omitempty"`
+	Id              openapi_types.UUID   `json:"id"`
+	Protocol        ServerInfoProtocol   `json:"protocol"`
+	Provider        string               `json:"provider"`
+	Ready           ServerInfoReady      `json:"ready"`
+	Revision        *string              `json:"revision,omitempty"`
+	Transport       *ServerInfoTransport `json:"transport,omitempty"`
 }
 
 // ServerInfoDictation defines model for ServerInfo.Dictation.

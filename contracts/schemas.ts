@@ -5,6 +5,7 @@ export const serverInfo = z.object({
   id: z.uuid(), protocol: z.literal("v1"), ready: z.literal(true),
   capabilities: z.array(z.string()), provider: z.string(),
   revision: z.string().optional(), dirty: z.boolean().optional(),
+  agentPath: z.string().optional(), agentPathSource: z.string().optional(),
   generation: z.uuid().optional(), transport: z.enum(["unix", "tcp"]).optional(),
   dictation: z.enum(["ready", "model_missing", "worker_missing"]).optional(),
 });

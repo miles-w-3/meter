@@ -134,6 +134,10 @@ type app struct {
 	backendNotice        string
 	backendOnline        bool
 	settingsSection      string
+	agentPathLoaded      bool
+	agentPathDraft       string
+	agentPathSaved       string
+	agentPathNotice      string
 	diffLayout           int
 	diffInline           string
 	toolsStatus          protocol.ToolsStatus

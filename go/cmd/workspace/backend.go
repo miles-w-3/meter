@@ -51,7 +51,7 @@ func bundledServer() string {
 	return ""
 }
 
-func restartBackend(ctx context.Context, api *client.Client, data, release string, redeploy bool) (protocol.ServerInfo, error) {
+func restartBackend(ctx context.Context, api *client.Client, data, release string, redeploy, useLoginPath bool) (protocol.ServerInfo, error) {
 	var info protocol.ServerInfo
 	if err := privateData(data); err != nil {
 		return info, err
@@ -111,7 +111,7 @@ func restartBackend(ctx context.Context, api *client.Client, data, release strin
 	}
 
 	if !redeploy {
-		return ensureServer(ctx, api, data)
+		return ensureServer(ctx, api, data, useLoginPath)
 	}
 	installed := filepath.Join(data, "meter-server")
 	backup := staged + ".previous"
@@ -127,7 +127,7 @@ func restartBackend(ctx context.Context, api *client.Client, data, release strin
 	if err := os.Rename(staged, installed); err != nil {
 		return info, err
 	}
-	info, err = ensureServer(ctx, api, data)
+	info, err = ensureServer(ctx, api, data, useLoginPath)
 	if err == nil {
 		return info, nil
 	}
@@ -140,7 +140,7 @@ func restartBackend(ctx context.Context, api *client.Client, data, release strin
 		keepBackup = true
 		return info, errors.Join(err, fmt.Errorf("restore previous backend from %s: %w", backup, restoreErr))
 	}
-	restored, restartErr := ensureServer(ctx, api, data)
+	restored, restartErr := ensureServer(ctx, api, data, useLoginPath)
 	return restored, errors.Join(fmt.Errorf("redeployed backend did not start; previous executable restored: %w", err), restartErr)
 }
 

@@ -11,7 +11,7 @@ if [[ $# -gt 1 ]]; then
   echo "Usage: $0 [output-directory]" >&2
   exit 1
 fi
-for tool in "${BUN_EXE:-bun}" "${GO_EXE:-go}" "${CMAKE_EXE:-cmake}" pnpm git ditto sips iconutil; do
+for tool in "${BUN_EXE:-bun}" "${GO_EXE:-go}" "${CMAKE_EXE:-cmake}" pnpm git ditto sips iconutil node curl shasum; do
   command -v "$tool" >/dev/null || { echo "Missing build tool: $tool" >&2; exit 1; }
 done
 output=${1:-.bin}
@@ -59,6 +59,29 @@ if [[ -n $(git status --porcelain) ]]; then dirty=true; fi
     -ldflags="-s -w -X main.bundledRevision=$revision -X main.bundledDirty=$dirty" -o "$macos/meter" ./cmd/workspace
   mic_source=$("${GO_EXE:-go}" list -m -f '{{.Dir}}' github.com/gen2brain/malgo)
   cp "$mic_source/LICENSE" "$resources/licenses/malgo.txt"
+
+  mygo_source=$("${GO_EXE:-go}" list -m -f '{{.Dir}}' github.com/egoist/mygo)
+  ghostty_metadata=$(node --input-type=module - "$mygo_source/plugins/terminal/mygo-plugin.json" <<'JS'
+import { readFileSync } from "node:fs";
+
+const { libraries } = JSON.parse(readFileSync(process.argv[2], "utf8"));
+const library = libraries.find(({ name }) => name === "libghostty-vt");
+const asset = library?.files["darwin-arm64"];
+const source = library?.source.match(/^https:\/\/github\.com\/ghostty-org\/ghostty\/tree\/([a-f0-9]{40})$/);
+if (asset?.name !== "libghostty-vt.dylib" || !/^https:\/\/[^\s]+$/.test(asset.url)
+    || !/^[a-f0-9]{64}$/.test(asset.sha256) || !source) {
+  throw new Error("Invalid darwin-arm64 libghostty-vt entry in mygo's manifest");
+}
+console.log(asset.url, asset.sha256, source[1]);
+JS
+  )
+  read -r ghostty_url ghostty_sha ghostty_commit <<< "$ghostty_metadata"
+  ghostty_dylib="$stage/libghostty-vt.dylib"
+  curl -fLsS --retry 2 "$ghostty_url" -o "$ghostty_dylib"
+  printf '%s  %s\n' "$ghostty_sha" "$ghostty_dylib" | shasum -a 256 -c -
+  install -m 644 "$ghostty_dylib" "$resources/libghostty-vt.dylib"
+  curl -fLsS --retry 2 "https://raw.githubusercontent.com/ghostty-org/ghostty/$ghostty_commit/LICENSE" \
+    -o "$resources/licenses/ghostty.txt"
 )
 cp "$source_dir/LICENSE" "$resources/licenses/parakeet-cpp.txt"
 cp "$source_dir/third_party/ggml/LICENSE" "$resources/licenses/ggml.txt"

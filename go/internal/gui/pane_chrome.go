@@ -13,7 +13,7 @@ import (
 func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.LayoutNode, title string) {
 	panes := orderedPanes(tab)
 	ui.Column(c.Key("pane-header")).Height(28).Clip().Children(func() {
-		paneContent(c, func() {
+		header := func() {
 			row := ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center)
 			row.Children(func() {
 				index := 1
@@ -37,15 +37,13 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 					} else {
 						handle.Padding(0, 0, 0, paneTextInset)
 					}
-					text(c, title, 13, titleColor).Grow(1).MinWidth(0).SingleLine()
+					text(c, title, 13, titleColor).Grow(1).MinWidth(0).SingleLine().Tooltip(title)
 				})
 				if node.ConversationId != nil {
 					label := "Hide thinking traces"
 					if a.hideThinking {
 						label = "Show thinking traces"
 					}
-					// Both controls keep a fixed position as hover changes. In particular,
-					// the destructive close target must never appear under the pointer.
 					button := iconButton(c, bulbIcon, label, a.toolsPending).Margin(0, 8, 0, 0)
 					if !a.hideThinking {
 						button.Background(panel)
@@ -75,7 +73,12 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 					a.requestClosePane(tab.Id, node.Id)
 				}
 			})
-		})
+		}
+		if len(panes) == 1 {
+			ui.Row(c).FillWidth().MinWidth(0).Padding(0, paneGutter).Children(header)
+		} else {
+			paneContent(c, header)
+		}
 	})
 }
 
@@ -122,10 +125,7 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 					pct := palette.Percent(usage.Tokens, usage.Window)
 					ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))).Children(func() {
 						for i := range palette.MeterCells {
-							color := theme.SurfacePressed
-							if float64(i)/palette.MeterCells < pct/100 {
-								color = ui.Hex(palette.MeterColor(i))
-							}
+							color := ui.Hex(palette.MeterCellColor(i, pct))
 							ui.Box(c.Key(i)).Size(4, 10).Radius(1).Background(color)
 						}
 					})

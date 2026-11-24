@@ -1,6 +1,10 @@
 package theme
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+	"strconv"
+)
 
 const (
 	Background  = "#0e1511"
@@ -19,7 +23,10 @@ const (
 	Madrone     = "#c8705a"
 )
 
-const MeterCells = 10
+const (
+	MeterCells = 10
+	MeterEmpty = "#222f27"
+)
 
 func MeterColor(cell int) string {
 	switch {
@@ -30,6 +37,27 @@ func MeterColor(cell int) string {
 	default:
 		return Madrone
 	}
+}
+
+// MeterCellColor blends the empty and band colors according to how much of
+// this cell's 10% interval is used. Completed and future cells stay solid.
+func MeterCellColor(cell int, percent float64) string {
+	fraction := min(1, max(0, percent*MeterCells/100-float64(cell)))
+	if fraction <= 0 {
+		return MeterEmpty
+	}
+	full := MeterColor(cell)
+	if fraction >= 1 {
+		return full
+	}
+	emptyRGB, _ := strconv.ParseUint(MeterEmpty[1:], 16, 32)
+	fullRGB, _ := strconv.ParseUint(full[1:], 16, 32)
+	channel := func(shift uint) int {
+		start := float64((emptyRGB >> shift) & 0xff)
+		end := float64((fullRGB >> shift) & 0xff)
+		return int(math.Round(start + (end-start)*fraction))
+	}
+	return fmt.Sprintf("#%02x%02x%02x", channel(16), channel(8), channel(0))
 }
 
 func Percent(tokens, window int) float64 {

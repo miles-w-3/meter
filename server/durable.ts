@@ -423,6 +423,10 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: 
     inputs.set(block.id, typeof input === "string" ? input : JSON.stringify(block.arguments, null, 2));
   }
   const text = entryText(entry);
+  // Match the harness's answer boundary, even if a queued run has already started.
+  const finalText = entry.kind === "pi.assistant" && assistant?.content.some((block) => block.type === "text" && block.text.trim()) &&
+    (assistant.stopReason === "stop" || assistant.stopReason === "length" ||
+      (assistant.stopReason === "toolUse" && !assistant.content.some((block) => block.type === "toolCall")));
   const details = tool?.details;
   const diff = details && typeof details === "object" && "diff" in details && typeof details.diff === "string" ? details.diff : undefined;
   const changes = diff?.split("\n");
@@ -444,7 +448,7 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: 
     // Preserve complete patches only: a clipped unified patch is not parseable.
     diffPatch: details && typeof details === "object" && "patch" in details && typeof details.patch === "string" && details.patch.length <= 100_000 ? details.patch : undefined,
     durationMs: tool?.durationMs ?? assistant?.durationMs,
-    timestamp: assistant?.timestamp ?? messages.find((message) => message.role === "user")?.timestamp,
+    timestamp: finalText ? assistant?.timestamp : undefined,
     cacheInput: assistant?.usage.input, cacheRead: assistant?.usage.cacheRead, cacheWrite: assistant?.usage.cacheWrite,
     cacheModel: assistant ? `${assistant.provider}/${assistant.model}` : undefined,
     tokens: assistant?.usage.totalTokens,

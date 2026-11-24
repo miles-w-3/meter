@@ -199,9 +199,6 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 			log.Printf("set window icon: %v", err)
 		}
 		if runtime.GOOS == "darwin" {
-			if err := mygo.App.Dock.SetIcon(appIcon); err != nil {
-				log.Printf("set dock icon: %v", err)
-			}
 			var err error
 			a.tray, err = mygo.NewTray(mygo.TrayOptions{Icon: menuIcon, IconIsTemplate: true, ToolTip: "meter"})
 			if err != nil {

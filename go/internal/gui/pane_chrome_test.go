@@ -128,9 +128,10 @@ func TestThinkingToggleIsGlobalAndImmediate(t *testing.T) {
 	}
 	closeBefore, ok := driver.Find("Close pane")
 	if !ok {
-		t.Fatal("close control must have a stable position")
+		t.Fatal("close control must be visible without hover")
 	}
 	driver.Move(bulb.X+bulb.W/2, bulb.Y+bulb.H/2)
+	driver.Frame()
 	bulbAfter, ok := driver.Find("Hide thinking traces")
 	if !ok || bulbAfter.X != bulb.X || bulbAfter.W != bulb.W {
 		t.Fatalf("thinking toggle moved on hover: %v -> %v", bulb, bulbAfter)
@@ -153,5 +154,72 @@ func TestThinkingToggleIsGlobalAndImmediate(t *testing.T) {
 	driver.Frame()
 	if a.hideThinking {
 		t.Fatal("thinking must be shown again")
+	}
+}
+
+func TestSingleConversationTitleDoesNotMoveOnHover(t *testing.T) {
+	id := "conversation"
+	title := "A long conversation title that needs to fit a narrow pane"
+	node := protocol.LayoutNode{Id: uuid.New(), ConversationId: &id}
+	tab := protocol.LayoutTab{Id: uuid.New()}
+	setPanes(&tab, []protocol.LayoutNode{node})
+	a := &app{selectedPane: node.Id}
+	driver := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(theme)
+		a.paneHeader(c, &tab, node, title)
+	}, 240, 80)
+	driver.Frame()
+	before, ok := driver.Find(title)
+	if !ok {
+		t.Fatal("title missing")
+	}
+	driver.Move(before.X+4, before.Y+4)
+	driver.Frame()
+	closeButton, ok := driver.Find("Close pane")
+	if !ok {
+		t.Fatal("close button missing")
+	}
+	after, ok := driver.Find(title)
+	if !ok || before != after || after.X+after.W > closeButton.X {
+		t.Fatalf("title before hover: %+v, after hover: %+v, close button: %+v", before, after, closeButton)
+	}
+}
+
+func TestPaneHeaderWidthAndCloseVisibility(t *testing.T) {
+	for _, multiple := range []bool{false, true} {
+		t.Run(map[bool]string{false: "single", true: "multiple"}[multiple], func(t *testing.T) {
+			id := "conversation"
+			node := protocol.LayoutNode{Id: uuid.New(), ConversationId: &id}
+			tab := protocol.LayoutTab{Id: uuid.New()}
+			panes := []protocol.LayoutNode{node}
+			if multiple {
+				panes = append(panes, emptyPane())
+			}
+			setPanes(&tab, panes)
+			a := &app{selectedPane: node.Id}
+			driver := ui.NewTester(func(c *ui.Context) {
+				c.SetTheme(theme)
+				a.paneHeader(c, &tab, node, "Title")
+			}, 1200, 80)
+			driver.Frame()
+			title, ok := driver.Find("Title")
+			if !ok {
+				t.Fatal("title missing")
+			}
+			closeButton, ok := driver.Find("Close pane")
+			if !ok {
+				t.Fatal("close button must be visible without hover")
+			}
+			bulb, ok := driver.Find("Hide thinking traces")
+			if !ok || bulb.X+bulb.W > closeButton.X {
+				t.Fatalf("thinking and close controls overlap or are missing: %+v %+v", bulb, closeButton)
+			}
+			if !multiple && (title.X > 100 || closeButton.X < 1100) {
+				t.Fatalf("single-pane header does not use available width: title=%+v close=%+v", title, closeButton)
+			}
+			if multiple && (title.X < 200 || closeButton.X > 1000) {
+				t.Fatalf("multi-pane header should retain centered content width: title=%+v close=%+v", title, closeButton)
+			}
+		})
 	}
 }

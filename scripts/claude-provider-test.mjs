@@ -97,7 +97,28 @@ try {
   assert.equal((await other.agent(context)).model.provider, "pi-claude-cli", "disabling preserves selection");
   await opened.setClaudeEnabled(true);
   await send(other, "reenabled");
-  console.log("Claude provider: fail-closed mapping, tool handoff, cwd switch, restart and concurrent conversations passed");
+  // Pool limits apply while processes run: past the cap, the longest-parked
+  // conversation loses its process and its next turn launches another.
+  const sessions = opened.plugins.get("pi-claude-cli").sessions;
+  assert.deepEqual(sessions.get(), { keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 3 }, "default pool limits");
+  const launched = async () => (await readFile(log, "utf8")).trim().split("\n").length;
+  await sessions.set({ keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 1 });
+  const base = await launched();
+  await send(reopened, "pool-a");
+  await send(other, "pool-b");
+  await send(reopened, "pool-c");
+  assert.equal(await launched(), base + 3, "with one parked process, alternating conversations evict each other");
+  await sessions.set({ keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 2 });
+  await send(other, "pool-d");
+  await send(reopened, "pool-e");
+  await send(other, "pool-f");
+  assert.equal(await launched(), base + 4, "with two parked processes, both conversations stay warm");
+  await sessions.set({ keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 1 });
+  await send(other, "pool-g");
+  assert.equal(await launched(), base + 4, "lowering the cap keeps the most recently parked process");
+  await send(reopened, "pool-h");
+  assert.equal(await launched(), base + 5, "lowering the cap retires the longest-parked process at once");
+  console.log("Claude provider: fail-closed mapping, tool handoff, cwd switch, restart, concurrent conversations and pool limits passed");
 } finally {
   if (opened) { await opened.harness.close(context); await opened.closeClaude(); }
   await rm(root, { recursive: true, force: true });

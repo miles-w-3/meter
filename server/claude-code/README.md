@@ -22,8 +22,13 @@ cwd changes during a run. A cwd change between runs retires the parked process.
 Compaction requests are intentionally rejected because compaction does not run
 the generation hook; Meter currently disables automatic compaction.
 
-The vendored runtime is pinned and attributed in `vendor/UPSTREAM.md`. It uses
-up to two parked processes and a 15-minute idle timeout. Its default loopback
+The vendored runtime is pinned and attributed in `vendor/UPSTREAM.md`. Each
+conversation gets its own Claude Code process, parked between calls. Models
+settings choose how long an idle process is kept (default 1 hour), how long one
+waits inside a tool call (default 1 hour, the CLI's own tool timeout), and how
+many are parked at once (default 3; each may use substantial memory). Changes
+are blocked while conversations or queued messages are active. Once idle, they
+are saved in the workspace database and applied to parked processes. Its default loopback
 relay rewrites upstream requests to preserve caching. Its metadata traces are
 enabled by default; set `PI_CLAUDE_CLI_TRACE=off` to disable them. Do not enable
 raw wire tracing or relay dumps unless storing conversation content is intended.

@@ -3,6 +3,7 @@ package gui
 import (
 	"context"
 	"slices"
+	"time"
 
 	"github.com/Cyenoch/mygoui/content"
 	uitheme "github.com/Cyenoch/mygoui/theme"
@@ -60,6 +61,9 @@ func (a *app) backendPanel(c *ui.Context) {
 				ui.Column(c).Width(145).Gap(4).Children(func() {
 					a.settingsItem(c, "backend", "Backend status")
 					a.settingsItem(c, "models", "Models")
+					if _, ok := a.claudeProvider(); ok {
+						a.settingsItem(c, "claude", "Claude Code")
+					}
 					a.settingsItem(c, "tools", "Tools")
 					a.settingsItem(c, "diffs", "Diffs")
 				})
@@ -68,6 +72,8 @@ func (a *app) backendPanel(c *ui.Context) {
 					switch a.settingsSection {
 					case "models":
 						a.modelsPanel(c)
+					case "claude":
+						a.claudePanel(c)
 					case "tools":
 						a.toolsPanel(c)
 					case "diffs":
@@ -100,6 +106,9 @@ func (a *app) settingsItem(c *ui.Context, section, label string) {
 		}
 		if section == "models" && !a.modelsLoaded && !a.modelsLoading {
 			a.refreshModels()
+		}
+		if section == "claude" {
+			a.claudeStatusAt = time.Time{}
 		}
 	}
 }

@@ -52,9 +52,18 @@ try {
   assert.equal(status(first).status, "unconfigured");
   assert.match(status(first).externalAuth, /claude auth login/);
   await assert.rejects(readFile(count), { code: "ENOENT" });
+  assert.deepEqual(status(first).sessions, { keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 3 }, "session limit defaults");
   const enabled = await request("/v1/providers/pi-claude-cli", "PUT", { enabled: true });
   assert.equal(enabled.status, 200);
   assert.equal(status(enabled).enabled, true);
+  const limits = { keepaliveMinutes: 30, toolWaitMinutes: 45, maxParked: 2 };
+  const limited = await request("/v1/providers/pi-claude-cli", "PUT", { sessions: limits });
+  assert.equal(limited.status, 200, JSON.stringify(limited.value));
+  assert.deepEqual(status(limited).sessions, limits);
+  assert.equal(status(limited).enabled, true, "changing limits leaves the provider enabled");
+  for (const invalid of [{ sessions: { ...limits, maxParked: 0 } }, { sessions: { ...limits, toolWaitMinutes: 61 } }, {}]) {
+    assert.equal((await request("/v1/providers/pi-claude-cli", "PUT", invalid)).status, 400, JSON.stringify(invalid));
+  }
   assert.equal(status(first).catalogSource, "builtin");
   assert.deepEqual(status(first).methods, []);
   await Promise.all([request("/v1/models"), request("/v1/models")]);
@@ -86,13 +95,15 @@ try {
   await request("/v1/providers/pi-claude-cli", "PUT", { enabled: false });
   await stop();
   await start();
-  assert.equal(status(await request("/v1/models")).enabled, false, "disabled setting survives restart and ignores legacy env");
+  const restarted = status(await request("/v1/models"));
+  assert.equal(restarted.enabled, false, "disabled setting survives restart and ignores legacy env");
+  assert.deepEqual(restarted.sessions, limits, "session limits survive restart");
   await writeFile(auth, JSON.stringify({ loggedIn: true, subscriptionType: "pro" }));
   await request("/v1/providers/pi-claude-cli", "PUT", { enabled: true });
   await stop();
   await start();
   assert.equal(status(await request("/v1/models")).enabled, true, "enabled setting survives restart");
-  console.log("Claude inventory: GUI setting, persistence, cached auth and explicit account discovery passed");
+  console.log("Claude inventory: GUI settings, session limits, persistence, cached auth and explicit account discovery passed");
 } finally {
   if (child) { child.kill("SIGTERM"); if (child.exitCode === null) await once(child, "exit").catch(() => {}); }
   await rm(root, { recursive: true, force: true });

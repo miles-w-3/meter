@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type { z } from "zod";
-import { defaultSettings, layout, toolSettings, toolSettingsChange } from "../contracts/schemas.ts";
+import { defaultSettings, layout, providerSessions, toolSettings, toolSettingsChange } from "../contracts/schemas.ts";
 
 type Layout = z.infer<typeof layout>;
 
@@ -72,6 +72,9 @@ export class Workspaces {
       CREATE TABLE IF NOT EXISTS provider_settings (
         id TEXT PRIMARY KEY, enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
       ) STRICT;
+      CREATE TABLE IF NOT EXISTS provider_sessions (
+        id TEXT PRIMARY KEY, body TEXT NOT NULL
+      ) STRICT;
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY, cwd TEXT NOT NULL UNIQUE, name TEXT NOT NULL
       ) STRICT;
@@ -122,6 +125,22 @@ export class Workspaces {
 
   setProviderEnabled(id: string, enabled: boolean) {
     this.db.prepare("INSERT INTO provider_settings VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled").run(id, Number(enabled));
+  }
+
+  /** Saved session limits, or undefined for the provider's defaults. */
+  providerSessions(id: string): z.infer<typeof providerSessions> | undefined {
+    const row = this.db.prepare("SELECT body FROM provider_sessions WHERE id=?").get(id);
+    if (!row) return undefined;
+    try {
+      const parsed = providerSessions.safeParse(JSON.parse(String(row.body)));
+      return parsed.success ? parsed.data : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  setProviderSessions(id: string, value: z.infer<typeof providerSessions>) {
+    this.db.prepare("INSERT INTO provider_sessions VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET body=excluded.body").run(id, JSON.stringify(value));
   }
 
   projects() {

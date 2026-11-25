@@ -9,7 +9,7 @@ import { fauxAssistantMessage, fauxProvider, fauxText, fauxThinking, fauxToolCal
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createRegistry, defineDocFamily, defineExtension, Harness, InboxDoc, LiveDoc, ProviderDoc } from "@earendil-works/pi-durable";
 import { ClaudeCwdBridge } from "./claude-code/bridge.ts";
-import { ProviderPlugins } from "./provider-plugins.ts";
+import { ProviderPlugins, type ProviderSessions } from "./provider-plugins.ts";
 import type { AgentState, Conversation, ContextView, ConversationView, EntryId, EntryRecord, Harness as DurableHarness, InboxState, LiveState } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -101,7 +101,7 @@ class LiveProbeEnv extends NodeExecutionEnv {
 
 export type Provider = string;
 
-export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch, options?: { claudeEnabled?: boolean; computedDiffs?: () => boolean; webFetchEnabled?: () => boolean }) {
+export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch, options?: { claudeEnabled?: boolean; claudeSessions?: ProviderSessions; computedDiffs?: () => boolean; webFetchEnabled?: () => boolean }) {
   const useOpenAI = provider !== "fixture";
   // An empty provider is the normal server mode: it has no environment default.
   // Explicit providers are still accepted by direct harness callers and the live smoke test.
@@ -114,7 +114,7 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
   })();
   const plugins = new ProviderPlugins();
   const bridge = new ClaudeCwdBridge();
-  const claude = (await import("./claude-code/provider.ts")).createClaudeProvider(bridge, options?.claudeEnabled === true);
+  const claude = (await import("./claude-code/provider.ts")).createClaudeProvider(bridge, options?.claudeEnabled === true, options?.claudeSessions);
   plugins.register(claude);
   function registerClaude() {
     if (models instanceof ModelRuntime) models.registerNativeProvider(claude.provider);

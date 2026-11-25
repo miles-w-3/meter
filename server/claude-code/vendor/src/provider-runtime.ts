@@ -66,6 +66,8 @@ export interface ProviderRuntime {
    * every parked process when pi names no session.
    */
   readonly retireSession: (piSessionId: string | undefined) => Promise<void>;
+  /** Apply changed pool limits to the processes already parked. */
+  readonly reconfigurePool: () => Promise<void>;
   /** End every CLI process and release the runtime. It cannot be used again. */
   readonly dispose: () => Promise<void>;
 }
@@ -160,6 +162,10 @@ export const startProviderRuntime = <E>(
       const pool = yield* ClaudeProcessPool;
       yield* pool.retireSession(piSessionId, "shutdown");
     });
+  const reconfigurePool = Effect.gen(function* () {
+    const pool = yield* ClaudeProcessPool;
+    yield* pool.reconfigure();
+  });
   return {
     startEpisode: (piStream, model, context, options) => {
       const bridge = createEventBridge(
@@ -186,6 +192,7 @@ export const startProviderRuntime = <E>(
       runtime
         .runPromise(piSessionId === undefined ? retireParked : retireParkedSession(piSessionId))
         .catch(() => undefined),
+    reconfigurePool: () => runtime.runPromise(reconfigurePool),
     dispose: async () => {
       await runtime
         .runPromise(retireParked.pipe(Effect.withSpan("ProviderRuntime.dispose", { root: true })))

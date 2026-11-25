@@ -21,7 +21,9 @@ mkdir -p .bin
 node scripts/auth-test.mjs
 node scripts/models-test.mjs
 node scripts/claude-provider-test.mjs
+node scripts/claude-pool-race-test.mjs
 node scripts/claude-inventory-test.mjs
+node scripts/claude-session-guard-test.mjs
 node scripts/transcript-error-test.mjs
 node scripts/search-test.mjs
 node scripts/web-fetch-test.mjs

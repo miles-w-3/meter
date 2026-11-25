@@ -1047,6 +1047,8 @@ type ProviderInfo struct {
 	Id            string                     `json:"id"`
 	Methods       []AuthMethod               `json:"methods"`
 	Name          string                     `json:"name"`
+	Sessions      *ProviderSessions          `json:"sessions,omitempty"`
+	SessionsBusy  *bool                      `json:"sessionsBusy,omitempty"`
 	Source        *string                    `json:"source,omitempty"`
 	Status        ProviderInfoStatus         `json:"status"`
 }
@@ -1057,9 +1059,17 @@ type ProviderInfoCatalogSource string
 // ProviderInfoStatus defines model for ProviderInfo.Status.
 type ProviderInfoStatus string
 
+// ProviderSessions defines model for ProviderSessions.
+type ProviderSessions struct {
+	KeepaliveMinutes int `json:"keepaliveMinutes"`
+	MaxParked        int `json:"maxParked"`
+	ToolWaitMinutes  int `json:"toolWaitMinutes"`
+}
+
 // ProviderSetting defines model for ProviderSetting.
 type ProviderSetting struct {
-	Enabled bool `json:"enabled"`
+	Enabled  *bool             `json:"enabled,omitempty"`
+	Sessions *ProviderSessions `json:"sessions,omitempty"`
 }
 
 // QueuedMessage defines model for QueuedMessage.

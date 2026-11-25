@@ -74,6 +74,9 @@ func (a *app) viewWithDictation(c *ui.Context, beginDictation func(uuid.UUID, *p
 						}
 					}
 					if iconButton(c, settingsIcon, "Settings", false).Clicked() {
+						if !a.modelsLoaded && !a.modelsLoading && a.api != nil && a.ctx != nil && a.update != nil {
+							a.refreshModels()
+						}
 						if a.settingsSection == "tools" || a.settingsSection == "diffs" {
 							a.refreshTools()
 						}

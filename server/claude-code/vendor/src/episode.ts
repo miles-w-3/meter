@@ -515,6 +515,8 @@ export const runEpisode = Effect.fn("episode", { root: true })(function* (input:
       hash: historyHash(acknowledged),
     });
     yield* Ref.set(borrowed, Option.none());
+    // Read now: the host may have changed them since the episode began.
+    const limits = config.poolLimits();
 
     // Another call of this session is in flight and owns its place.
     if (Option.isSome(piSessionId) && Option.isNone(lease))
@@ -525,16 +527,16 @@ export const runEpisode = Effect.fn("episode", { root: true })(function* (input:
         addTokenUsage(turnReportedBefore, tokenUsageFromPiUsage(output.usage)),
       );
       yield* Ref.set(process.acknowledged, checkpoint);
-      return yield* pool.park(lease.value, process, config.handoffWait);
+      return yield* pool.park(lease.value, process, limits.handoffWait);
     }
     yield* Ref.set(process.turnReported, ZERO_TOKEN_USAGE);
     // An interrupted turn ends on a rejected tool that only pi's history
     // can continue.
     if (end._tag === "TurnEnded" && end.interrupted)
       return yield* pool.retireInBackground(process, "interrupted");
-    if (Option.isSome(lease) && Option.isSome(config.keepalive)) {
+    if (Option.isSome(lease) && Option.isSome(limits.keepalive)) {
       yield* Ref.set(process.acknowledged, checkpoint);
-      return yield* pool.park(lease.value, process, config.keepalive.value);
+      return yield* pool.park(lease.value, process, limits.keepalive.value);
     }
     return yield* pool.retireInBackground(process, "unparked");
   });

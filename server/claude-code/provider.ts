@@ -8,10 +8,14 @@ import { createEventBridge } from "./vendor/src/event-bridge.ts";
 import { endStreamWithError } from "./vendor/src/terminal-event.ts";
 import type { ProviderRuntime } from "./vendor/src/provider-runtime.ts";
 import type { ClaudeCwdBridge } from "./bridge.ts";
+import type { ProviderSessions } from "../provider-plugins.ts";
 
 const ID = "pi-claude-cli";
-export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled = false) {
+/** Default retention and capacity; prompt-cache lifetimes vary by request. */
+export const DEFAULT_CLAUDE_SESSIONS: ProviderSessions = { keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 3 };
+export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled = false, initialSessions: ProviderSessions = DEFAULT_CLAUDE_SESSIONS) {
   let enabled = initiallyEnabled;
+  let sessions = { ...initialSessions };
   let epoch = 0;
   const catalogue = getBuiltinModels("anthropic");
   const piModel = (model: ReturnType<typeof builtinProviderModels>[number]): Model<Api> => ({ ...model, api: ID, provider: ID, baseUrl: ID });
@@ -23,7 +27,12 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled =
     models: async (signal) => (await import("./vendor/src/model-probe.ts")).probeAccountModels(signal),
   });
   let loaded: Promise<ProviderRuntime> | undefined;
-  const runtime = () => loaded ??= import("./vendor/src/provider-runtime.ts").then((module) => module.startProviderRuntime());
+  // The pool reads its limits on each use, so a saved change applies without a restart.
+  const runtime = () => loaded ??= Promise.all([
+    import("./vendor/src/provider-runtime.ts"), import("./vendor/src/provider-config.ts"),
+  ]).then(([module, config]) => module.startProviderRuntime(module.providerLayerWith(
+    config.providerConfigLayerWith({ poolLimits: () => config.poolLimitsFromMinutes(sessions) }),
+  )));
   const stream = (model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions) => {
     const events = createAssistantMessageEventStream();
     void (async () => {
@@ -84,6 +93,13 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled =
   };
   return { provider, needsConversationCwd: true, catalogSource: () => source,
     enabled: () => enabled,
+    sessions: {
+      get: () => ({ ...sessions }),
+      set: async (value: ProviderSessions) => {
+        sessions = { ...value };
+        if (loaded) await (await loaded).reconfigurePool();
+      },
+    },
     setEnabled: async (value: boolean) => {
       if (enabled !== value) epoch++;
       enabled = value;

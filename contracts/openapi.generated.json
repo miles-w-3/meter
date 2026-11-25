@@ -3756,6 +3756,12 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/ProviderSessions"
+          },
+          "sessionsBusy": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -3837,10 +3843,36 @@
         "properties": {
           "enabled": {
             "type": "boolean"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/ProviderSessions"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProviderSessions": {
+        "type": "object",
+        "properties": {
+          "keepaliveMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240
+          },
+          "toolWaitMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+          },
+          "maxParked": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
           }
         },
         "required": [
-          "enabled"
+          "keepaliveMinutes",
+          "toolWaitMinutes",
+          "maxParked"
         ],
         "additionalProperties": false
       }

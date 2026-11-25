@@ -144,7 +144,17 @@ func (c *Client) Models(ctx context.Context) (protocol.ModelInventory, error) {
 }
 
 func (c *Client) SetProvider(ctx context.Context, id string, enabled bool) (protocol.ModelInventory, error) {
-	res, err := c.longAPI.SetProviderWithResponse(ctx, id, protocol.ProviderSetting{Enabled: enabled})
+	return c.setProvider(ctx, id, protocol.ProviderSetting{Enabled: &enabled})
+}
+
+// SetProviderSessions saves how long a provider keeps session processes and
+// how many it keeps; the backend applies them to running processes too.
+func (c *Client) SetProviderSessions(ctx context.Context, id string, sessions protocol.ProviderSessions) (protocol.ModelInventory, error) {
+	return c.setProvider(ctx, id, protocol.ProviderSetting{Sessions: &sessions})
+}
+
+func (c *Client) setProvider(ctx context.Context, id string, setting protocol.ProviderSetting) (protocol.ModelInventory, error) {
+	res, err := c.longAPI.SetProviderWithResponse(ctx, id, setting)
 	if err != nil {
 		return protocol.ModelInventory{}, err
 	}

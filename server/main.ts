@@ -13,7 +13,7 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-works/pi-durable";
 import { WebSocket, WebSocketServer } from "ws";
-import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, forkInput, layout, projectInput, projectRenameInput, providerSetting, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
+import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, forkInput, layout, projectInput, projectRenameInput, providerSessions, providerSetting, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
 import type { z, ZodType } from "zod";
 import { abortTarget, admit, completedFork, contextTokens, entryText, entryImages, entryUserMessage, forkAndAdmit, historyCursor, NavigationBusy, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
 import type { Provider } from "./durable.ts";
@@ -77,7 +77,7 @@ const workspaces = new Workspaces(join(data, "app.sqlite"));
 const webSearch = new WebSearch(() => workspaces.toolSettings());
 const claudeProviderId = "pi-claude-cli";
 const { harness, model, models, plugins, refreshTools, setClaudeEnabled, closeClaude } = await openHarness(
-  join(data, "durable.sqlite"), provider as Provider, webSearch, { claudeEnabled: workspaces.providerEnabled(claudeProviderId), computedDiffs: () => workspaces.toolSettings().computedDiffs, webFetchEnabled: () => workspaces.toolSettings().webFetch.enabled },
+  join(data, "durable.sqlite"), provider as Provider, webSearch, { claudeEnabled: workspaces.providerEnabled(claudeProviderId), claudeSessions: workspaces.providerSessions(claudeProviderId), computedDiffs: () => workspaces.toolSettings().computedDiffs, webFetchEnabled: () => workspaces.toolSettings().webFetch.enabled },
 );
 const generation = randomUUID();
 const capabilities = ["history", "retry-submit", "steer", "followup", "abort-target", "catalog", "workspace-layouts", "model-inventory", "model-defaults", "conversation-models", "tool-settings"];
@@ -204,7 +204,37 @@ function currentDefaults() {
   return { model: model ?? null, thinkingLevel: null, source: model ? provider === "fixture" ? "fixture" as const : "environment" as const : "unconfigured" as const };
 }
 
+// Admission and session-limit updates share a gate. A check alone is not
+// enough: another client could start a run before reconfiguration finishes.
+let sessionGate: Promise<void> = Promise.resolve();
+async function withSessionGate<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = sessionGate;
+  let release!: () => void;
+  sessionGate = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try { return await operation(); } finally { release(); }
+}
+
+// Include every conversation, including background tabs and branch histories.
+// Read run and inbox together so a queued item becoming a run cannot be missed.
+async function conversationsBusy(): Promise<boolean> {
+  return harness.commit(async (tx) => {
+    let cursor: Cursor | undefined;
+    do {
+      const page = await tx.scanConversations({ order: "descending" }, 80, cursor);
+      for (const row of page.items) {
+        const live = await tx.doc(LiveDoc, row.id);
+        const inbox = await tx.doc(InboxDoc, row.id);
+        if (live.run || inbox.items.length) return true;
+      }
+      cursor = page.next;
+    } while (cursor);
+    return false;
+  }, context);
+}
+
 async function inventory() {
+  const sessionsBusy = plugins.get(claudeProviderId)?.enabled?.() ? await conversationsBusy() : false;
   const providers = await Promise.all(models.getProviders().map(async (item) => {
     const plugin = plugins.get(item.id);
     const methods = plugin?.externalAuth ? [] : [
@@ -214,16 +244,18 @@ async function inventory() {
     const externalAuth = plugin?.externalAuth?.instruction;
     const catalogSource = plugin?.catalogSource?.();
     const enabled = plugin?.enabled?.();
-    if (enabled === false) return { id: item.id, name: item.name, methods, status: "unconfigured", source: "Disabled", externalAuth, catalogSource, enabled };
+    const sessions = plugin?.sessions?.get();
+    const busy = sessions ? sessionsBusy : undefined;
+    if (enabled === false) return { id: item.id, name: item.name, methods, status: "unconfigured", source: "Disabled", externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy };
     try {
       if (plugin?.externalAuth) {
         const status = await plugin.externalAuth.status(AbortSignal.timeout(3000));
-        return { id: item.id, name: item.name, methods, ...status, externalAuth, catalogSource, enabled };
+        return { id: item.id, name: item.name, methods, ...status, externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy };
       }
       const check = await models.checkAuth(item.id, { signal: AbortSignal.timeout(3000) });
       return { id: item.id, name: item.name, methods, status: check ? "configured" : "unconfigured", source: check?.source, catalogSource };
     } catch {
-      return { id: item.id, name: item.name, methods, status: "unknown", externalAuth, catalogSource, enabled };
+      return { id: item.id, name: item.name, methods, status: "unknown", externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy };
     }
   }));
   return { providers, models: models.getModels().map((item) => ({
@@ -239,6 +271,27 @@ async function changeProviderSetting(enabled: boolean) {
     await setClaudeEnabled(enabled);
     try { workspaces.setProviderEnabled(claudeProviderId, enabled); }
     catch (error) { await setClaudeEnabled(previous); throw error; }
+  });
+  providerSettingTail = operation.catch(() => {});
+  await operation;
+}
+
+// Apply and persist under the admission gate; restore the prior limits if either fails.
+async function changeProviderSessions(value: z.infer<typeof providerSessions>) {
+  const plugin = plugins.get(claudeProviderId);
+  if (!plugin?.sessions) throw new Problem(404, "not_found", "Provider sessions are unavailable");
+  const operation = providerSettingTail.then(async () => {
+    await withSessionGate(async () => {
+      if (await conversationsBusy()) throw new Problem(409, "busy", "Wait for active conversations and queued messages to finish before changing session limits");
+      const previous = plugin.sessions!.get();
+      try {
+        await plugin.sessions!.set(value);
+        workspaces.setProviderSessions(claudeProviderId, value);
+      } catch (error) {
+        await plugin.sessions!.set(previous).catch(() => {});
+        throw error;
+      }
+    });
   });
   providerSettingTail = operation.catch(() => {});
   await operation;
@@ -272,8 +325,9 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   const providerControl = url.pathname.match(/^\/v1\/providers\/([^/]+)$/);
   if (providerControl && req.method === "PUT") {
     if (providerControl[1] !== claudeProviderId) throw new Problem(404, "not_found", "Provider setting is unavailable");
-    const { enabled } = await parseBody(req, providerSetting);
-    await changeProviderSetting(enabled);
+    const { enabled, sessions } = await parseBody(req, providerSetting);
+    if (sessions !== undefined) await changeProviderSessions(sessions);
+    if (enabled !== undefined) await changeProviderSetting(enabled);
     return reply(res, 200, await inventory());
   }
   const providerRefresh = url.pathname.match(/^\/v1\/providers\/([^/]+)\/refresh$/);
@@ -459,12 +513,12 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       throw new Problem(404, "not_found", "Entry is not on this conversation's history path");
     }
     const agent = await parent.agent(context);
-    const receipt = await control(forkPath[1], () => forkAndAdmit(harness, attached, parent, at, {
+    const receipt = await withSessionGate(() => control(forkPath[1], () => forkAndAdmit(harness, attached, parent, at, {
       requestId: input.requestId, mode: "prompt", content: input.content, images: input.images,
     }, async () => {
       if (!agent.model) throw new Problem(409, "model_unconfigured", "Set a default model and create a new conversation");
       if (!models.getModel(agent.model.provider, agent.model.modelId)) throw new Problem(409, "model_unavailable", "The conversation's model is not in the current catalog");
-    }));
+    })));
     return reply(res, 202, receipt);
   }
   const pathMatch = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/path$/);
@@ -577,13 +631,13 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
     if (req.method === "POST" && match[2] === "messages") {
       const input = await parseBody(req, submitInput, 11_300_000);
-      const submissionId = await control(match[1], async () => {
+      const submissionId = await withSessionGate(() => control(match[1], async () => {
         const agent = await conversation.agent(context);
         return admit(conversation, input, async () => {
           if (!agent.model) throw new Problem(409, "model_unconfigured", "Set a default model and create a new conversation");
           if (!models.getModel(agent.model.provider, agent.model.modelId)) throw new Problem(409, "model_unavailable", "The conversation's model is not in the current catalog");
         });
-      });
+      }));
       return reply(res, 202, { submissionId });
     }
     if (req.method === "POST" && match[2] === "abort") {

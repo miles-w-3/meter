@@ -50,17 +50,26 @@ export const toolsStatus = z.object({
   diffInline: z.enum(["words", "characters", "off"]),
 });
 const authMethod = z.object({ type: z.enum(["api_key", "oauth"]), name: z.string(), interactive: z.boolean() });
+// How long a provider keeps a conversation's session process, and how many it
+// keeps at once (Claude Code: idle, mid tool call, and parked processes).
+export const providerSessions = z.strictObject({
+  keepaliveMinutes: z.number().int().min(1).max(240),
+  toolWaitMinutes: z.number().int().min(1).max(60),
+  maxParked: z.number().int().min(1).max(8),
+});
 const providerInfo = z.object({
   id: z.string(), name: z.string(), methods: z.array(authMethod),
   status: z.enum(["configured", "unconfigured", "unknown"]), source: z.string().optional(),
   externalAuth: z.string().optional(), catalogSource: z.enum(["builtin", "cached", "account"]).optional(), enabled: z.boolean().optional(),
+  sessions: providerSessions.optional(), sessionsBusy: z.boolean().optional(),
 });
 const modelInfo = z.object({
   provider: z.string(), modelId: z.string(), name: z.string(), contextWindow: z.number(),
   reasoning: z.boolean(), thinkingLevels: z.array(thinkingLevel),
 });
 export const modelInventory = z.object({ providers: z.array(providerInfo), models: z.array(modelInfo) });
-export const providerSetting = z.strictObject({ enabled: z.boolean() });
+export const providerSetting = z.strictObject({ enabled: z.boolean().optional(), sessions: providerSessions.optional() })
+  .refine((value) => value.enabled !== undefined || value.sessions !== undefined);
 const cwd = z.string().min(1).max(4096);
 export const cwdInput = z.strictObject({ cwd });
 export const selection = z.strictObject({ model: modelRef.nullable(), thinkingLevel });
@@ -145,4 +154,5 @@ export const models = {
   ModelRef: modelRef, Selection: selection, SelectionInput: selectionInput, SelectionChange: selectionChange, DefaultSettings: defaultSettings, Settings: settings,
   ToolSettingsChange: toolSettingsChange, SearchProviderChange: searchProviderChange, ToolsStatus: toolsStatus, SearchProviderStatus: searchProviderStatus,
   AuthMethod: authMethod, ProviderInfo: providerInfo, ModelInfo: modelInfo, ModelInventory: modelInventory, ProviderSetting: providerSetting,
+  ProviderSessions: providerSessions,
 };

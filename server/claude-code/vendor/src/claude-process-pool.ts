@@ -13,10 +13,12 @@
  *
  * At most `maxParked` processes are parked at once (each holds hundreds of
  * megabytes); parking one more retires the longest-parked, preferring one
- * that is not inside a tool call.
+ * that is not inside a tool call. The limits are read when they apply, so a
+ * host may change them; `reconfigure` applies a change to the processes
+ * already parked.
  */
 
-import { Clock, Context, Duration, Effect, FiberHandle, HashMap, Layer, Option, Ref } from "effect";
+import { Clock, Context, Duration, Effect, FiberHandle, HashMap, Layer, Option, Ref, Semaphore } from "effect";
 import { ClaudeCli, claudeCliLayer } from "./claude-cli.ts";
 import {
   type ClaudeProcessLaunch,
@@ -74,6 +76,12 @@ export interface IClaudeProcessPool {
   readonly retireAll: (cause: RetireCause) => Effect.Effect<void>;
   /** Retire the process parked for one pi session, if any, and wait for it. */
   readonly retireSession: (piSessionId: string, cause: RetireCause) => Effect.Effect<void>;
+  /**
+   * Apply the current limits to the processes already parked: retire the
+   * longest-parked over the cap, and time each one's idle lifetime again
+   * from when it was parked.
+   */
+  readonly reconfigure: () => Effect.Effect<void>;
 }
 
 /** Provides the pool of CLI processes. */
@@ -112,12 +120,14 @@ const killOnProcessExit = (livePids: Set<number>) =>
 /** Constructs the pool; its scope is the parent of every process scope. */
 export const makeClaudeProcessPool = Effect.gen(function* () {
   const cli = yield* ClaudeCli;
-  const { maxParked } = yield* ProviderConfig;
+  const { poolLimits } = yield* ProviderConfig;
   const runtimeScope = yield* Effect.scope;
   const parked = yield* Ref.make(HashMap.empty<string, ParkedProcess>());
   /** The lease token of each pi session with a call in flight. */
   const leases = yield* Ref.make(HashMap.empty<string, number>());
   const leaseSequence = yield* Ref.make(0);
+  // Serialize ownership changes, timer expiry, and reconfiguration.
+  const locked = Semaphore.makeUnsafe(1).withPermits(1);
   const livePids = new Set<number>();
   yield* killOnProcessExit(livePids);
 
@@ -141,9 +151,9 @@ export const makeClaudeProcessPool = Effect.gen(function* () {
     );
 
   /** Retire the longest-parked process while more than `maxParked` are parked. */
-  const evictOverCap = (keep: string) =>
+  const evictOverCap = (keep: string | undefined) =>
     Effect.gen(function* () {
-      while (HashMap.size(yield* Ref.get(parked)) > maxParked) {
+      while (HashMap.size(yield* Ref.get(parked)) > poolLimits().maxParked) {
         const candidates = [];
         for (const [piSessionId, entry] of yield* Ref.get(parked)) {
           if (piSessionId === keep) continue;
@@ -163,6 +173,23 @@ export const makeClaudeProcessPool = Effect.gen(function* () {
       }
     });
 
+  /**
+   * Retire a parked process once it has been idle for `idle`. The timer lives
+   * in the process scope, so retiring the process removes it; the retire it
+   * triggers must therefore run outside that scope.
+   */
+  const armIdleTimer = (piSessionId: string, process: IClaudeProcess, idle: Duration.Duration) =>
+    Effect.sleep(idle).pipe(
+      Effect.andThen(locked(Effect.gen(function* () {
+        const current = yield* Ref.get(parked);
+        if (Option.exists(HashMap.get(current, piSessionId), (entry) => entry.process === process)) {
+          yield* forget(piSessionId, process);
+          yield* retireInBackground(process, "idle");
+        }
+      }))),
+      FiberHandle.run(process.idleTimer),
+    );
+
   return ClaudeProcessPool.of({
     launch: (launch) =>
       Effect.gen(function* () {
@@ -175,7 +202,7 @@ export const makeClaudeProcessPool = Effect.gen(function* () {
         return process;
       }).pipe(Effect.provideService(ClaudeCli, cli)),
 
-    take: Effect.fn("ClaudeProcessPool.take")(function* (piSessionId: string) {
+    take: (piSessionId: string) => locked(Effect.gen(function* () {
       const token = yield* Ref.updateAndGet(leaseSequence, (n) => n + 1);
       const leased = yield* Ref.modify(leases, (entries) =>
         HashMap.has(entries, piSessionId)
@@ -209,13 +236,9 @@ export const makeClaudeProcessPool = Effect.gen(function* () {
         process: alive ? Option.some(process) : Option.none(),
         lease,
       } satisfies TakenSession;
-    }),
+    })),
 
-    park: Effect.fn("ClaudeProcessPool.park")(function* (
-      lease: SessionLease,
-      process: IClaudeProcess,
-      idle: Duration.Duration,
-    ) {
+    park: (lease: SessionLease, process: IClaudeProcess, idle: Duration.Duration) => locked(Effect.gen(function* () {
       const { piSessionId } = lease;
       yield* Effect.annotateCurrentSpan({
         pid: process.pid,
@@ -234,21 +257,15 @@ export const makeClaudeProcessPool = Effect.gen(function* () {
       ]);
       if (Option.isSome(previous) && previous.value.process !== process)
         yield* retireInBackground(previous.value.process, "replaced");
-      // The timer lives in the process scope, so retiring the process removes
-      // it; the retire it triggers must therefore run outside that scope.
-      yield* Effect.sleep(idle).pipe(
-        Effect.andThen(forget(piSessionId, process)),
-        Effect.andThen(retireInBackground(process, "idle")),
-        FiberHandle.run(process.idleTimer),
-      );
+      yield* armIdleTimer(piSessionId, process, idle);
       yield* evictOverCap(piSessionId);
-    }),
+    })),
 
     endLease: (lease) => Effect.asVoid(endLease(lease)),
 
     retireInBackground,
 
-    retireAll: Effect.fn("ClaudeProcessPool.retireAll")(function* (cause: RetireCause) {
+    retireAll: (cause: RetireCause) => locked(Effect.gen(function* () {
       const entries = yield* Ref.getAndSet(parked, HashMap.empty());
       yield* Effect.annotateCurrentSpan({
         cause,
@@ -258,19 +275,42 @@ export const makeClaudeProcessPool = Effect.gen(function* () {
         concurrency: "unbounded",
         discard: true,
       });
-    }),
+    })),
 
-    retireSession: Effect.fn("ClaudeProcessPool.retireSession")(function* (
-      piSessionId: string,
-      cause: RetireCause,
-    ) {
+    retireSession: (piSessionId: string, cause: RetireCause) => locked(Effect.gen(function* () {
       const entry = yield* Ref.modify(parked, (entries) => [
         HashMap.get(entries, piSessionId),
         HashMap.remove(entries, piSessionId),
       ]);
       yield* Effect.annotateCurrentSpan({ cause, hit: Option.isSome(entry) });
       if (Option.isSome(entry)) yield* entry.value.process.retire(cause);
-    }),
+    })),
+
+    reconfigure: () => locked(Effect.gen(function* () {
+      const limits = poolLimits();
+      yield* Effect.annotateCurrentSpan({
+        maxParked: limits.maxParked,
+        keepaliveMs: Option.match(limits.keepalive, { onNone: () => 0, onSome: Duration.toMillis }),
+        handoffWaitMs: Duration.toMillis(limits.handoffWait),
+      });
+      yield* evictOverCap(undefined);
+      const now = yield* Clock.currentTimeMillis;
+      for (const [piSessionId, entry] of yield* Ref.get(parked)) {
+        // A process parked inside a tool call waits for pi's results.
+        const idle = (yield* entry.process.isTurnActive)
+          ? Option.some(limits.handoffWait)
+          : limits.keepalive;
+        if (Option.isNone(idle)) {
+          yield* forget(piSessionId, entry.process);
+          yield* FiberHandle.clear(entry.process.idleTimer);
+          yield* retireInBackground(entry.process, "idle");
+          continue;
+        }
+        const remaining = Math.max(0, Duration.toMillis(idle.value) - (now - entry.parkedAtMillis));
+        yield* FiberHandle.clear(entry.process.idleTimer);
+        yield* armIdleTimer(piSessionId, entry.process, Duration.millis(remaining));
+      }
+    })),
   });
 });
 

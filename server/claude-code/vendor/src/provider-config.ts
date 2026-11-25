@@ -25,6 +25,19 @@ export type RelayMode = "off" | "shadow" | "rewrite";
 /** How much of the CLI's stdout is recorded on the `episode` span. */
 export type TraceWireDetail = "counts" | "events" | "raw";
 
+/**
+ * How long parked processes live and how many are kept. A host may change
+ * them while the runtime runs: read them when they are needed, never once.
+ */
+export interface PoolLimits {
+  /** Idle lifetime of a process parked after a turn; none parks nothing. */
+  readonly keepalive: Option.Option<Duration.Duration>;
+  /** Idle lifetime of a process parked inside a tool call. */
+  readonly handoffWait: Duration.Duration;
+  /** Most processes parked at once across pi sessions; each holds ~500 MB. */
+  readonly maxParked: number;
+}
+
 /** Defines the provider configuration. */
 export interface IProviderConfig {
   /**
@@ -33,12 +46,8 @@ export interface IProviderConfig {
    * `InactivityTimeout` and the process is killed.
    */
   readonly inactivityTimeout: Duration.Duration;
-  /** Idle lifetime of a process parked after a turn; none parks nothing. */
-  readonly keepalive: Option.Option<Duration.Duration>;
-  /** Most processes parked at once across pi sessions; each holds ~500 MB. */
-  readonly maxParked: number;
-  /** Idle lifetime of a process parked inside a tool call. */
-  readonly handoffWait: Duration.Duration;
+  /** The current pool limits (Meter: the host's saved settings). */
+  readonly poolLimits: () => PoolLimits;
   /** The CLI-side MCP tool-call timeout, in milliseconds, as the CLI reads it. */
   readonly mcpToolTimeoutMillis: string;
   /** True when inherited simple or safe mode would break the launch. */
@@ -56,10 +65,28 @@ export class ProviderConfig extends Context.Service<ProviderConfig, IProviderCon
 
 /** Five minutes, when pi sets no timeout of its own. */
 const DEFAULT_INACTIVITY_TIMEOUT = Duration.minutes(5);
-/** Meter bounds parked server processes more conservatively than upstream. */
-const KEEPALIVE = Duration.minutes(15);
-const MAX_PARKED = 2;
-const HANDOFF_WAIT = Duration.minutes(15);
+/**
+ * Meter's defaults; Meter's settings replace them (`poolLimitsFromMinutes`).
+ * Tool calls may block for up to the CLI's own timeout
+ * (`MCP_TOOL_TIMEOUT_MILLIS`). Prompt-cache lifetimes vary by request.
+ */
+const DEFAULT_POOL_LIMITS: PoolLimits = {
+  keepalive: Option.some(Duration.hours(1)),
+  handoffWait: Duration.hours(1),
+  maxParked: 3,
+};
+
+/** Pool limits as a host's settings give them, in minutes. */
+export const poolLimitsFromMinutes = (limits: {
+  readonly keepaliveMinutes: number;
+  readonly toolWaitMinutes: number;
+  readonly maxParked: number;
+}): PoolLimits => ({
+  keepalive: Option.some(Duration.minutes(limits.keepaliveMinutes)),
+  handoffWait: Duration.minutes(limits.toolWaitMinutes),
+  maxParked: Math.max(1, Math.floor(limits.maxParked)),
+});
+
 /** One hour: tool calls block in the CLI's MCP client while pi runs the tool. */
 const MCP_TOOL_TIMEOUT_MILLIS = "3600000";
 
@@ -98,9 +125,7 @@ export const makeProviderConfig = Effect.gen(function* () {
   const safe = yield* envFlag("CLAUDE_CODE_SAFE_MODE");
   return ProviderConfig.of({
     inactivityTimeout: DEFAULT_INACTIVITY_TIMEOUT,
-    keepalive: Option.some(KEEPALIVE),
-    maxParked: MAX_PARKED,
-    handoffWait: HANDOFF_WAIT,
+    poolLimits: () => DEFAULT_POOL_LIMITS,
     mcpToolTimeoutMillis: MCP_TOOL_TIMEOUT_MILLIS,
     restrictedMode: simple || safe,
     traceWireDetail: yield* traceWireDetail,

@@ -2,7 +2,9 @@ package gui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"pi-workspace.local/workspace/internal/protocol"
@@ -56,6 +58,7 @@ func (a *app) setProvider(id string, enabled bool) {
 	if a.modelsLoading {
 		return
 	}
+	a.claudeStatusEpoch++
 	a.modelsLoading = true
 	a.modelsError = ""
 	go func() {
@@ -64,6 +67,43 @@ func (a *app) setProvider(id string, enabled bool) {
 			a.modelsLoading = false
 			if err != nil {
 				a.modelsError = err.Error()
+				return
+			}
+			a.modelsInventory = inventory
+			a.modelsLoaded = true
+		})
+	}()
+}
+
+// setProviderSessions applies an optimistic choice, restoring the previous
+// value and retaining the error when the backend rejects the update.
+func (a *app) setProviderSessions(id string, sessions protocol.ProviderSessions) {
+	if a.modelsLoading {
+		return
+	}
+	var previous *protocol.ProviderSessions
+	for i := range a.modelsInventory.Providers {
+		if a.modelsInventory.Providers[i].Id == id {
+			previous = a.modelsInventory.Providers[i].Sessions
+			value := sessions
+			a.modelsInventory.Providers[i].Sessions = &value
+		}
+	}
+	a.claudeStatusEpoch++
+	a.modelsLoading = true
+	a.modelsError = ""
+	go func() {
+		inventory, err := a.api.SetProviderSessions(a.ctx, id, sessions)
+		a.update(func() {
+			a.modelsLoading = false
+			if err != nil {
+				for i := range a.modelsInventory.Providers {
+					if a.modelsInventory.Providers[i].Id == id {
+						a.modelsInventory.Providers[i].Sessions = previous
+					}
+				}
+				a.modelsError = err.Error()
+				a.claudeStatusAt = time.Time{}
 				return
 			}
 			a.modelsInventory = inventory
@@ -174,4 +214,68 @@ func (a *app) providerStatus(c *ui.Context, p protocol.ProviderInfo) {
 			text(c, clean(*p.ExternalAuth), 11, muted)
 		}
 	})
+}
+
+var (
+	keepaliveChoices = []int{15, 30, 60, 120, 240}
+	toolWaitChoices  = []int{15, 30, 60}
+	parkedChoices    = []int{1, 2, 3, 4, 5, 6}
+)
+
+// providerSessions shows how long a provider keeps each conversation's
+// session process, and how many it keeps.
+func (a *app) providerSessions(c *ui.Context, id string, current protocol.ProviderSessions, blocked bool) {
+	ui.Column(c.Key("sessions")).Gap(6).Padding(4, 0, 2, 12).Children(func() {
+		a.sessionLimit(c, "keepalive", "Keep idle sessions", current.KeepaliveMinutes, keepaliveChoices, blocked, minutesLabel, func(v int) {
+			next := current
+			next.KeepaliveMinutes = v
+			a.setProviderSessions(id, next)
+		})
+		a.sessionLimit(c, "tool-wait", "Keep sessions waiting on a tool", current.ToolWaitMinutes, toolWaitChoices, blocked, minutesLabel, func(v int) {
+			next := current
+			next.ToolWaitMinutes = v
+			a.setProviderSessions(id, next)
+		})
+		a.sessionLimit(c, "parked", "Maximum parked sessions", current.MaxParked, parkedChoices, blocked, func(n int) string { return fmt.Sprint(n) }, func(v int) {
+			next := current
+			next.MaxParked = v
+			a.setProviderSessions(id, next)
+		})
+		text(c, "This limits parked processes, not active runs. A parked session may be retired while waiting on a tool if the pool is full.", 11, muted)
+	})
+}
+
+// sessionLimit shows one limit as a choice, keeping a saved value that is not
+// among the usual ones.
+func (a *app) sessionLimit(c *ui.Context, key, label string, current int, choices []int, blocked bool, format func(int) string, save func(int)) {
+	if !slices.Contains(choices, current) {
+		choices = append(slices.Clone(choices), current)
+		slices.Sort(choices)
+	}
+	options := make([]string, len(choices))
+	for i, choice := range choices {
+		options[i] = format(choice)
+	}
+	selected := format(current)
+	ui.Row(c.Key(key)).FillWidth().AlignItems(ui.Center).Gap(12).Children(func() {
+		text(c, label, 12, ink).Grow(1)
+		before := selected
+		ui.Select(c, &selected, options).Label(label).Disabled(a.modelsLoading || blocked)
+		if selected != before {
+			if i := slices.Index(options, selected); i >= 0 {
+				save(choices[i])
+			}
+		}
+	})
+}
+
+func minutesLabel(minutes int) string {
+	switch {
+	case minutes == 60:
+		return "1 hour"
+	case minutes%60 == 0:
+		return fmt.Sprintf("%d hours", minutes/60)
+	default:
+		return fmt.Sprintf("%d min", minutes)
+	}
 }

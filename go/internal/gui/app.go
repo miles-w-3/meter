@@ -153,6 +153,10 @@ type app struct {
 	modelsLoading        bool
 	modelsLoaded         bool
 	modelsError          string
+	claudeStatusLoading  bool
+	claudeStatusEpoch    uint64
+	claudeStatusAt       time.Time
+	claudeStatusError    bool
 	recentModels         []protocol.ModelRef
 	terminals            map[uuid.UUID]terminalSession
 	newTerminal          func(terminal.Options) (terminalSession, error)

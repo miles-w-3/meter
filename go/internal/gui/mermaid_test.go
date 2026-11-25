@@ -1,10 +1,15 @@
 package gui
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"image"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"pi-workspace.local/workspace/internal/mermaid"
@@ -18,11 +23,7 @@ func TestMermaidTranscriptControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := mermaid.Result{SVG: svg, Width: 100, Height: 60}
-	tiles, err := diagramTiles(result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	item := &mermaidEntry{result: result, image: image, tiles: tiles}
+	item := &mermaidEntry{result: result, image: image}
 	app := &app{ctx: context.Background(), mermaidCache: map[string]*mermaidEntry{source: item}}
 	markdown := "```mermaid\n" + source + "```"
 	driver := ui.NewTester(func(c *ui.Context) { app.prose(c, markdown, false) }, 900, 600)
@@ -130,77 +131,6 @@ func TestDiagramCanvasPanAndZoom(t *testing.T) {
 	}
 }
 
-func TestLargeDiagramDrawsAtRetinaZoom(t *testing.T) {
-	// The whole diagram would be 7,952 physical pixels wide at 400% on a 2x
-	// display, exceeding MyGo's single-SVG drawing limit of 4,096 pixels.
-	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 994 196" width="994" height="196"><rect x="0" y="0" width="994" height="196" fill="#333333"/><rect x="100" y="50" width="300" height="100" fill="#ff0000"/></svg>`
-	image, err := ui.ParseSVG([]byte(svg))
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := mermaid.Result{SVG: svg, Width: 994, Height: 196}
-	tiles, err := diagramTiles(result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tiles) == 0 {
-		t.Fatal("expected tiled rendering")
-	}
-	item := &mermaidEntry{result: result, image: image, tiles: tiles}
-	driver := ui.NewTester(func(c *ui.Context) {
-		ui.Box(c).Fill().Clip().Background(ui.Hex("#ffffff")).Children(func() { drawDiagramImage(c, item, 4) })
-	}, 700, 500)
-	driver.SetScale(2)
-	driver.Frame()
-	frame := driver.Image()
-	colored := 0
-	for y := frame.Bounds().Min.Y; y < frame.Bounds().Max.Y; y++ {
-		for x := frame.Bounds().Min.X; x < frame.Bounds().Max.X; x++ {
-			pixel := frame.RGBAAt(x, y)
-			if pixel.R < 220 || pixel.G < 220 || pixel.B < 220 {
-				colored++
-			}
-		}
-	}
-	if colored < 100 {
-		t.Fatalf("large diagram did not paint: %d colored pixels", colored)
-	}
-}
-
-func TestDiagramTilesMatchWholeImage(t *testing.T) {
-	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 210" width="400" height="210"><rect x="0" y="0" width="400" height="210" fill="#333333"/><circle cx="200" cy="100" r="70" fill="#ff0000"/></svg>`
-	img, err := ui.ParseSVG([]byte(svg))
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := mermaid.Result{SVG: svg, Width: 400, Height: 210}
-	tiles, err := diagramTiles(result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	whole := img.Image(400, 210, nil)
-	var differences, total, y int
-	for _, row := range tiles {
-		x := 0
-		for _, piece := range row {
-			picture := piece.image.Image(int(piece.width), int(piece.height), nil)
-			for py := 0; py < picture.Bounds().Dy(); py++ {
-				for px := 0; px < picture.Bounds().Dx(); px++ {
-					if picture.RGBAAt(px, py) != whole.RGBAAt(x+px, y+py) {
-						differences++
-					}
-					total++
-				}
-			}
-			x += int(piece.width)
-		}
-		y += int(row[0].height)
-	}
-	if total == 0 || differences > total/25 {
-		t.Fatalf("tiled image differs at %d/%d pixels", differences, total)
-	}
-}
-
 func TestMermaidInlineCanvasPaints(t *testing.T) {
 	source := "flowchart LR\n A --> B\n"
 	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="400" height="200"><rect width="400" height="200" fill="#ff0000"/></svg>`
@@ -209,11 +139,7 @@ func TestMermaidInlineCanvasPaints(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := mermaid.Result{SVG: svg, Width: 400, Height: 200}
-	tiles, err := diagramTiles(result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := &app{ctx: context.Background(), mermaidCache: map[string]*mermaidEntry{source: {result: result, image: image, tiles: tiles}}}
+	app := &app{ctx: context.Background(), mermaidCache: map[string]*mermaidEntry{source: {result: result, image: image}}}
 	markdown := "```mermaid\n" + source + "```"
 	driver := ui.NewTester(func(c *ui.Context) { ui.Column(c).Fill().Children(func() { app.prose(c, markdown, false) }) }, 800, 600)
 	driver.Frame()
@@ -249,11 +175,7 @@ func TestMermaidPaintsInVirtualTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := mermaid.Result{SVG: svg, Width: 400, Height: 200}
-	tiles, err := diagramTiles(result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := &app{ctx: context.Background(), mermaidCache: map[string]*mermaidEntry{source: {result: result, image: image, tiles: tiles}}}
+	app := &app{ctx: context.Background(), mermaidCache: map[string]*mermaidEntry{source: {result: result, image: image}}}
 	state := &ui.ListState{}
 	markdown := "```mermaid\n" + source + "```"
 	driver := ui.NewTester(func(c *ui.Context) {
@@ -379,5 +301,150 @@ func TestDiagramDefaultsToFitAndActualSize(t *testing.T) {
 				t.Fatalf("actual size = %s", got)
 			}
 		})
+	}
+}
+
+func renderDiagramFixture(t *testing.T, source []byte) mermaid.Result {
+	t.Helper()
+	var out bytes.Buffer
+	if err := mermaid.Helper(bytes.NewReader(source), &out); err != nil {
+		t.Fatal(err)
+	}
+	var reply struct {
+		Result mermaid.Result `json:"result"`
+		Error  string         `json:"error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &reply); err != nil {
+		t.Fatal(err)
+	}
+	if reply.Error != "" {
+		t.Fatal(reply.Error)
+	}
+	return reply.Result
+}
+
+func TestDiagramCacheEvictsLeastRecentlyUsed(t *testing.T) {
+	a := &app{mermaidClock: 3, mermaidCache: map[string]*mermaidEntry{
+		"old": {lastUsed: 1}, "recent": {lastUsed: 2}, "loading": {lastUsed: 0, loading: true},
+	}}
+	if a.diagram("old") != a.mermaidCache["old"] {
+		t.Fatal("cache hit was not returned")
+	}
+	a.evictOldestDiagram()
+	if a.mermaidCache["recent"] != nil || a.mermaidCache["old"] == nil || a.mermaidCache["loading"] == nil {
+		t.Fatalf("incorrect eviction: %#v", a.mermaidCache)
+	}
+}
+
+func TestDiagramSurfaceLimits(t *testing.T) {
+	if !directDiagram(4096, 512, 1) || directDiagram(4097, 1, 1) || directDiagram(1024, 513, 2) {
+		t.Fatal("incorrect physical SVG threshold")
+	}
+	for _, r := range []mermaid.Result{{Width: 8192, Height: 8192}, {Width: 8192, Height: .01}, {Width: .01, Height: 8192}} {
+		for _, budget := range []int{0, 4, 2048, detailLimit} {
+			w, h := surfaceSize(r, 2, 4096, budget)
+			if 4*w*h > budget || max(w, h) > 4096 {
+				t.Fatalf("%dx%d exceeds budget %d", w, h, budget)
+			}
+		}
+	}
+}
+
+func TestWideDiagramWholeBitmap(t *testing.T) {
+	src, err := os.ReadFile("testdata/wide-diagram.mmd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := renderDiagramFixture(t, src)
+	svg, err := ui.ParseSVG([]byte(r.SVG))
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates := make(chan func(), 1)
+	a := &app{ctx: context.Background(), update: func(f func()) { updates <- f }}
+	item := &mermaidEntry{result: r, image: svg, preview: diagramPreview(r, svg), owner: a}
+	a.mermaidCache = map[string]*mermaidEntry{"wide-data": item}
+	show := true
+	canvas := func() *ui.Tester {
+		d := ui.NewTester(func(c *ui.Context) {
+			if show {
+				ui.Column(c).Fill().Children(func() { diagramCanvas(c, item, 0) })
+			}
+		}, 1000, 500)
+		d.SetScale(2)
+		d.Frame()
+		return d
+	}
+	first, second := canvas(), canvas()
+	if !first.HasText("22%") || a.detailJob != nil {
+		t.Fatal("Fit should not request detail")
+	}
+	for _, d := range []*ui.Tester{first, second} {
+		if err := d.Click("Actual Size"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a.detailJob != item || item.detailBytes == 0 || len(item.views) != 2 {
+		t.Fatal("expected shared reservation")
+	}
+	select {
+	case f := <-updates:
+		f()
+	case <-time.After(5 * time.Second):
+		t.Fatal("detail timeout")
+	}
+	b := item.detail
+	if b == nil {
+		t.Fatal("no detail")
+	}
+	w, h := b.Size()
+	if w <= 1536 || w*h*4 != item.detailBytes || item.detailBytes > detailLimit {
+		t.Fatalf("unexpected detail size %dx%d", w, h)
+	}
+	if err := first.Click("Fit"); err != nil {
+		t.Fatal(err)
+	}
+	if len(item.views) != 2 || item.detail != b || a.detailJob != nil {
+		t.Fatal("changing zoom discarded detail")
+	}
+	show = false
+	first.Frame()
+	second.Frame()
+	if len(item.views) != 0 {
+		t.Fatal("leaked canvas pin")
+	}
+}
+
+func TestDetailBudgetProtectsPinnedAndEvictsOldest(t *testing.T) {
+	r := mermaid.Result{Width: 2000, Height: 100}
+	svg := ui.MustParseSVG([]byte(`<svg viewBox="0 0 2000 100"><rect width="2000" height="100"/></svg>`))
+	preview := ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 100, 5)))
+	updates := make(chan func(), 1)
+	a := &app{ctx: context.Background(), update: func(f func()) { updates <- f }}
+	pin := func() map[*diagramCanvasState]ui.Services {
+		return map[*diagramCanvasState]ui.Services{new(diagramCanvasState): {}}
+	}
+	protected := &mermaidEntry{detail: preview, detailBytes: detailLimit, views: pin()}
+	old := &mermaidEntry{detail: preview, detailBytes: detailLimit / 2, lastUsed: 1}
+	recent := &mermaidEntry{detail: preview, detailBytes: detailLimit / 2, lastUsed: 2}
+	demand := &mermaidEntry{result: r, image: svg, preview: preview, views: pin()}
+	a.mermaidCache = map[string]*mermaidEntry{"p": protected, "old": old, "recent": recent, "new": demand}
+	// With all pixels pinned, leave the demand on its preview. On unpin,
+	// admit it without evicting a still-displayed detail bitmap.
+	old.views, recent.views = pin(), pin()
+	a.scheduleDiagramDetail()
+	if a.detailJob != nil || demand.detailBytes != 0 {
+		t.Fatal("started work without budget")
+	}
+	old.views, recent.views = nil, nil
+	a.scheduleDiagramDetail()
+	if a.detailJob != demand || old.detail != nil || recent.detail == nil || protected.detail == nil {
+		t.Fatal("incorrect admission/eviction")
+	}
+	select {
+	case publish := <-updates:
+		publish()
+	case <-time.After(5 * time.Second):
+		t.Fatal("detail timeout")
 	}
 }

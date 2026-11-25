@@ -34,7 +34,7 @@ function fixtureProvider() {
     const user = messages[0];
     const prompt = user?.role === "user" && typeof user.content === "string" ? user.content : JSON.stringify(user);
     const results = messages.filter((message) => message.role === "toolResult");
-    const preview = /^fixture:mermaid:(tiny|wide|tall|square)$/.exec(prompt.trim());
+    const preview = /^fixture:mermaid:(tiny|wide|tall|square|wide-data)$/.exec(prompt.trim());
     if (preview) return fauxAssistantMessage([fauxText(mermaidPreview[preview[1]])]);
     if (prompt === "fixture:thinking") return fauxAssistantMessage([fauxThinking("Let me consider the request and check the relevant details.\n\nFirst, I should understand what the user is asking and identify the constraints. The answer should be clear, direct, and grounded in the available information.\n\nNext, I can compare the possible approaches:\n- Keep the explanation concise.\n- Include an example where it helps.\n- Call out any uncertainty rather than making assumptions.\n\nWith those points in mind, I can put together a useful response."), fauxText("Here is the answer after considering it.")]);
     if (prompt.includes("fixture:demo")) return fauxAssistantMessage([fauxText("desktop reconnect output ".repeat(200))]);

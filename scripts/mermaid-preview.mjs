@@ -10,8 +10,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const root = resolve(import.meta.dirname, "..");
 const data = await mkdtemp(join(tmpdir(), "meter-mermaid-preview-"));
-const bin = join(root, ".bin/workspace");
-const env = { ...process.env, METER_HOME: data, PI_WORKSPACE_SERVER: join(root, "server/main.ts"), PI_PROVIDER: "fixture", PI_TRANSPORT: "unix" };
+const bin = process.env.METER_PREVIEW_BIN || join(root, ".bin/workspace");
+const env = { ...process.env, METER_HOME: data, PI_WORKSPACE_SERVER: process.env.METER_PREVIEW_SERVER || join(root, "server/main.ts"), PI_PROVIDER: "fixture", PI_TRANSPORT: "unix" };
 const boot = spawnSync(bin, ["server", "start"], { cwd: root, env, encoding: "utf8" });
 if (boot.status !== 0) throw new Error(boot.stderr || boot.stdout || "Could not start fixture backend");
 const socketPath = join(data, "workspace.sock");
@@ -32,7 +32,10 @@ async function request(path, method = "GET", value) {
 try {
   const project = await request("/v1/projects", "POST", { cwd: root, name: "Mermaid preview" });
   const conversation = await request("/v1/conversations", "POST", { cwd: root, projectId: project.id });
-  for (const [key, title] of [["tiny", "Small: two steps"], ["wide", "Wide: request lifecycle"], ["tall", "Tall: decision path"], ["square", "Balanced: conversation lifecycle"]]) {
+  const examples = process.argv.includes("--wide-data")
+    ? [["wide-data", 'DANCER -- "arrange a short rehearsal" --> LIGHT']]
+    : [["tiny", "Small: two steps"], ["wide", "Wide: request lifecycle"], ["tall", "Tall: decision path"], ["square", "Balanced: conversation lifecycle"]];
+  for (const [key, title] of examples) {
     await request(`/v1/conversations/${conversation.id}/messages`, "POST", { content: `fixture:mermaid:${key}`, requestId: randomUUID(), mode: "prompt" });
     const deadline = Date.now() + 30_000;
     let found = false;

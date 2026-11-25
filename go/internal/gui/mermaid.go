@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strings"
 
 	"github.com/Cyenoch/mygoicons/lucide"
 	"github.com/Cyenoch/mygoui/content"
@@ -18,12 +17,17 @@ import (
 // Render cache is accessed only on the UI thread; the helper itself is bounded
 // and run on a background goroutine. Conversation history keeps source only.
 type mermaidEntry struct {
-	result  mermaid.Result
-	image   *ui.SVG
-	bitmap  *ui.Bitmap
-	tiles   [][]diagramTile
-	err     error
-	loading bool
+	result      mermaid.Result
+	image       *ui.SVG
+	preview     *ui.Bitmap
+	owner       *app
+	detail      *ui.Bitmap
+	detailBytes int // reserved or resident, never both
+	views       map[*diagramCanvasState]ui.Services
+	popouts     int
+	err         error
+	loading     bool
+	lastUsed    uint64
 }
 
 var diagramJobs = make(chan struct{}, 2)
@@ -35,22 +39,19 @@ func (a *app) diagram(source string) *mermaidEntry {
 	if a.mermaidCache == nil {
 		a.mermaidCache = make(map[string]*mermaidEntry)
 	}
+	a.mermaidClock++
 	if item := a.mermaidCache[source]; item != nil {
+		item.lastUsed = a.mermaidClock
 		return item
 	}
 	// Do not evict running jobs or let the transcript queue unbounded work.
 	if len(a.mermaidCache) >= 16 {
-		for key, item := range a.mermaidCache {
-			if !item.loading {
-				delete(a.mermaidCache, key)
-				break
-			}
-		}
+		a.evictOldestDiagram()
 	}
 	if len(a.mermaidCache) >= 16 || a.ctx == nil || a.update == nil {
 		return &mermaidEntry{err: fmt.Errorf("renderer unavailable")}
 	}
-	item := &mermaidEntry{loading: true}
+	item := &mermaidEntry{owner: a, loading: true, lastUsed: a.mermaidClock}
 	a.mermaidCache[source] = item
 	go func() {
 		select {
@@ -62,27 +63,34 @@ func (a *app) diagram(source string) *mermaidEntry {
 		result, err := mermaid.Render(a.ctx, source)
 		var image *ui.SVG
 		var bitmap *ui.Bitmap
-		var tiles [][]diagramTile
 		if err == nil {
 			image, err = ui.ParseSVG([]byte(result.SVG))
 		}
 		if err == nil {
-			tiles, err = diagramTiles(result)
-			if err == nil && tiles == nil {
-				// Bound memory for complex/large SVGs rather than parsing many tiles.
-				factor := 1536 / math.Max(result.Width, result.Height)
-				w, h := max(1, int(math.Ceil(result.Width*factor))), max(1, int(math.Ceil(result.Height*factor)))
-				bitmap = ui.NewBitmap(image.Image(w, h, nil))
-			}
+			bitmap = diagramPreview(result, image)
 		}
 		a.update(func() {
 			if a.mermaidCache[source] != item {
 				return
 			}
-			item.result, item.image, item.bitmap, item.tiles, item.err, item.loading = result, image, bitmap, tiles, err, false
+			item.result, item.image, item.preview, item.err, item.loading = result, image, bitmap, err, false
 		})
 	}()
 	return item
+}
+
+// evictOldestDiagram keeps recent results and never evicts an in-flight job.
+func (a *app) evictOldestDiagram() {
+	var oldest string
+	var candidate *mermaidEntry
+	for key, item := range a.mermaidCache {
+		if !item.loading && item != a.detailJob && len(item.views) == 0 && item.popouts == 0 && (candidate == nil || item.lastUsed < candidate.lastUsed) {
+			oldest, candidate = key, item
+		}
+	}
+	if candidate != nil {
+		delete(a.mermaidCache, oldest)
+	}
 }
 
 var (
@@ -153,7 +161,8 @@ func (a *app) saveDiagram(svg string) {
 }
 
 func (a *app) openDiagram(item *mermaidEntry) {
-	mygo.NewWindow(mygo.WindowOptions{Title: "Mermaid diagram", Width: 1000, Height: 720, MinWidth: 440, MinHeight: 320, Content: ui.View(func(c *ui.Context) {
+	item.popouts++
+	win := mygo.NewWindow(mygo.WindowOptions{Title: "Mermaid diagram", Width: 1000, Height: 720, MinWidth: 440, MinHeight: 320, Content: ui.View(func(c *ui.Context) {
 		c.SetTheme(theme)
 		ui.Column(c).Fill().Padding(12).Gap(8).Background(background).Children(func() {
 			ui.Row(c).Gap(8).Children(func() {
@@ -165,16 +174,19 @@ func (a *app) openDiagram(item *mermaidEntry) {
 			diagramCanvas(c, item, 0)
 		})
 	})})
+	win.OnClose(func(*mygo.CloseEvent) { item.popouts-- })
 }
 
 type diagramCanvasKey struct{}
 type diagramCanvasState struct {
 	scroll                ui.ScrollState
-	zoom                  float32
+	zoom, fitZoom         float32
 	ready, drag           bool
 	auto                  bool
 	lastWidth, lastHeight float32
 	x, y                  float32
+	scale                 float32
+	pinned                *mermaidEntry
 }
 
 const diagramMargin float32 = 600
@@ -214,7 +226,12 @@ func (s *diagramCanvasState) zoomAt(value, x, y float32) {
 	if value <= 0 || math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
 		return
 	}
-	value = max(.25, min(4, value))
+	// Keep the usual manual floor, but let large diagrams zoom back to Fit.
+	floor := float32(.25)
+	if s.fitZoom > 0 {
+		floor = min(floor, s.fitZoom)
+	}
+	value = max(floor, min(4, value))
 	factor := value / s.zoom
 	s.scroll.X = max(0, diagramMargin+(s.scroll.X+x-diagramMargin)*factor-x)
 	s.scroll.Y = max(0, diagramMargin+(s.scroll.Y+y-diagramMargin)*factor-y)
@@ -224,7 +241,8 @@ func (s *diagramCanvasState) zoomAt(value, x, y float32) {
 // fit centers the complete diagram, leaving 12 DIPs around its edges.
 func (s *diagramCanvasState) fit(bounds ui.Rect, result mermaid.Result) {
 	w, h := max(float32(1), bounds.W-24), max(float32(1), bounds.H-24)
-	s.zoom = max(.25, min(4, min(w/float32(result.Width), h/float32(result.Height))))
+	s.fitZoom = min(4, min(w/float32(result.Width), h/float32(result.Height)))
+	s.zoom = s.fitZoom
 	s.scroll.X = max(0, diagramMargin+float32(result.Width)*s.zoom/2-bounds.W/2)
 	s.scroll.Y = max(0, diagramMargin+float32(result.Height)*s.zoom/2-bounds.H/2)
 }
@@ -243,6 +261,19 @@ func inlineDiagramGeometry(width float32, result mermaid.Result) (float32, float
 func diagramCanvas(c *ui.Context, item *mermaidEntry, height float32, actions ...func()) {
 	root := ui.Column(c).FillWidth().Grow(1).MinHeight(0).MinWidth(0).Gap(4)
 	s := *ui.Local(root, diagramCanvasKey{}, func() *diagramCanvasState { return &diagramCanvasState{zoom: 1, auto: true} })
+	// MyGo exposes the backing scale on the painter, not the build context.
+	// Observe this window (including monitor changes) and rebuild on change.
+	services := c.Services()
+	root.Draw(func(p *ui.Painter, _ ui.Rect) {
+		if scale := p.Scale(); scale > 0 && scale != s.scale {
+			s.scale = scale
+			services.Invalidate()
+		}
+	})
+	if s.pinned != nil && s.pinned != item {
+		s.releaseDetail()
+	}
+	root.OnUnmount(s.releaseDetail)
 	if !s.ready {
 		s.ready = true
 		s.scroll.X, s.scroll.Y = diagramMargin, diagramMargin
@@ -289,88 +320,8 @@ func diagramCanvas(c *ui.Context, item *mermaidEntry, height float32, actions ..
 		}
 		ui.ScrollBoth(c).Label("Diagram viewport").Grow(1).MinHeight(0).MinWidth(0).Scrollbars(true).TrackScroll(&s.scroll).Cursor(cursor).HandleInput(s.input).Background(background).Children(func() {
 			ui.Column(c).Padding(diagramMargin).Children(func() {
-				drawDiagramImage(c, item, s.zoom)
+				s.draw(c, item, s.scroll.Bounds(c))
 			})
 		})
-	})
-}
-
-// SVGs are rasterized by MyGo; sufficiently large ones vanish above its 4096px
-// raster limit. Bounded viewBox tiles preserve detail at high zoom. Complex
-// diagrams use a capped bitmap instead of duplicating an unbounded SVG tree.
-type diagramTile struct {
-	image         *ui.SVG
-	width, height float32
-}
-
-const diagramTileSide = 192.0
-
-func diagramAttribute(svg, name, value string) (string, error) {
-	end := strings.IndexByte(svg, '>')
-	if end < 0 {
-		return "", fmt.Errorf("invalid SVG root")
-	}
-	prefix := " " + name + `="`
-	start := strings.Index(svg[:end], prefix)
-	if start < 0 {
-		return "", fmt.Errorf("missing SVG %s", name)
-	}
-	start += len(prefix)
-	finish := strings.IndexByte(svg[start:end], '"')
-	if finish < 0 {
-		return "", fmt.Errorf("invalid SVG %s", name)
-	}
-	finish += start
-	return svg[:start] + value + svg[finish:], nil
-}
-func diagramTiles(r mermaid.Result) ([][]diagramTile, error) {
-	count := int(math.Ceil(r.Width/diagramTileSide)) * int(math.Ceil(r.Height/diagramTileSide))
-	if count > 16 || count*len(r.SVG) > 4_000_000 {
-		return nil, nil
-	}
-	var rows [][]diagramTile
-	for y := 0.0; y < r.Height; y += diagramTileSide {
-		var row []diagramTile
-		for x := 0.0; x < r.Width; x += diagramTileSide {
-			w, h := min(diagramTileSide, r.Width-x), min(diagramTileSide, r.Height-y)
-			s, err := diagramAttribute(r.SVG, "viewBox", fmt.Sprintf("%g %g %g %g", x, y, w, h))
-			if err == nil {
-				s, err = diagramAttribute(s, "width", fmt.Sprintf("%g", w))
-			}
-			if err == nil {
-				s, err = diagramAttribute(s, "height", fmt.Sprintf("%g", h))
-			}
-			if err != nil {
-				return nil, err
-			}
-			img, err := ui.ParseSVG([]byte(s))
-			if err != nil {
-				return nil, err
-			}
-			row = append(row, diagramTile{img, float32(w), float32(h)})
-		}
-		rows = append(rows, row)
-	}
-	return rows, nil
-}
-func drawDiagramImage(c *ui.Context, item *mermaidEntry, zoom float32) {
-	w, h := float32(item.result.Width)*zoom, float32(item.result.Height)*zoom
-	if max(w, h) <= 768 {
-		ui.Image(c, item.image).Label("Mermaid image").Size(w, h)
-		return
-	}
-	if item.bitmap != nil {
-		ui.Image(c, item.bitmap).Size(w, h)
-		return
-	}
-	ui.Column(c).Children(func() {
-		for _, row := range item.tiles {
-			ui.Row(c).Height(row[0].height * zoom).MinHeight(row[0].height * zoom).Children(func() {
-				for _, tile := range row {
-					w, h := tile.width*zoom, tile.height*zoom
-					ui.Image(c, tile.image).Size(w, h).MinWidth(w).MinHeight(h)
-				}
-			})
-		}
 	})
 }

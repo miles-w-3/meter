@@ -75,6 +75,8 @@ type paneDrag struct {
 type app struct {
 	hideThinking         bool
 	mermaidCache         map[string]*mermaidEntry
+	mermaidClock         uint64
+	detailJob            *mermaidEntry // at most one whole-diagram raster in flight
 	ctx                  context.Context
 	api                  *client.Client
 	window               *mygo.Window

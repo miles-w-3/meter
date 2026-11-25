@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,18 +18,33 @@ import (
 	"pi-workspace.local/workspace/internal/protocol"
 )
 
-func TestDesktopLayoutControls(t *testing.T) {
+func layoutTestClient(t *testing.T) *client.Client {
+	t.Helper()
+	var mu sync.Mutex
+	var saved protocol.Layout
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var layout protocol.Layout
-		if r.Method != http.MethodPut || r.URL.Path != "/v1/workspaces/default" || json.NewDecoder(r.Body).Decode(&layout) != nil {
+		if r.URL.Path != "/v1/workspaces/default" {
 			http.Error(w, "unexpected request", http.StatusBadRequest)
 			return
 		}
-		layout.Revision++
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Method == http.MethodPut {
+			var layout protocol.Layout
+			if json.NewDecoder(r.Body).Decode(&layout) != nil {
+				http.Error(w, "invalid layout", http.StatusBadRequest)
+				return
+			}
+			layout.Revision++
+			saved = layout
+		} else if r.Method != http.MethodGet {
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+			return
+		}
 		w.Header().Set("content-type", "application/json")
-		_ = json.NewEncoder(w).Encode(layout)
+		_ = json.NewEncoder(w).Encode(saved)
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 	data := t.TempDir()
 	endpoint, err := json.Marshal(map[string]any{
 		"port": server.Listener.Addr().(*net.TCPAddr).Port, "token": strings.Repeat("a", 64),
@@ -43,6 +59,11 @@ func TestDesktopLayoutControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return api
+}
+
+func TestDesktopLayoutControls(t *testing.T) {
+	api := layoutTestClient(t)
 	project := uuid.New()
 	other := uuid.New()
 	updates := make(chan func(), 4)
@@ -105,8 +126,13 @@ func TestDesktopLayoutControls(t *testing.T) {
 	x, y := header.X+header.W/2, header.Y+header.H/2
 	driver.Press(x, y)
 	driver.Move(x+20, y)
-	driver.Move(1180, y)
-	driver.Release(1180, y)
+	destination, ok := driver.Find("Drag New pane")
+	if !ok {
+		t.Fatal("destination pane header is missing")
+	}
+	x = destination.X + destination.W*3/4
+	driver.Move(x, y)
+	driver.Release(x, y)
 	saved()
 	if panes := orderedPanes(a.activeTab()); panes[1].Id != first {
 		t.Fatalf("drop did not reorder panes: %+v", panes)

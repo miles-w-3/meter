@@ -87,6 +87,7 @@ type app struct {
 	layout               protocol.Layout
 	catalog              protocol.Catalog
 	panes                map[uuid.UUID]*pane
+	tabScroll            ui.ScrollState
 	paneScroll           ui.ScrollState
 	selectedPane         uuid.UUID
 	selectedPaneTab      uuid.UUID
@@ -701,7 +702,7 @@ func (a *app) noteRecentHead(conversation string, entries []protocol.Entry) {
 
 func (a *app) selectProject(id uuid.UUID) {
 	a.tabEditor, a.cwdEditor = nil, nil
-	a.paneScroll.X = 0
+	a.tabScroll.X, a.paneScroll.X = 0, 0
 	a.save(func(layout *protocol.Layout) { a.restoreProjectTab(layout, id) })
 }
 

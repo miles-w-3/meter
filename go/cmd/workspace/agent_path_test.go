@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -119,5 +120,52 @@ end
 	}
 	if got := os.Getenv("METER_FISH_PROBE_ONLY"); got != "parent" {
 		t.Fatalf("probe changed parent environment: %q", got)
+	}
+}
+
+func TestDefaultGUIShell(t *testing.T) {
+	t.Run("preserves explicit shell without probing", func(t *testing.T) {
+		t.Setenv("SHELL", "/custom/shell")
+		called := false
+		err := setDefaultGUIShell(t.Context(), func(context.Context) string { called = true; return "/bin/sh" })
+		if err != nil || called || os.Getenv("SHELL") != "/custom/shell" {
+			t.Fatalf("explicit shell changed or probed: shell=%q called=%v err=%v", os.Getenv("SHELL"), called, err)
+		}
+	})
+	t.Run("probes when unset", func(t *testing.T) {
+		t.Setenv("SHELL", "")
+		if err := os.Unsetenv("SHELL"); err != nil {
+			t.Fatal(err)
+		}
+		called := false
+		err := setDefaultGUIShell(t.Context(), func(context.Context) string { called = true; return "/bin/sh" })
+		if err != nil || !called || os.Getenv("SHELL") != "/bin/sh" {
+			t.Fatalf("shell was not probed: shell=%q called=%v err=%v", os.Getenv("SHELL"), called, err)
+		}
+	})
+	t.Run("probes when empty", func(t *testing.T) {
+		t.Setenv("SHELL", "")
+		called := false
+		err := setDefaultGUIShell(t.Context(), func(context.Context) string { called = true; return "/bin/sh" })
+		if err != nil || !called || os.Getenv("SHELL") != "/bin/sh" {
+			t.Fatalf("shell was not probed: shell=%q called=%v err=%v", os.Getenv("SHELL"), called, err)
+		}
+	})
+}
+
+func TestLoginShellFallsBackToExecutableShell(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // Skip the account lookup on macOS.
+	t.Setenv("SHELL", "/bin/sh")
+	if got := loginShell(ctx); got != "/bin/sh" {
+		t.Fatalf("inherited shell = %q, want /bin/sh", got)
+	}
+	t.Setenv("SHELL", filepath.Join(t.TempDir(), "missing-shell"))
+	want := "/bin/sh"
+	if runtime.GOOS == "darwin" {
+		want = "/bin/zsh"
+	}
+	if got := loginShell(ctx); got != want {
+		t.Fatalf("fallback shell = %q, want %q", got, want)
 	}
 }

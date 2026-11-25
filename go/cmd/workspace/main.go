@@ -121,6 +121,9 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
+		if err := setDefaultGUIShell(ctx, loginShell); err != nil {
+			return err
+		}
 		info, startErr := ensureServer(ctx, api, data, useLoginPath)
 		release := bundledServer()
 		return gui.Run(ctx, api, info, data, *name, cwd, gui.BackendControls{

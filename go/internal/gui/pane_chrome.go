@@ -24,8 +24,8 @@ func (a *app) paneHeader(c *ui.Context, tab *protocol.LayoutTab, node protocol.L
 					}
 				}
 				handle := ui.Row(c.Key("handle")).Grow(1).MinWidth(0).AlignItems(ui.Center)
-				if len(panes) > 1 && !a.busy() {
-					handle.Label("Drag " + title).Cursor(ui.CursorGrab).Drag(paneDrag{tab: tab.Id, pane: node.Id})
+				if !a.busy() && (len(panes) > 1 || a.canMovePaneToAnotherTab(tab, node)) {
+					handle.Label("Drag " + title).Cursor(ui.CursorGrab).Drag(layoutDrag{tab: tab.Id, pane: node.Id})
 				}
 				titleColor := ink
 				if a.selectedPane != node.Id {

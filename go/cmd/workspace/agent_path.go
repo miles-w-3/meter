@@ -92,15 +92,30 @@ func loginShell(ctx context.Context) string {
 		record, err := exec.CommandContext(queryCtx, "/usr/bin/dscacheutil",
 			"-q", "user", "-a", "uid", strconv.Itoa(os.Getuid())).Output()
 		if err == nil {
-			if shell := accountShell(string(record)); shell != "" {
+			if shell := accountShell(string(record)); shell != "" && isExecutable(shell) {
 				return shell
 			}
 		}
 	}
-	if shell := os.Getenv("SHELL"); filepath.IsAbs(shell) {
+	if shell := os.Getenv("SHELL"); filepath.IsAbs(shell) && isExecutable(shell) {
 		return shell
 	}
-	return "/bin/zsh"
+	if runtime.GOOS == "darwin" {
+		return "/bin/zsh"
+	}
+	return "/bin/sh"
+}
+
+// MyGo's terminal reads SHELL from the GUI environment. Respect an explicit
+// choice, even when it differs from the account's configured login shell.
+func setDefaultGUIShell(ctx context.Context, probe func(context.Context) string) error {
+	if os.Getenv("SHELL") != "" {
+		return nil
+	}
+	if err := os.Setenv("SHELL", probe(ctx)); err != nil {
+		return fmt.Errorf("set GUI shell: %w", err)
+	}
+	return nil
 }
 
 func accountShell(record string) string {

@@ -406,7 +406,9 @@ func tabName(tab protocol.LayoutTab) string {
 func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *protocol.LayoutTab) {
 	closeSize := uitheme.Scale(c, uitheme.ButtonHeight(uitheme.ButtonExtraSmall))
 	ui.Row(c).Height(40).Background(sidebar).Padding(0, 2*paneGutter, 0, paneGutter).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.ScrollHorizontal(c).Grow(1).MinWidth(0).Children(func() {
+		strip := ui.ScrollHorizontal(c).Grow(1).MinWidth(0)
+		dragOver := false
+		strip.Children(func() {
 			ui.Row(c).Height(40).Gap(4).AlignItems(ui.Center).Children(func() {
 				for _, tab := range a.layout.Tabs {
 					if tab.ProjectId == nil || tab.ProjectId.String() != project.Id {
@@ -417,13 +419,17 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 					if selected {
 						// The pane surface joins the selected tab to its panes; the
 						// moss rule makes the selection legible at a glance.
-						row.Background(contentSurface).DrawOver(func(p *ui.Painter, b ui.Rect) {
+						row.Background(contentSurface).Draw(func(p *ui.Painter, b ui.Rect) {
 							p.Fill(ui.Rect{X: b.X + 10, Y: b.Y + b.H - 2, W: max(0, b.W-20), H: 2}, accent, 1)
 						})
 					}
 					row.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, tab) })
+					dragOver = a.tabDropTarget(row, tab) || dragOver
 					row.Children(func() {
 						chip := ui.ButtonBase(c).Label(tabName(tab)).Height(32).MaxWidth(200).Center().Disabled(a.busy())
+						if !a.busy() && a.hasOtherProjectTab(tab) {
+							chip.Drag(layoutDrag{tab: tab.Id}).Cursor(ui.CursorGrab)
+						}
 						chip.Children(func() {
 							color := muted
 							if selected {
@@ -448,6 +454,11 @@ func (a *app) projectHeader(c *ui.Context, project protocol.Project, active *pro
 				}
 			})
 		})
+		_, overStrip := ui.DragOver[layoutDrag](strip)
+		if dragOver || overStrip {
+			scrollDragEdge(c, strip, &a.tabScroll)
+		}
+		strip.TrackScroll(&a.tabScroll)
 		if active != nil {
 			if iconButton(c, terminalIcon, "New terminal pane", a.busy() || len(orderedPanes(active)) >= maxPanes).AlignSelf(ui.Center).Clicked() {
 				a.appendPane(active.Id, terminalPane(project.Cwd))
@@ -518,11 +529,12 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 	const gap = paneGutter
 	available := max(minPaneWidth*float32(len(panes)), width-sidebarWidth-1-float32((len(panes)+1)*gap))
 	widths := paneWidths(panes, available)
-	ui.ScrollHorizontal(c.Key(tab.Id.String())).Grow(1).MinHeight(0).MinWidth(0).
-		Scrollbars(true).TrackScroll(&a.paneScroll).Children(func() {
+	strip := ui.ScrollHorizontal(c.Key(tab.Id.String())).Grow(1).MinHeight(0).MinWidth(0).Scrollbars(true)
+	dragOver := false
+	strip.Children(func() {
 		ui.Row(c).FillHeight().Padding(12, 0).AlignItems(ui.Stretch).Children(func() {
 			for i, node := range panes {
-				a.dropGap(c, tab, panes, i, gap, widths)
+				dragOver = a.dropGap(c, tab, panes, i, gap, widths) || dragOver
 				paneWidth := widths[i]
 				if drag := a.widthDrag; drag != nil && drag.tab == tab.Id {
 					switch i {
@@ -540,6 +552,7 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					border = focusBorder
 				}
 				column.Border(1, border)
+				dragOver = a.paneDropTarget(column, tab, panes, i) || dragOver
 				if focusFirst && a.selectedPane == node.Id {
 					column.Focus(ui.FocusOptions{PreventScroll: true})
 				}
@@ -570,9 +583,13 @@ func (a *app) surface(c *ui.Context, project protocol.Project, tab *protocol.Lay
 					c.Invalidate()
 				}
 			}
-			a.dropGap(c, tab, panes, len(panes), gap, widths)
+			dragOver = a.dropGap(c, tab, panes, len(panes), gap, widths) || dragOver
 		})
 	})
+	if drag, overStrip := ui.DragOver[layoutDrag](strip); dragOver || overStrip && drag.pane != uuid.Nil && drag.tab == tab.Id {
+		scrollDragEdge(c, strip, &a.paneScroll)
+	}
+	strip.TrackScroll(&a.paneScroll)
 }
 
 func containsPane(panes []protocol.LayoutNode, id uuid.UUID) bool {
@@ -584,10 +601,10 @@ func containsPane(panes []protocol.LayoutNode, id uuid.UUID) bool {
 	return false
 }
 
-func (a *app) dropGap(c *ui.Context, tab *protocol.LayoutTab, panes []protocol.LayoutNode, slot, width int, widths []float32) {
+func (a *app) dropGap(c *ui.Context, tab *protocol.LayoutTab, panes []protocol.LayoutNode, slot, width int, widths []float32) bool {
 	target := ui.Row(c.Key(slot)).Width(float32(width)).MinWidth(float32(width)).Justify(ui.Center)
 	if a.busy() || len(panes) <= 1 {
-		return
+		return false
 	}
 	tint := ui.Transparent
 	if slot > 0 && slot < len(panes) {
@@ -597,17 +614,17 @@ func (a *app) dropGap(c *ui.Context, tab *protocol.LayoutTab, panes []protocol.L
 			tint = theme.Border
 		}
 	}
-	if drag, ok := ui.DragOver[paneDrag](target); ok && drag.tab == tab.Id {
+	drag, over := ui.DragOver[layoutDrag](target)
+	if over && drag.tab == tab.Id && drag.pane != uuid.Nil {
 		if moved := reorder(panes, drag.pane, slot); !sameOrder(panes, moved) {
 			tint = accent
 		}
 	}
 	target.Children(func() { ui.Box(c).Width(2).Radius(1).Background(tint) })
-	if drag, ok := ui.Drop[paneDrag](target); ok && drag.tab == tab.Id {
-		if moved := reorder(panes, drag.pane, slot); !sameOrder(panes, moved) {
-			a.save(func(layout *protocol.Layout) { setPanes(&layout.Tabs[tabIndex(layout, tab.Id)], moved) })
-		}
+	if drag, ok := ui.Drop[layoutDrag](target); ok && drag.tab == tab.Id && drag.pane != uuid.Nil {
+		a.reorderPane(tab.Id, panes, drag.pane, slot)
 	}
+	return over && drag.tab == tab.Id && drag.pane != uuid.Nil
 }
 
 func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.LayoutTab, node protocol.LayoutNode) {

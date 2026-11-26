@@ -44,7 +44,14 @@ export interface TakenSession {
 }
 
 /** Defines the pool of CLI processes. */
+export interface ClaudePoolStats {
+  liveProcesses: number;
+  parkedIdle: number;
+  parkedWaitingForTools: number;
+}
+
 export interface IClaudeProcessPool {
+  readonly stats: () => Effect.Effect<ClaudePoolStats>;
   /** Launch a process that lives until it is retired or the runtime is disposed. */
   readonly launch: (
     launch: ClaudeProcessLaunch,
@@ -191,6 +198,16 @@ export const makeClaudeProcessPool = Effect.gen(function* () {
     );
 
   return ClaudeProcessPool.of({
+    stats: () => locked(Effect.gen(function* () {
+      let parkedIdle = 0;
+      let parkedWaitingForTools = 0;
+      for (const [, { process }] of yield* Ref.get(parked)) {
+        if (!livePids.has(process.pid)) continue;
+        if (yield* process.isTurnActive) parkedWaitingForTools++;
+        else parkedIdle++;
+      }
+      return { liveProcesses: livePids.size, parkedIdle, parkedWaitingForTools };
+    })),
     launch: (launch) =>
       Effect.gen(function* () {
         const process = yield* launchClaudeProcess(launch, runtimeScope);

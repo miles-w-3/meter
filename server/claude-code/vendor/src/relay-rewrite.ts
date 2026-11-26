@@ -18,6 +18,10 @@
  *   import, last message:   [..., X + "\n", context + "\n", date]   (a tool result)
  *                           [context, date + "\n", text, ...]        (user text)
  *
+ * Claude Code 2.1.332 was also observed putting a date-only reminder inside
+ * an imported tool result when no account context reminder is present. A
+ * separately guarded rewrite handles that specific layout.
+ *
  * Anything it does not recognize exactly is sent as it came.
  *
  * Pure: the relay calls it with the request body as text.
@@ -82,6 +86,60 @@ const findContext = (messages: Json[]): Found | undefined => {
 };
 
 const SYSTEM_DATE_PREFIX = "Today's date is ";
+
+/**
+ * Claude Code 2.1.332 can emit a date without an account context reminder.
+ * In the one observed import layout the date is the last block of the only
+ * tool result in the final user message. Recognize only that layout: tool
+ * output is arbitrary user data, so a date-like string alone is not enough.
+ */
+const dateOnlyToolResultLayout = (messages: Json[], head: Json[]): RewriteOutcome => {
+  if (head.length !== 3 || messages.length < 3) return "unchanged";
+  const environment = textOf(head[0]);
+  const model = textOf(head[1]);
+  if (
+    !environment?.startsWith(`${REMINDER_PREFIX}# Environment\n`) ||
+    !model?.startsWith(`${REMINDER_PREFIX}You are powered by the model named `) ||
+    !model.endsWith("</system-reminder>\n") ||
+    textOf(head[2]) === undefined ||
+    isReminder(head[2])
+  ) return "unchanged";
+  const last = messages[messages.length - 1];
+  if (!isObject(last) || last["role"] !== "user" || !Array.isArray(last["content"]))
+    return "unchanged";
+  const content = last["content"];
+  if (content.length !== 1 || !isObject(content[0]) || content[0]["type"] !== "tool_result")
+    return "unchanged";
+  const result = content[0]["content"];
+  if (!Array.isArray(result) || result.length < 2) return "unchanged";
+  const date = result[result.length - 1];
+  const previous = result[result.length - 2];
+  const dateText = textOf(date);
+  const previousText = textOf(previous);
+  if (
+    !isObject(date) ||
+    Object.keys(date).some((key) => key !== "type" && key !== "text") ||
+    dateText === undefined ||
+    !/^<system-reminder>\nToday's date is \d{4}-\d{2}-\d{2}\.\n<\/system-reminder>$/.test(dateText) ||
+    !isObject(previous) ||
+    previousText === undefined ||
+    !previousText.endsWith("\n")
+  ) return "unchanged";
+  // Only move one unambiguous reminder: multiple occurrences may be tool or
+  // user content. No cache marker on the moved block is accepted here.
+  const countDates = (value: Json): number => {
+    if (Array.isArray(value)) return value.reduce<number>((n, item) => n + countDates(item), 0);
+    if (!isObject(value)) return 0;
+    return (isDate(value) ? 1 : 0) +
+      Object.values(value).reduce<number>((n, item) => n + countDates(item), 0);
+  };
+  if (countDates(messages) !== 1) return "unchanged";
+  result.pop();
+  result[result.length - 1] = { ...previous, text: previousText.slice(0, -1) };
+  head[1] = { ...(head[1] as Block), text: model.slice(0, -1) };
+  head.splice(2, 0, { ...date, text: `${dateText}\n` });
+  return "moved";
+};
 
 /** The text of a message's content, whether a string or one text block. */
 const soleText = (message: Json | undefined): string | undefined => {
@@ -214,6 +272,7 @@ const systemLayoutSessionContext = (
  */
 export const canonicalSessionContext = (
   body: string,
+  dateOverride = false,
 ): { readonly body: string; readonly outcome: RewriteOutcome } => {
   const unchanged = { body, outcome: "unchanged" as const };
   const unrecognized = { body, outcome: "unrecognized" as const };
@@ -233,7 +292,11 @@ export const canonicalSessionContext = (
   if (isObject(messages[1]) && messages[1]["role"] === "system")
     return systemLayoutSessionContext(request, messages, head) ?? unrecognized;
   const found = findContext(messages);
-  if (found === undefined) return unchanged;
+  if (found === undefined) {
+    if (!dateOverride) return unchanged;
+    const outcome = dateOnlyToolResultLayout(messages, head);
+    return outcome === "moved" ? { body: JSON.stringify(request), outcome } : unchanged;
+  }
 
   // The context and the date after it: either the last blocks of their
   // array, after a text block the CLI joined them to with a newline, or the

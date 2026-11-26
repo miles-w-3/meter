@@ -1,4 +1,5 @@
 import { mermaidCatalogTool } from "./tools/mermaid-catalog.ts";
+import { codeSearchTools } from "./tools/code-search.ts";
 import { mermaidPreview } from "./fixtures/mermaid-preview.ts";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
@@ -44,6 +45,15 @@ function fixtureProvider() {
     }
     if (prompt === "fixture:web-search" && !results.length) {
       return tool("web_search", { query: "Meter search fixture", limit: 2 });
+    }
+    if (prompt === "fixture:tool-clock") {
+      if (!results.length) return tool("bash", { command: "sleep 3" });
+      return answer();
+    }
+    if (prompt === "fixture:code-search") {
+      if (!results.length) return tool("grep", { pattern: "Needle", literal: true });
+      if (results.length === 1) return tool("find", { pattern: "*.ts" });
+      return answer();
     }
     if (prompt.includes("fixture:bash-diff")) {
       if (!results.length) return tool("bash", { command: "printf 'updated\\n' > diff-fixture.txt" });
@@ -178,7 +188,7 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
   };
   registry.install(provider === "openai-smoke"
     ? defineExtension({ name: "live-probe-tools", tools: [createReadTool(), createWriteTool()] })
-    : defineExtension({ name: "coding-tools", tools: [createReadTool(), trackedWrite, createEditTool(), trackedBash] }));
+    : defineExtension({ name: "coding-tools", tools: [createReadTool(), trackedWrite, createEditTool(), trackedBash, ...codeSearchTools()] }));
   registry.install(defineExtension({ name: "mermaid-catalog", tools: [mermaidCatalogTool()] }));
   const searchExtension = webSearch && defineExtension({ name: "web-search", tools: [webSearch.tool()] });
   let searchInstalled = false;

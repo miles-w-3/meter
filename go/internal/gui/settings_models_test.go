@@ -11,15 +11,16 @@ import (
 func TestProviderSessionLimitsShowSavedValues(t *testing.T) {
 	// 45 minutes is not one of the usual choices; a saved value still shows.
 	sessions := protocol.ProviderSessions{KeepaliveMinutes: 120, ToolWaitMinutes: 45, MaxParked: 3}
-	enabled, busy := true, false
-	p := protocol.ProviderInfo{Id: "pi-claude-cli", Name: "Claude Code", Status: protocol.ProviderInfoStatusConfigured, Enabled: &enabled, Sessions: &sessions, SessionsBusy: &busy}
+	enabled, busy, dateOverride := true, false, false
+	sessions.DateOverride = &dateOverride
+	p := protocol.ProviderInfo{Id: "pi-claude-cli", Name: "Claude Code", Status: protocol.ProviderInfoStatusConfigured, Enabled: &enabled, Sessions: &sessions, SessionsBusy: &busy, SessionStats: &protocol.ProviderSessionStats{LiveProcesses: 3, ActiveTurns: 1, ParkedIdle: 1, ParkedWaitingForTools: 1}}
 	a := &app{modelsInventory: protocol.ModelInventory{Providers: []protocol.ProviderInfo{p}}}
 	driver := ui.NewTester(func(c *ui.Context) {
 		c.SetTheme(theme)
 		a.claudePanel(c)
 	}, 640, 320)
 	driver.Frame()
-	for _, want := range []string{"Keep idle sessions", "2 hours", "Keep sessions waiting on a tool", "45 min", "Maximum parked sessions"} {
+	for _, want := range []string{"Keep idle sessions", "2 hours", "Keep sessions waiting on a tool", "45 min", "Maximum parked sessions", "Live processes: 3 · Active turns: 1", "Parked: 1 idle · 1 waiting for tool results", "Date reminder override (experimental)", "Off"} {
 		if !driver.HasText(want) {
 			t.Fatalf("missing %q: %v", want, driver.Texts())
 		}
@@ -51,7 +52,7 @@ func TestClaudeSessionControlsWarnWhenBusy(t *testing.T) {
 	a := &app{modelsInventory: protocol.ModelInventory{Providers: []protocol.ProviderInfo{p}}}
 	driver := ui.NewTester(func(c *ui.Context) { c.SetTheme(theme); a.claudePanel(c) }, 640, 320)
 	driver.Frame()
-	if !driver.HasText("Wait for active conversations, tool calls, and queued messages to finish before changing session limits.") {
+	if !driver.HasText("Wait for active conversations, tool calls, and queued messages to finish before changing session settings.") {
 		t.Fatalf("missing busy warning: %v", driver.Texts())
 	}
 	if control, ok := driver.AccessByRole(ui.RolePopUpButton, "Maximum parked sessions"); !ok || !control.Disabled {

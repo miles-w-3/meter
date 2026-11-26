@@ -251,6 +251,7 @@ export const runEpisode = Effect.fn("episode", { root: true })(function* (input:
         tools,
         traceRawWire: config.traceWireDetail === "raw",
         relay: config.relay,
+        dateOverride: config.dateOverride,
         relayDump: config.relayDump,
       })
       .pipe(

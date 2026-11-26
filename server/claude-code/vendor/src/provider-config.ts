@@ -54,6 +54,7 @@ export interface IProviderConfig {
   readonly restrictedMode: boolean;
   readonly traceWireDetail: TraceWireDetail;
   readonly relay: RelayMode;
+  readonly dateOverride?: () => boolean;
   /** `PI_CLAUDE_CLI_RELAY_DUMP`: a directory for relayed request bodies (content!). */
   readonly relayDump: Option.Option<string>;
 }

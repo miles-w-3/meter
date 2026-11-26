@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -348,5 +349,17 @@ func TestRunningStatusSweepsTheMeter(t *testing.T) {
 	}
 	if m.stepSweep(sweepTick{m.sweep.epoch}) != nil || m.sweep.active {
 		t.Fatal("the loop should stop after the run")
+	}
+}
+
+func TestRunningToolElapsedDuration(t *testing.T) {
+	var view protocol.ConversationView
+	payload := fmt.Sprintf(`{"conversationId":"1","status":"running","partial":null,"entries":[],"tools":[{"name":"bash","status":"running","startedAt":%d}]}`, time.Now().Add(-11*time.Second).UnixMilli())
+	if err := json.Unmarshal([]byte(payload), &view); err != nil {
+		t.Fatal(err)
+	}
+	blocks := blocksFor(client.State{Current: view}, map[string]bool{})
+	if len(blocks) != 1 || blocks[0].stats != "11s" {
+		t.Fatalf("running tool duration missing: %+v", blocks)
 	}
 }

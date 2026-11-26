@@ -35,6 +35,9 @@ importers:
       linkedom:
         specifier: ^0.18.15
         version: 0.18.15
+      minimatch:
+        specifier: 11.0.3
+        version: 11.0.3
       turndown:
         specifier: ^7.2.5
         version: 7.2.5

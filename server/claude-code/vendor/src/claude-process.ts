@@ -131,6 +131,7 @@ export interface ClaudeProcessLaunch {
   readonly traceRawWire: boolean;
   /** Route the CLI's API traffic through a turn relay of its own, and how. */
   readonly relay: RelayMode;
+  readonly dateOverride?: () => boolean;
   /** Where the relay writes request bodies, if anywhere. */
   readonly relayDump: Option.Option<string>;
 }
@@ -370,6 +371,7 @@ const startClaudeProcess = Effect.fnUntraced(function* (
             label: launch.cliSessionId,
             dumpRoot: Option.getOrUndefined(launch.relayDump),
             rewrite: launch.relay === "rewrite",
+            dateOverride: launch.dateOverride,
           }).pipe(
             Effect.mapError(
               (error) =>

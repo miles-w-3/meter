@@ -3,3 +3,13 @@ node_modules/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Keep the root README; ignore other untracked Markdown notes.
+*.md
+!/README.md
+
+# Generated build and local system files.
+*.bun-build
+.DS_Store
+__pycache__/
+*.py[cod]

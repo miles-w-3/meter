@@ -37,7 +37,9 @@ handlers.afterResponse({}, hookApi(1, "claude-test"));
 assert.throws(() => bridge.take("session-1"), /no trusted/, "unused mapping is cleared after response");
 try {
   opened = await openHarness(join(root, "db.sqlite"), "", undefined, { claudeEnabled: true });
-  const { harness, models } = opened;
+  const { harness, models, plugins } = opened;
+  const stats = () => plugins.get("pi-claude-cli").sessionStats();
+  assert.deepEqual(await stats(), { liveProcesses: 0, activeTurns: 0, parkedIdle: 0, parkedWaitingForTools: 0 });
   const model = models.getModels("pi-claude-cli")[0];
   assert.ok(model, "Claude provider registers models");
   const missing = await models.completeSimple(model, { messages: [{ role: "user", content: "hello", timestamp: Date.now() }] }, { sessionId: "unmapped" });
@@ -61,6 +63,7 @@ try {
   const toolEntries = await send(conversation, "tool", "tool:read", "TOOL-DONE");
   assert.ok(JSON.stringify(toolEntries).includes("TOOL-DONE"), JSON.stringify(toolEntries));
   assert.equal((await readFile(log, "utf8")).trim().split("\n").length, 1, "warm process survives tool handoff");
+  assert.deepEqual(await stats(), { liveProcesses: 1, activeTurns: 0, parkedIdle: 1, parkedWaitingForTools: 0 });
   await conversation.configure({ cwd: b }, context);
   await send(conversation, "two");
   const launches = (await readFile(log, "utf8")).trim().split("\n");
@@ -100,7 +103,7 @@ try {
   // Pool limits apply while processes run: past the cap, the longest-parked
   // conversation loses its process and its next turn launches another.
   const sessions = opened.plugins.get("pi-claude-cli").sessions;
-  assert.deepEqual(sessions.get(), { keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 3 }, "default pool limits");
+  assert.deepEqual(sessions.get(), { keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 3, dateOverride: false }, "default pool limits");
   const launched = async () => (await readFile(log, "utf8")).trim().split("\n").length;
   await sessions.set({ keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 1 });
   const base = await launched();

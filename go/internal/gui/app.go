@@ -57,6 +57,7 @@ type pane struct {
 	pendingFirst       bool
 	loading            bool
 	activity           palette.Activity
+	toolClock          bool
 	modelDraft         *protocol.SelectionInput
 	modelPicker        modelPickerState
 	queuePending       string
@@ -372,6 +373,7 @@ func (a *app) syncPanes() {
 								a.send(p, p.conversation, "prompt", false)
 							}
 							p.updateMeter(time.Now())
+							a.startToolClock(id, p)
 							if a.captureTitle(p) {
 								a.saveNewPaneTitles()
 							}
@@ -415,6 +417,36 @@ func (a *app) syncPanes() {
 // The plugin closes the PTY immediately and kills a process that ignores hangup
 // after two seconds. Keep the process alive for that asynchronous fallback,
 // including terminals closed shortly before app exit.
+// Keep live durations fresh even when a quiet tool emits no further updates.
+// Only one timer is active per pane, and it stops when the tool or pane goes away.
+func (a *app) startToolClock(id uuid.UUID, p *pane) {
+	if p.toolClock || !p.connected || a.update == nil || a.ctx == nil || a.ctx.Err() != nil {
+		return
+	}
+	active := false
+	for _, tool := range p.state.Current.Tools {
+		if tool.Status == "running" && tool.StartedAt != nil {
+			active = true
+			break
+		}
+	}
+	if !active {
+		return
+	}
+	p.toolClock = true
+	time.AfterFunc(time.Second, func() {
+		if a.ctx.Err() != nil {
+			return
+		}
+		a.update(func() {
+			p.toolClock = false
+			if a.panes[id] == p {
+				a.startToolClock(id, p)
+			}
+		})
+	})
+}
+
 func (a *app) closeTerminal(t terminalSession) {
 	_ = t.Close()
 	a.terminalCleanupUntil = time.Now().Add(2200 * time.Millisecond)

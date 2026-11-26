@@ -20,12 +20,15 @@ mkdir -p .bin
 )
 node scripts/auth-test.mjs
 node scripts/models-test.mjs
+node scripts/claude-relay-date-test.ts
 node scripts/claude-provider-test.mjs
 node scripts/claude-pool-race-test.mjs
 node scripts/claude-inventory-test.mjs
 node scripts/claude-session-guard-test.mjs
 node scripts/transcript-error-test.mjs
 node scripts/search-test.mjs
+node scripts/code-search-test.mjs
+node scripts/tool-clock-test.mjs
 node scripts/web-fetch-test.mjs
 node scripts/file-diffs-test.mjs
 node scripts/mermaid-catalog-test.mjs

@@ -797,14 +797,15 @@ type ConversationView struct {
 	Selection *Selection             `json:"selection,omitempty"`
 	Status    ConversationViewStatus `json:"status"`
 	Tools     []struct {
-		CallId  *string `json:"callId,omitempty"`
-		Command *string `json:"command,omitempty"`
-		EntryId *string `json:"entryId,omitempty"`
-		Name    string  `json:"name"`
-		Output  *string `json:"output,omitempty"`
-		Status  string  `json:"status"`
-		Target  *string `json:"target,omitempty"`
-		TaskId  *string `json:"taskId,omitempty"`
+		CallId    *string `json:"callId,omitempty"`
+		Command   *string `json:"command,omitempty"`
+		EntryId   *string `json:"entryId,omitempty"`
+		Name      string  `json:"name"`
+		Output    *string `json:"output,omitempty"`
+		StartedAt *int    `json:"startedAt,omitempty"`
+		Status    string  `json:"status"`
+		Target    *string `json:"target,omitempty"`
+		TaskId    *string `json:"taskId,omitempty"`
 	} `json:"tools"`
 }
 
@@ -1047,6 +1048,7 @@ type ProviderInfo struct {
 	Id            string                     `json:"id"`
 	Methods       []AuthMethod               `json:"methods"`
 	Name          string                     `json:"name"`
+	SessionStats  *ProviderSessionStats      `json:"sessionStats,omitempty"`
 	Sessions      *ProviderSessions          `json:"sessions,omitempty"`
 	SessionsBusy  *bool                      `json:"sessionsBusy,omitempty"`
 	Source        *string                    `json:"source,omitempty"`
@@ -1059,11 +1061,20 @@ type ProviderInfoCatalogSource string
 // ProviderInfoStatus defines model for ProviderInfo.Status.
 type ProviderInfoStatus string
 
+// ProviderSessionStats defines model for ProviderSessionStats.
+type ProviderSessionStats struct {
+	ActiveTurns           int `json:"activeTurns"`
+	LiveProcesses         int `json:"liveProcesses"`
+	ParkedIdle            int `json:"parkedIdle"`
+	ParkedWaitingForTools int `json:"parkedWaitingForTools"`
+}
+
 // ProviderSessions defines model for ProviderSessions.
 type ProviderSessions struct {
-	KeepaliveMinutes int `json:"keepaliveMinutes"`
-	MaxParked        int `json:"maxParked"`
-	ToolWaitMinutes  int `json:"toolWaitMinutes"`
+	DateOverride     *bool `json:"dateOverride,omitempty"`
+	KeepaliveMinutes int   `json:"keepaliveMinutes"`
+	MaxParked        int   `json:"maxParked"`
+	ToolWaitMinutes  int   `json:"toolWaitMinutes"`
 }
 
 // ProviderSetting defines model for ProviderSetting.

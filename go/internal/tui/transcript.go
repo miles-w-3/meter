@@ -107,7 +107,7 @@ func blocksFor(state client.State, expanded map[string]bool) []Block {
 			}
 			key = *tool.EntryId
 		}
-		blocks = append(blocks, Block{id: key, kind: toolBlock, tool: clean(tool.Name), target: clean(value(tool.Target)), status: clean(tool.Status), text: clean(value(tool.Output))})
+		blocks = append(blocks, Block{id: key, kind: toolBlock, tool: clean(tool.Name), target: clean(value(tool.Target)), status: clean(tool.Status), text: clean(value(tool.Output)), stats: theme.LiveToolStats(tool.Status, tool.StartedAt, time.Now())})
 	}
 	if partial := value(state.Current.Partial); partial != "" {
 		blocks = append(blocks, Block{id: streamingID, kind: assistantBlock, text: clean(partial)})

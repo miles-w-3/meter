@@ -121,7 +121,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := setDefaultGUIShell(ctx, loginShell); err != nil {
+		if err := setDefaultGUIShell(ctx, useLoginPath, loginShell); err != nil {
 			return err
 		}
 		info, startErr := ensureServer(ctx, api, data, useLoginPath)
@@ -289,6 +289,15 @@ func launch(ctx context.Context, data string, useLoginPath bool) error {
 	}
 	if release != "" && os.Getenv("PI_DICTATION_DIR") == "" && os.Getenv("PI_WORKSPACE_SERVER") == "" {
 		cmd.Env = append(cmd.Env, "PI_DICTATION_DIR="+filepath.Dir(release))
+	}
+	// The managed backend can live outside the bundle after redeployment.
+	// Pass the app's ripgrep path explicitly instead of resolving next to it.
+	if release != "" && os.Getenv("PI_WORKSPACE_SERVER") == "" {
+		if _, configured := os.LookupEnv("METER_RG_PATH"); !configured {
+			if rg := bundledRG(release); rg != "" {
+				cmd.Env = append(cmd.Env, "METER_RG_PATH="+rg)
+			}
+		}
 	}
 	cmd.Stdout, cmd.Stderr = logfile, logfile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

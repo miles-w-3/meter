@@ -39,6 +39,19 @@ func appClaudeCommand(binary, home string) string {
 	return ""
 }
 
+// bundledRG resolves relative to the app's server, not a redeployed managed
+// server executable, which may live in the user's data directory.
+func bundledRG(release string) string {
+	if release == "" {
+		return ""
+	}
+	rg := filepath.Join(filepath.Dir(release), "rg")
+	if isExecutable(rg) {
+		return rg
+	}
+	return ""
+}
+
 func bundledServer() string {
 	binary, err := os.Executable()
 	if err != nil {

@@ -17,6 +17,7 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled =
   let enabled = initiallyEnabled;
   let sessions = { ...initialSessions };
   let epoch = 0;
+  let activeTurns = 0;
   const catalogue = getBuiltinModels("anthropic");
   const piModel = (model: ReturnType<typeof builtinProviderModels>[number]): Model<Api> => ({ ...model, api: ID, provider: ID, baseUrl: ID });
   let models = builtinProviderModels(catalogue).map(piModel);
@@ -31,7 +32,7 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled =
   const runtime = () => loaded ??= Promise.all([
     import("./vendor/src/provider-runtime.ts"), import("./vendor/src/provider-config.ts"),
   ]).then(([module, config]) => module.startProviderRuntime(module.providerLayerWith(
-    config.providerConfigLayerWith({ poolLimits: () => config.poolLimitsFromMinutes(sessions) }),
+    config.providerConfigLayerWith({ poolLimits: () => config.poolLimitsFromMinutes(sessions), dateOverride: () => sessions.dateOverride === true }),
   )));
   const stream = (model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions) => {
     const events = createAssistantMessageEventStream();
@@ -51,6 +52,8 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled =
           if (epoch !== startedAt) void activeRuntime.retireSession(options?.sessionId);
         });
         activeRuntime.startEpisode(events, model, context, { ...options, cwd });
+        activeTurns++;
+        void events.result().then(() => { activeTurns--; });
       } catch (error) {
         const output = createEventBridge(events, model).getOutput();
         endStreamWithError(events, output, options?.signal?.aborted ? "aborted" : "error", error instanceof Error ? error.message : String(error));
@@ -93,8 +96,12 @@ export function createClaudeProvider(bridge: ClaudeCwdBridge, initiallyEnabled =
   };
   return { provider, needsConversationCwd: true, catalogSource: () => source,
     enabled: () => enabled,
+    sessionStats: async () => ({
+      ...(loaded ? await (await loaded).stats() : { liveProcesses: 0, parkedIdle: 0, parkedWaitingForTools: 0 }),
+      activeTurns,
+    }),
     sessions: {
-      get: () => ({ ...sessions }),
+      get: () => ({ ...sessions, dateOverride: sessions.dateOverride === true }),
       set: async (value: ProviderSessions) => {
         sessions = { ...value };
         if (loaded) await (await loaded).reconfigurePool();

@@ -67,6 +67,7 @@ export interface ProviderRuntime {
    */
   readonly retireSession: (piSessionId: string | undefined) => Promise<void>;
   /** Apply changed pool limits to the processes already parked. */
+  readonly stats: () => Promise<import("./claude-process-pool.ts").ClaudePoolStats>;
   readonly reconfigurePool: () => Promise<void>;
   /** End every CLI process and release the runtime. It cannot be used again. */
   readonly dispose: () => Promise<void>;
@@ -192,6 +193,7 @@ export const startProviderRuntime = <E>(
       runtime
         .runPromise(piSessionId === undefined ? retireParked : retireParkedSession(piSessionId))
         .catch(() => undefined),
+    stats: () => runtime.runPromise(Effect.flatMap(ClaudeProcessPool, (pool) => pool.stats())),
     reconfigurePool: () => runtime.runPromise(reconfigurePool),
     dispose: async () => {
       await runtime

@@ -52,11 +52,11 @@ try {
   assert.equal(status(first).status, "unconfigured");
   assert.match(status(first).externalAuth, /claude auth login/);
   await assert.rejects(readFile(count), { code: "ENOENT" });
-  assert.deepEqual(status(first).sessions, { keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 3 }, "session limit defaults");
+  assert.deepEqual(status(first).sessions, { keepaliveMinutes: 60, toolWaitMinutes: 60, maxParked: 3, dateOverride: false }, "session defaults");
   const enabled = await request("/v1/providers/pi-claude-cli", "PUT", { enabled: true });
   assert.equal(enabled.status, 200);
   assert.equal(status(enabled).enabled, true);
-  const limits = { keepaliveMinutes: 30, toolWaitMinutes: 45, maxParked: 2 };
+  const limits = { keepaliveMinutes: 30, toolWaitMinutes: 45, maxParked: 2, dateOverride: true };
   const limited = await request("/v1/providers/pi-claude-cli", "PUT", { sessions: limits });
   assert.equal(limited.status, 200, JSON.stringify(limited.value));
   assert.deepEqual(status(limited).sessions, limits);

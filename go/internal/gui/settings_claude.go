@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -62,6 +63,13 @@ func (a *app) claudePanel(c *ui.Context) {
 			return
 		}
 		a.providerStatus(c, p)
+		text(c, "Runtime activity", 13, ink).FontWeight(650)
+		if stats := p.SessionStats; stats != nil && !a.claudeStatusError {
+			text(c, fmt.Sprintf("Live processes: %d · Active turns: %d", stats.LiveProcesses, stats.ActiveTurns), 12, ink)
+			text(c, fmt.Sprintf("Parked: %d idle · %d waiting for tool results", stats.ParkedIdle, stats.ParkedWaitingForTools), 12, muted)
+		} else {
+			text(c, "Live activity unavailable.", 12, muted)
+		}
 		if p.Sessions == nil {
 			text(c, "Session settings are unavailable on this backend.", 12, muted)
 			return
@@ -70,12 +78,29 @@ func (a *app) claudePanel(c *ui.Context) {
 		if blocked {
 			ui.Row(c).FillWidth().Padding(8).Radius(6).Background(panel).Children(func() {
 				if a.claudeStatusError || p.SessionsBusy == nil {
-					text(c, "Unable to verify conversation activity. Refresh or reconnect before changing session limits.", 12, warning)
+					text(c, "Unable to verify conversation activity. Refresh or reconnect before changing session settings.", 12, warning)
 				} else {
-					text(c, "Wait for active conversations, tool calls, and queued messages to finish before changing session limits.", 12, warning)
+					text(c, "Wait for active conversations, tool calls, and queued messages to finish before changing session settings.", 12, warning)
 				}
 			})
 		}
 		a.providerSessions(c, p.Id, *p.Sessions, blocked)
+		if p.Sessions.DateOverride != nil {
+			ui.Row(c.Key("date-override")).FillWidth().AlignItems(ui.Center).Gap(12).Children(func() {
+				text(c, "Date reminder override (experimental)", 12, ink).Grow(1)
+				enabled := *p.Sessions.DateOverride
+				label := "Off"
+				if enabled {
+					label = "On"
+				}
+				if action(c, label, blocked || a.modelsLoading) {
+					next := *p.Sessions
+					value := !enabled
+					next.DateOverride = &value
+					a.setProviderSessions(p.Id, next)
+				}
+			})
+			text(c, "Moves a date-shaped reminder out of matching replayed tool results when relay rewriting is enabled. It can mistake tool output for a reminder; cache benefit is unverified.", 11, muted)
+		}
 	})
 }

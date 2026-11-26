@@ -252,7 +252,7 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 		if tool.Output != nil {
 			output = clean(*tool.Output)
 		}
-		messages = append(messages, message{id: key, label: tool.Name + " · " + tool.Status, text: output, tool: true, target: valueOrEmpty(tool.Target), toolCommand: valueOrEmpty(tool.Command)})
+		messages = append(messages, message{id: key, label: tool.Name + " · " + tool.Status, text: output, tool: true, target: valueOrEmpty(tool.Target), toolCommand: valueOrEmpty(tool.Command), stats: palette.LiveToolStats(tool.Status, tool.StartedAt, time.Now())})
 	}
 	var partialBlocks []transcriptBlock
 	if state.Current.PartialBlocks != nil {

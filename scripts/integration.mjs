@@ -176,6 +176,17 @@ async function regular() {
   assert.ok(finished.view.contextUsage.tokens > 0);
   assert.ok(finished.view.contextUsage.window > finished.view.contextUsage.tokens);
   assert.equal(await readFile(join(project, "result.txt"), "utf8"), "written by Durable\n");
+  // A quiet running tool exposes its durable start time, including on reconnect.
+  const clockConversation = await create();
+  const clockWatch = await watch(clockConversation);
+  assert.equal((await submit(clockConversation, input("fixture:tool-clock", "tool-clock"))).status, 202);
+  const clockFrame = await waitFor(clockWatch, f => f.view.tools.some(t => t.status === "running" && t.startedAt), "running tool start time");
+  const runningTool = clockFrame.view.tools.find(t => t.status === "running");
+  assert.ok(runningTool.startedAt <= Date.now() && runningTool.startedAt > Date.now() - 10_000);
+  const clockReconnect = await watch(clockConversation);
+  assert.equal(clockReconnect.frames[0].view.tools.find(t => t.taskId === runningTool.taskId)?.startedAt, runningTool.startedAt);
+  await waitFor(clockWatch, f => f.view.status === "idle" && entries(f).some(e => e.toolName === "bash"), "timed tool completed");
+  clockWatch.ws.close(); clockReconnect.ws.close();
   // Thinking is streamed and retained as distinct, ordered transcript blocks.
   const thinkingConversation = await create();
   const thinkingWatch = await watch(thinkingConversation);

@@ -57,6 +57,7 @@ type Model struct {
 	stopUntil, quitUntil          time.Time
 	stopTarget                    string
 	sweep                         sweep
+	toolClockSecond               int64
 	help                          help.Model
 	mouseHintUntil                time.Time
 	scrollbarUntil                time.Time
@@ -334,6 +335,17 @@ func (m *Model) stepSweep(msg sweepTick) tea.Cmd {
 		return nil
 	}
 	m.sweep.step++
+	// A tool can be silent for minutes, so its elapsed label must not depend
+	// on new server events. The sweep already ticks while a turn is running.
+	if second := time.Now().Unix(); second != m.toolClockSecond {
+		for _, tool := range m.state.Current.Tools {
+			if tool.Status == "running" && tool.StartedAt != nil {
+				m.toolClockSecond = second
+				m.refresh()
+				break
+			}
+		}
+	}
 	return sweepAfter(msg.epoch)
 }
 

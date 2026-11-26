@@ -346,3 +346,20 @@ func TestThinkingRendersMarkdown(t *testing.T) {
 		t.Fatal("collapsed thinking remains visible")
 	}
 }
+
+func TestRunningToolElapsedDuration(t *testing.T) {
+	p := &pane{connected: true}
+	payload := fmt.Sprintf(`{"conversationId":"1","status":"running","partial":null,"entries":[],"tools":[{"name":"bash","status":"running","startedAt":%d}]}`, time.Now().Add(-11*time.Second).UnixMilli())
+	if err := json.Unmarshal([]byte(payload), &p.state.Current); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(theme)
+		a.transcript(c, p, "1")
+	}, 600, 300)
+	driver.Frame()
+	if !driver.HasText("11s") {
+		t.Fatalf("running tool duration missing: %v", driver.Texts())
+	}
+}

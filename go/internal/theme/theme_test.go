@@ -1,6 +1,9 @@
 package theme
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestMeterCellColor(t *testing.T) {
 	tests := []struct {
@@ -26,5 +29,26 @@ func TestMeterCellColor(t *testing.T) {
 		if got := MeterCellColor(tt.cell, tt.percent); got != tt.want {
 			t.Errorf("MeterCellColor(%d, %v) = %s; want %s", tt.cell, tt.percent, got, tt.want)
 		}
+	}
+}
+
+func TestLiveToolStats(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	start := int(now.Add(-10 * time.Second).UnixMilli())
+	if got := LiveToolStats("running", &start, now.Add(-time.Millisecond)); got != "" {
+		t.Fatalf("before threshold = %q", got)
+	}
+	if got := LiveToolStats("running", &start, now); got != "10s" {
+		t.Fatalf("at threshold = %q", got)
+	}
+	if got := LiveToolStats("running", &start, now.Add(3*time.Second)); got != "13s" {
+		t.Fatalf("later = %q", got)
+	}
+	if LiveToolStats("pending", &start, now) != "" || LiveToolStats("done", &start, now) != "" || LiveToolStats("running", nil, now) != "" {
+		t.Fatal("non-running or unknown start must not show a duration")
+	}
+	future := int(now.Add(time.Second).UnixMilli())
+	if LiveToolStats("running", &future, now) != "" {
+		t.Fatal("future timestamp must not show a duration")
 	}
 }

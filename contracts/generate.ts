@@ -22,7 +22,7 @@ Object.assign(schemas.Conversation.properties!, { selection: ref("Selection") })
 Object.assign(schemas.CreateInput.properties!, { selection: ref("SelectionInput") });
 Object.assign(schemas.LayoutNode.properties!, { treePosition: ref("TreePosition"), pendingFork: ref("PendingFork") });
 Object.assign(schemas.SelectionChange.properties!, { expected: ref("Selection") });
-Object.assign(schemas.ProviderInfo.properties!, { sessions: ref("ProviderSessions") });
+Object.assign(schemas.ProviderInfo.properties!, { sessions: ref("ProviderSessions"), sessionStats: ref("ProviderSessionStats") });
 Object.assign(schemas.ProviderSetting.properties!, { sessions: ref("ProviderSessions") });
 Object.assign((schemas.ConversationView.properties!.entries as object), { items: ref("Entry") });
 Object.assign((schemas.ConversationView.properties!.queued as object), { items: ref("QueuedMessage") });

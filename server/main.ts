@@ -11,7 +11,7 @@ import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { AgentDoc, InboxDoc, LiveDoc } from "@earendil-works/pi-durable";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { Conversation, ConversationId, Cursor, EntryId } from "@earendil-works/pi-durable";
+import type { Conversation, ConversationId, Cursor, EntryId, LiveState } from "@earendil-works/pi-durable";
 import { WebSocket, WebSocketServer } from "ws";
 import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, forkInput, layout, projectInput, projectRenameInput, providerSessions, providerSetting, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
 import type { z, ZodType } from "zod";
@@ -246,16 +246,17 @@ async function inventory() {
     const enabled = plugin?.enabled?.();
     const sessions = plugin?.sessions?.get();
     const busy = sessions ? sessionsBusy : undefined;
-    if (enabled === false) return { id: item.id, name: item.name, methods, status: "unconfigured", source: "Disabled", externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy };
+    const sessionStats = enabled ? await plugin?.sessionStats?.().catch(() => undefined) : undefined;
+    if (enabled === false) return { id: item.id, name: item.name, methods, status: "unconfigured", source: "Disabled", externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy, sessionStats };
     try {
       if (plugin?.externalAuth) {
         const status = await plugin.externalAuth.status(AbortSignal.timeout(3000));
-        return { id: item.id, name: item.name, methods, ...status, externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy };
+        return { id: item.id, name: item.name, methods, ...status, externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy, sessionStats };
       }
       const check = await models.checkAuth(item.id, { signal: AbortSignal.timeout(3000) });
       return { id: item.id, name: item.name, methods, status: check ? "configured" : "unconfigured", source: check?.source, catalogSource };
     } catch {
-      return { id: item.id, name: item.name, methods, status: "unknown", externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy };
+      return { id: item.id, name: item.name, methods, status: "unknown", externalAuth, catalogSource, enabled, sessions, sessionsBusy: busy, sessionStats };
     }
   }));
   return { providers, models: models.getModels().map((item) => ({
@@ -282,7 +283,7 @@ async function changeProviderSessions(value: z.infer<typeof providerSessions>) {
   if (!plugin?.sessions) throw new Problem(404, "not_found", "Provider sessions are unavailable");
   const operation = providerSettingTail.then(async () => {
     await withSessionGate(async () => {
-      if (await conversationsBusy()) throw new Problem(409, "busy", "Wait for active conversations and queued messages to finish before changing session limits");
+      if (await conversationsBusy()) throw new Problem(409, "busy", "Wait for active conversations and queued messages to finish before changing session settings");
       const previous = plugin.sessions!.get();
       try {
         await plugin.sessions!.set(value);
@@ -707,9 +708,28 @@ async function attach(ws: WebSocket, id: string) {
   };
   let committed: EntryId | undefined;
   let usage: { tokens: number; window: number } | undefined;
+  // Task start times survive reconnects and server restarts; cache them per
+  // watch so streaming tool output doesn't query storage on every update.
+  const started = new Map<string, number>();
   const frame = async (value: typeof watch.value) => {
     const last = value.entries.at(-1)?.id;
     const projected = project(value);
+    const slots = (value.docs["pi.live"] as LiveState | undefined)?.tools?.slice(0, 24) ?? [];
+    const active = new Set<string>();
+    await Promise.all(slots.map(async (slot, index) => {
+      if (slot.status !== "running" || slot.taskId === undefined) return;
+      const id = String(slot.taskId);
+      active.add(id);
+      let timestamp = started.get(id);
+      if (timestamp === undefined) {
+        // A missing or temporarily unreadable task must not break the stream.
+        const task = await harness.getTask(slot.taskId, context).catch(() => undefined);
+        timestamp = task?.startedAt;
+        if (timestamp !== undefined) started.set(id, timestamp);
+      }
+      if (timestamp !== undefined && projected.tools[index]) projected.tools[index].startedAt = timestamp;
+    }));
+    for (const id of started.keys()) if (!active.has(id)) started.delete(id);
     const model = projected.selection?.model;
     const window = model && models.getModel(model.provider, model.modelId)?.contextWindow;
     if (window && (!usage || usage.window !== window || last !== committed)) {

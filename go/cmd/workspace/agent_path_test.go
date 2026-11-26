@@ -124,10 +124,18 @@ end
 }
 
 func TestDefaultGUIShell(t *testing.T) {
+	t.Run("Finder launch prefers account shell over inherited shell", func(t *testing.T) {
+		t.Setenv("SHELL", "/bin/zsh")
+		called := false
+		err := setDefaultGUIShell(t.Context(), true, func(context.Context) string { called = true; return "/custom/fish" })
+		if err != nil || !called || os.Getenv("SHELL") != "/custom/fish" {
+			t.Fatalf("login shell not selected: shell=%q called=%v err=%v", os.Getenv("SHELL"), called, err)
+		}
+	})
 	t.Run("preserves explicit shell without probing", func(t *testing.T) {
 		t.Setenv("SHELL", "/custom/shell")
 		called := false
-		err := setDefaultGUIShell(t.Context(), func(context.Context) string { called = true; return "/bin/sh" })
+		err := setDefaultGUIShell(t.Context(), false, func(context.Context) string { called = true; return "/bin/sh" })
 		if err != nil || called || os.Getenv("SHELL") != "/custom/shell" {
 			t.Fatalf("explicit shell changed or probed: shell=%q called=%v err=%v", os.Getenv("SHELL"), called, err)
 		}
@@ -138,7 +146,7 @@ func TestDefaultGUIShell(t *testing.T) {
 			t.Fatal(err)
 		}
 		called := false
-		err := setDefaultGUIShell(t.Context(), func(context.Context) string { called = true; return "/bin/sh" })
+		err := setDefaultGUIShell(t.Context(), false, func(context.Context) string { called = true; return "/bin/sh" })
 		if err != nil || !called || os.Getenv("SHELL") != "/bin/sh" {
 			t.Fatalf("shell was not probed: shell=%q called=%v err=%v", os.Getenv("SHELL"), called, err)
 		}
@@ -146,7 +154,7 @@ func TestDefaultGUIShell(t *testing.T) {
 	t.Run("probes when empty", func(t *testing.T) {
 		t.Setenv("SHELL", "")
 		called := false
-		err := setDefaultGUIShell(t.Context(), func(context.Context) string { called = true; return "/bin/sh" })
+		err := setDefaultGUIShell(t.Context(), false, func(context.Context) string { called = true; return "/bin/sh" })
 		if err != nil || !called || os.Getenv("SHELL") != "/bin/sh" {
 			t.Fatalf("shell was not probed: shell=%q called=%v err=%v", os.Getenv("SHELL"), called, err)
 		}

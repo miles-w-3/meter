@@ -56,12 +56,17 @@ export const providerSessions = z.strictObject({
   keepaliveMinutes: z.number().int().min(1).max(240),
   toolWaitMinutes: z.number().int().min(1).max(60),
   maxParked: z.number().int().min(1).max(8),
+  dateOverride: z.boolean().optional(),
+});
+const providerSessionStats = z.object({
+  liveProcesses: z.number().int().nonnegative(), activeTurns: z.number().int().nonnegative(),
+  parkedIdle: z.number().int().nonnegative(), parkedWaitingForTools: z.number().int().nonnegative(),
 });
 const providerInfo = z.object({
   id: z.string(), name: z.string(), methods: z.array(authMethod),
   status: z.enum(["configured", "unconfigured", "unknown"]), source: z.string().optional(),
   externalAuth: z.string().optional(), catalogSource: z.enum(["builtin", "cached", "account"]).optional(), enabled: z.boolean().optional(),
-  sessions: providerSessions.optional(), sessionsBusy: z.boolean().optional(),
+  sessions: providerSessions.optional(), sessionsBusy: z.boolean().optional(), sessionStats: providerSessionStats.optional(),
 });
 const modelInfo = z.object({
   provider: z.string(), modelId: z.string(), name: z.string(), contextWindow: z.number(),
@@ -114,7 +119,7 @@ export const historyBranch = z.object({ conversationId: opaque, parentConversati
 export const historyTree = z.object({ rootConversationId: opaque, branches: z.array(historyBranch) });
 export const historicalPath = z.object({ entries: z.array(entry), before: opaque.optional(), contextTokens: z.number().int().nonnegative() });
 export const contextUsage = z.object({ tokens: z.number().int().nonnegative(), window: z.number().int().positive() });
-const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), output: z.string().optional(), target: z.string().optional(), command: z.string().optional() });
+const tool = z.object({ callId: z.string().optional(), taskId: opaque.optional(), entryId: opaque.optional(), name: z.string(), status: z.string(), startedAt: z.number().int().nonnegative().optional(), output: z.string().optional(), target: z.string().optional(), command: z.string().optional() });
 export const queuedMessage = z.object({ id: opaque, text: z.string(), images: z.number().int().nonnegative(), mode: z.enum(["followUp", "steer"]) });
 export const view = z.object({
   conversationId: opaque, status: z.enum(["idle", "running", "failed"]),
@@ -154,5 +159,5 @@ export const models = {
   ModelRef: modelRef, Selection: selection, SelectionInput: selectionInput, SelectionChange: selectionChange, DefaultSettings: defaultSettings, Settings: settings,
   ToolSettingsChange: toolSettingsChange, SearchProviderChange: searchProviderChange, ToolsStatus: toolsStatus, SearchProviderStatus: searchProviderStatus,
   AuthMethod: authMethod, ProviderInfo: providerInfo, ModelInfo: modelInfo, ModelInventory: modelInventory, ProviderSetting: providerSetting,
-  ProviderSessions: providerSessions,
+  ProviderSessions: providerSessions, ProviderSessionStats: providerSessionStats,
 };

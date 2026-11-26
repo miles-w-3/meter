@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 )
 
 const (
@@ -72,6 +73,19 @@ func PercentLabel(percent float64) string {
 		return "<1%"
 	}
 	return fmt.Sprintf("%.0f%%", percent)
+}
+
+// LiveToolStats reports elapsed time only for a running tool at least ten
+// seconds old. Missing or future timestamps are intentionally not guessed.
+func LiveToolStats(status string, startedAt *int, now time.Time) string {
+	if status != "running" || startedAt == nil || *startedAt <= 0 {
+		return ""
+	}
+	elapsed := now.Sub(time.UnixMilli(int64(*startedAt)))
+	if elapsed < 10*time.Second {
+		return ""
+	}
+	return fmt.Sprintf("%ds", int64(elapsed/time.Second))
 }
 
 func Stats(duration, tokens *int) string {

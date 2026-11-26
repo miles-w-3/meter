@@ -106,10 +106,11 @@ func loginShell(ctx context.Context) string {
 	return "/bin/sh"
 }
 
-// MyGo's terminal reads SHELL from the GUI environment. Respect an explicit
-// choice, even when it differs from the account's configured login shell.
-func setDefaultGUIShell(ctx context.Context, probe func(context.Context) string) error {
-	if os.Getenv("SHELL") != "" {
+// MyGo's terminal reads SHELL from the GUI environment. Finder may provide a
+// stale SHELL, so prefer the account shell for Finder launches. A CLI launch
+// can intentionally supply SHELL and should retain it.
+func setDefaultGUIShell(ctx context.Context, preferLoginShell bool, probe func(context.Context) string) error {
+	if !preferLoginShell && os.Getenv("SHELL") != "" {
 		return nil
 	}
 	if err := os.Setenv("SHELL", probe(ctx)); err != nil {

@@ -24,6 +24,18 @@ app="$stage/Meter.app"
 macos="$app/Contents/MacOS"
 resources="$app/Contents/Resources"
 mkdir -p "$macos" "$resources/licenses"
+
+# Pin and verify the code-search binary; do not download executables at runtime.
+rg_version=14.1.1
+rg_asset="ripgrep-${rg_version}-aarch64-apple-darwin"
+rg_archive="$stage/$rg_asset.tar.gz"
+curl -fLsS --retry 2 "https://github.com/BurntSushi/ripgrep/releases/download/${rg_version}/${rg_asset}.tar.gz" -o "$rg_archive"
+printf '%s  %s\n' '24ad76777745fbff131c8fbc466742b011f925bfa4fffa2ded6def23b5b937be' "$rg_archive" | shasum -a 256 -c -
+tar xzf "$rg_archive" -C "$stage"
+install -m 755 "$stage/$rg_asset/rg" "$macos/rg"
+cp "$stage/$rg_asset/LICENSE-MIT" "$resources/licenses/ripgrep-MIT.txt"
+cp "$stage/$rg_asset/UNLICENSE" "$resources/licenses/ripgrep-UNLICENSE.txt"
+
 "$repo/scripts/macos-icon.sh" "$repo/go/internal/gui/assets/meter.png" "$resources/Meter.icns"
 
 parakeet_commit=2eac2e77d9c7ef8899f7a86a46e693ac5ac1a5cd

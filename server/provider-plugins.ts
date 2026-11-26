@@ -5,6 +5,7 @@ export interface ProviderSessions {
   keepaliveMinutes: number;
   toolWaitMinutes: number;
   maxParked: number;
+  dateOverride?: boolean;
 }
 
 /** Server-owned integration metadata, separate from pi-ai's provider interface. */
@@ -20,6 +21,7 @@ export interface ProviderPlugin {
   catalogSource?(): "builtin" | "cached" | "account";
   /** Session process limits; `set` applies them to running processes. */
   sessions?: { get(): ProviderSessions; set(value: ProviderSessions): Promise<void> };
+  sessionStats?(): Promise<{ liveProcesses: number; activeTurns: number; parkedIdle: number; parkedWaitingForTools: number }>;
   close(): Promise<void>;
 }
 export class ProviderPlugins {

@@ -316,6 +316,7 @@ export interface TurnRelayOptions {
   readonly dumpRoot: string | undefined;
   /** Apply the request rewrites of `src/relay-rewrite.ts`. */
   readonly rewrite: boolean;
+  readonly dateOverride?: () => boolean;
 }
 
 /**
@@ -326,6 +327,7 @@ export const startTurnRelay = ({
   label,
   dumpRoot,
   rewrite,
+  dateOverride,
 }: TurnRelayOptions): Effect.Effect<TurnRelay, Error, Scope.Scope> =>
   Effect.gen(function* () {
     const records = yield* Queue.unbounded<RelayRequestRecord>();
@@ -357,7 +359,7 @@ export const startTurnRelay = ({
         let body = await readBody(request);
         const received = body;
         if (rewrite && path === "/v1/messages") {
-          const rewritten = canonicalSessionContext(body.toString("utf8"));
+          const rewritten = canonicalSessionContext(body.toString("utf8"), dateOverride?.());
           rewriteOutcome = rewritten.outcome;
           let text = rewritten.body;
           const withSystem = injectSystemMessages(text, systemMessages);

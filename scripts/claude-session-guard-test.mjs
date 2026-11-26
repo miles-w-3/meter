@@ -32,7 +32,7 @@ try {
  assert.equal(sent.status,202,JSON.stringify(sent.value));
  const queued=await request(`/v1/conversations/${created.value.id}/messages`,"POST",{requestId:"guard-followup",mode:"followup",content:"fixture:slow"});
  assert.equal(queued.status,202,JSON.stringify(queued.value));
- const limits={keepaliveMinutes:30,toolWaitMinutes:30,maxParked:2};
+ const limits={keepaliveMinutes:30,toolWaitMinutes:30,maxParked:2,dateOverride:true};
  const attempt=await request(provider,"PUT",{sessions:limits});
  assert.equal(attempt.status,409,JSON.stringify(attempt.value));
  assert.equal(attempt.value.code,"busy");
@@ -44,6 +44,7 @@ try {
  assert.equal(accepted.status,200,JSON.stringify(accepted.value));
  const done=accepted.value.providers.find((p)=>p.id==="pi-claude-cli");
  assert.equal(done.sessionsBusy,false);
+ assert.deepEqual(done.sessionStats,{liveProcesses:0,activeTurns:0,parkedIdle:0,parkedWaitingForTools:0});
  assert.deepEqual(done.sessions,limits);
  console.log("Claude session guard: active run rejected, idle update persisted");
 } finally {

@@ -714,6 +714,7 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		a.transcript(c, p, id)
 	})
 	composerArea(c, func() {
+		a.backgroundPreview(c, p)
 		queuedMessages(c, a, p, id)
 		mode := protocol.SubmitInputMode("prompt")
 		if running {

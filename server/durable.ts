@@ -37,6 +37,7 @@ function fixtureProvider() {
     const results = messages.filter((message) => message.role === "toolResult");
     const preview = /^fixture:mermaid:(tiny|wide|tall|square|wide-data)$/.exec(prompt.trim());
     if (preview) return fauxAssistantMessage([fauxText(mermaidPreview[preview[1]])]);
+    if (prompt === "fixture:background-preview") return fauxAssistantMessage([fauxText("I've started the unit tests and a CI monitor. I'll investigate the integration failure while those run.\n\nCI reports that the integration tests failed on linux-arm64. I'm checking the timeout in the integration suite.")]);
     if (prompt === "fixture:thinking") return fauxAssistantMessage([fauxThinking("Let me consider the request and check the relevant details.\n\nFirst, I should understand what the user is asking and identify the constraints. The answer should be clear, direct, and grounded in the available information.\n\nNext, I can compare the possible approaches:\n- Keep the explanation concise.\n- Include an example where it helps.\n- Call out any uncertainty rather than making assumptions.\n\nWith those points in mind, I can put together a useful response."), fauxText("Here is the answer after considering it.")]);
     if (prompt.includes("fixture:demo")) return fauxAssistantMessage([fauxText("desktop reconnect output ".repeat(200))]);
     if (prompt.includes("fixture:slow")) return fauxAssistantMessage([fauxText("streamed model output ".repeat(45))]);

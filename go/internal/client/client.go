@@ -337,13 +337,24 @@ func (c *Client) Abort(ctx context.Context, id, target string) error {
 	return nil
 }
 
+// Event is one step of a conversation stream. View is the whole current view,
+// rebuilt from the server's incremental updates.
 type Event struct {
 	View  *protocol.ConversationView
 	Reset bool
-	Err   error
+	// EntriesUnchanged is set only for a validated incremental frame that retains every entry.
+	EntriesUnchanged bool
+	Err              error
+	// Fatal reports an error that reconnecting cannot fix. The stream ends after it.
+	Fatal bool
 }
 
-// Subscribe reconnects until ctx is canceled. Each reconnection yields a fresh snapshot.
+// ErrViewTooLarge reports a conversation whose view the server cannot fit in
+// a stream frame even after trimming its older entries.
+var ErrViewTooLarge = errors.New("conversation view is too large to stream")
+
+// Subscribe reconnects until ctx is canceled or a fatal error ends the stream.
+// Each reconnection yields a fresh snapshot.
 func (c *Client) Subscribe(ctx context.Context, id string) <-chan Event {
 	events := make(chan Event)
 	go func() {
@@ -362,7 +373,8 @@ func (c *Client) Subscribe(ctx context.Context, id string) <-chan Event {
 				pause = 250 * time.Millisecond
 				return send(event)
 			})
-			if ctx.Err() != nil || !send(Event{Err: err}) {
+			fatal := errors.Is(err, ErrViewTooLarge)
+			if ctx.Err() != nil || !send(Event{Err: err, Fatal: fatal}) || fatal {
 				return
 			}
 			select {
@@ -397,6 +409,15 @@ func (c *Client) dialStream(ctx context.Context, path string) (*websocket.Conn, 
 	return ws, nil
 }
 
+const (
+	// maxFrameBytes matches the server's frame limit.
+	maxFrameBytes = 2_500_000
+
+	// closeViewTooLarge is the close code the server sends when a view cannot
+	// be streamed at all.
+	closeViewTooLarge = 4413
+)
+
 func (c *Client) readStream(ctx context.Context, id string, send func(Event) bool) error {
 	ws, err := c.dialStream(ctx, "/v1/conversations/"+url.PathEscape(id)+"/stream")
 	if err != nil {
@@ -405,7 +426,7 @@ func (c *Client) readStream(ctx context.Context, id string, send func(Event) boo
 	defer ws.Close()
 	stop := context.AfterFunc(ctx, func() { _ = ws.Close() })
 	defer stop()
-	ws.SetReadLimit(2_500_000)
+	ws.SetReadLimit(maxFrameBytes)
 	refreshDeadline := func() error { return ws.SetReadDeadline(time.Now().Add(23 * time.Second)) }
 	_ = refreshDeadline()
 	ping := ws.PingHandler()
@@ -413,13 +434,16 @@ func (c *Client) readStream(ctx context.Context, id string, send func(Event) boo
 		_ = refreshDeadline()
 		return ping(s)
 	})
-	var order frameOrder
+	order := frameOrder{id: id}
 	for {
-		var raw protocol.ConversationFrame
-		if err := ws.ReadJSON(&raw); err != nil {
+		_, data, err := ws.ReadMessage()
+		if websocket.IsCloseError(err, closeViewTooLarge) {
+			return ErrViewTooLarge
+		}
+		if err != nil {
 			return err
 		}
-		event, err := order.accept(raw, id)
+		event, err := order.accept(data)
 		if err != nil {
 			return err
 		}
@@ -429,34 +453,89 @@ func (c *Client) readStream(ctx context.Context, id string, send func(Event) boo
 	}
 }
 
-type frameOrder struct {
-	boot string
-	seq  int
+// streamFrame decodes either kind of ConversationFrame in one pass. Drop and
+// Keep are zero in snapshots.
+type streamFrame struct {
+	Type       string                    `json:"type"`
+	Generation string                    `json:"generation"`
+	Revision   int                       `json:"revision"`
+	Drop       int                       `json:"drop"`
+	Keep       int                       `json:"keep"`
+	View       protocol.ConversationView `json:"view"`
 }
 
-func (o *frameOrder) accept(raw protocol.ConversationFrame, id string) (Event, error) {
-	decoded, err := raw.ValueByDiscriminator()
-	if err != nil {
+// frameOrder checks that frames continue one server generation in revision
+// order, and rebuilds each update's entries from the previous view's.
+type frameOrder struct {
+	id      string
+	boot    string
+	seq     int
+	entries []protocol.Entry
+}
+
+var errStreamOrder = errors.New("conversation stream revision changed")
+
+func (o *frameOrder) accept(data []byte) (Event, error) {
+	var frame streamFrame
+	if err := json.Unmarshal(data, &frame); err != nil {
 		return Event{}, err
 	}
-	switch frame := decoded.(type) {
-	case protocol.ConversationSnapshot:
-		if o.boot == "" && frame.Revision == 0 && frame.View.ConversationId == id && frame.Generation.String() != "00000000-0000-0000-0000-000000000000" {
-			o.boot = frame.Generation.String()
-			return Event{View: &frame.View, Reset: true}, nil
+	if frame.View.ConversationId != o.id {
+		return Event{}, errStreamOrder
+	}
+	first := o.boot == ""
+	if first {
+		if frame.Type != "snapshot" || frame.Revision != 0 || frame.Generation == "" || frame.Generation == "00000000-0000-0000-0000-000000000000" {
+			return Event{}, errStreamOrder
 		}
-	case protocol.ConversationUpdate:
-		if o.boot == frame.Generation.String() && frame.View.ConversationId == id {
-			if frame.Revision <= o.seq {
-				return Event{}, nil
-			}
-			if frame.Revision == o.seq+1 {
-				o.seq = frame.Revision
-				return Event{View: &frame.View}, nil
-			}
+		o.boot = frame.Generation
+	} else {
+		if frame.Generation != o.boot {
+			return Event{}, errStreamOrder
+		}
+		if frame.Revision <= o.seq {
+			return Event{}, nil // A repeated frame.
+		}
+		if frame.Revision != o.seq+1 {
+			return Event{}, errStreamOrder
 		}
 	}
-	return Event{}, errors.New("conversation stream revision changed")
+	unchanged := false
+	switch frame.Type {
+	case "snapshot":
+		// A later snapshot replaces the view without discarding paged history.
+	case "update":
+		if first || frame.Drop < 0 || frame.Keep < 0 || frame.Drop+frame.Keep > len(o.entries) {
+			return Event{}, errStreamOrder
+		}
+		unchanged = frame.Drop == 0 && frame.Keep == len(o.entries) && len(frame.View.Entries) == 0
+		if unchanged {
+			frame.View.Entries = o.entries
+		} else {
+			entries := make([]protocol.Entry, 0, frame.Keep+len(frame.View.Entries))
+			entries = append(entries, o.entries[frame.Drop:frame.Drop+frame.Keep]...)
+			frame.View.Entries = append(entries, frame.View.Entries...)
+		}
+	default:
+		return Event{}, fmt.Errorf("unknown conversation frame %q", frame.Type)
+	}
+	if frame.View.Entries == nil {
+		frame.View.Entries = []protocol.Entry{}
+	}
+	o.seq, o.entries = frame.Revision, frame.View.Entries
+	return Event{View: &frame.View, Reset: first, EntriesUnchanged: unchanged}, nil
+}
+
+// EntryDiffs retrieves the file diffs a tool entry recorded.
+func (c *Client) EntryDiffs(ctx context.Context, conversation, entry string) (protocol.EntryDiffs, error) {
+	res, err := c.api.GetEntryDiffsWithResponse(ctx, conversation, entry)
+	if err != nil {
+		return protocol.EntryDiffs{}, err
+	}
+	if res.JSON200 == nil {
+		return protocol.EntryDiffs{}, responseError(res.StatusCode(), res.Body)
+	}
+	return *res.JSON200, nil
 }
 
 // EntryImages retrieves stored image blocks separately from streaming updates.

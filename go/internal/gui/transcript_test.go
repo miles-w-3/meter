@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/protocol"
 )
 
@@ -94,6 +95,54 @@ func TestTranscriptTableFitsAndScrollsOnResize(t *testing.T) {
 	checkFits()
 }
 
+func TestTranscriptCachesCommittedMessages(t *testing.T) {
+	view := func(texts ...string) client.Event {
+		entries := []protocol.Entry{}
+		for i, text := range texts {
+			entries = append(entries, protocol.Entry{Id: fmt.Sprint(i + 1), Kind: "pi.assistant", Text: text})
+		}
+		return client.Event{View: &protocol.ConversationView{ConversationId: "1", Entries: entries}}
+	}
+	p := &pane{connected: true}
+	p.state.Apply(view("First"))
+	a := &app{}
+	first, _ := a.committedMessages(p, &p.state)
+	again, _ := a.committedMessages(p, &p.state)
+	if len(first) != 1 || &first[0] != &again[0] {
+		t.Fatal("an unchanged state rebuilt its messages")
+	}
+	p.state.Apply(view("First", "Second"))
+	next, _ := a.committedMessages(p, &p.state)
+	if len(next) != 2 || next[1].text != "Second" {
+		t.Fatalf("new entries missing: %+v", next)
+	}
+	a.hideThinking = true
+	if hidden, _ := a.committedMessages(p, &p.state); &hidden[0] == &next[0] {
+		t.Fatal("a display setting change reused stale messages")
+	}
+}
+
+func TestToolDiffsLoadWhenTheRowIsBuilt(t *testing.T) {
+	tool, count := "bash", 1
+	p := &pane{connected: true}
+	p.state.Current.Entries = []protocol.Entry{{Id: "7", Kind: "pi.tool", Text: "done", ToolName: &tool, DiffCount: &count}}
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(theme)
+		a.transcript(c, p, "1")
+	}, 600, 300)
+	driver.Frame()
+	// Without a backend the fetch fails, and the row offers a retry.
+	if !driver.HasText("Diff unavailable · Retry") {
+		t.Fatalf("missing diff status: %v", driver.Texts())
+	}
+	p.transcriptDiffs["7"] = &transcriptDiffs{files: []fileDiff{{"notes.txt", "old\n", "new\n", true}}}
+	driver.Frame()
+	if !driver.HasText("notes.txt") || driver.HasText("Diff unavailable · Retry") {
+		t.Fatalf("loaded diff not shown: %v", driver.Texts())
+	}
+}
+
 func TestToolDiffTogglesSeparatelyFromToolOutput(t *testing.T) {
 	p := &pane{}
 	msg := message{id: "edit-1", label: "edit", target: "src/greeting.go", text: "edit completed", tool: true, diffPatch: `--- a/src/greeting.go
@@ -152,33 +201,6 @@ func TestTranscriptCacheFixture(t *testing.T) {
 	}
 	if !strings.Contains(messageStats(p.state.Current.Entries[1]), time.UnixMilli(1700000000000).Local().Format("Jan 2, 3:04 PM")) {
 		t.Fatal("timestamp missing")
-	}
-	if len(cacheNotices(p.state.Current.Entries[:1])) != 0 {
-		t.Fatal("first request must not warn")
-	}
-}
-
-func TestCacheNoticesSuppressNoiseAndReset(t *testing.T) {
-	p := func(v int) *int { return &v }
-	entry := func(id string, input, read, write int) protocol.Entry {
-		return protocol.Entry{Id: id, CacheInput: p(input), CacheRead: p(read), CacheWrite: p(write)}
-	}
-	cases := []struct {
-		name    string
-		entries []protocol.Entry
-		want    int
-	}{
-		{"unreported", []protocol.Entry{entry("1", 5000, 0, 0), entry("2", 5000, 0, 0)}, 0},
-		{"noise floor", []protocol.Entry{entry("1", 0, 0, 5000), entry("2", 1024, 3976, 0)}, 0},
-		{"miss", []protocol.Entry{entry("1", 0, 0, 5000), entry("2", 2000, 3000, 0)}, 1},
-		{"reset", []protocol.Entry{entry("1", 0, 0, 5000), {Id: "c", Kind: "pi.compaction"}, entry("2", 5000, 0, 0)}, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := len(cacheNotices(tc.entries)); got != tc.want {
-				t.Fatalf("got %d notices, want %d", got, tc.want)
-			}
-		})
 	}
 }
 
@@ -361,5 +383,33 @@ func TestRunningToolElapsedDuration(t *testing.T) {
 	driver.Frame()
 	if !driver.HasText("11s") {
 		t.Fatalf("running tool duration missing: %v", driver.Texts())
+	}
+}
+
+func TestTranscriptDisplaysRunFailure(t *testing.T) {
+	p := &pane{connected: true}
+	failure := "Run ended early"
+	p.state.Current.Status = protocol.Failed
+	p.state.Current.Failure = &failure
+	a := &app{}
+	driver := ui.NewTester(func(c *ui.Context) { c.SetTheme(theme); a.transcript(c, p, "1") }, 600, 400)
+	driver.Frame()
+	if !driver.HasText(failure) {
+		t.Fatalf("missing run failure: %v", driver.Texts())
+	}
+}
+
+func TestCommittedCacheSurvivesStreamingUpdate(t *testing.T) {
+	a := &app{}
+	p := &pane{}
+	view := protocol.ConversationView{Entries: []protocol.Entry{{Id: "1", Kind: "pi.assistant", Text: "hello"}}}
+	p.state.Apply(client.Event{View: &view})
+	first, _ := a.committedMessages(p, &p.state)
+	partial := "more"
+	view.Partial = &partial
+	p.state.Apply(client.Event{View: &view, EntriesUnchanged: true})
+	next, _ := a.committedMessages(p, &p.state)
+	if &first[0] != &next[0] {
+		t.Fatal("streaming-only update rebuilt committed transcript")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -172,7 +173,14 @@ func run(args []string) error {
 		}
 		tuiCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		app := tui.NewApp(tuiCtx, api, info, tui.Options{NoMouse: *noMouse, Transparent: *transparent, Workspace: *name}, start)
+		options := tui.Options{NoMouse: *noMouse, Transparent: *transparent, Workspace: *name}
+		if slices.Contains(info.Capabilities, "tool-settings") {
+			settingsCtx, stop := context.WithTimeout(tuiCtx, time.Second)
+			status, err := api.Tools(settingsCtx)
+			stop()
+			options.HideThinking = err == nil && status.ShowThinking != nil && !*status.ShowThinking
+		}
+		app := tui.NewApp(tuiCtx, api, info, options, start)
 		_, err = tea.NewProgram(app, tea.WithContext(tuiCtx)).Run()
 		if id := app.ConversationID(); id != "" {
 			fmt.Println("Conversation", id)
@@ -182,33 +190,26 @@ func run(args []string) error {
 	return errors.New("expected workspace gui, tui, server, or dictation")
 }
 
+// ensureServer returns the running backend, starting one if none answers.
 func ensureServer(ctx context.Context, api *client.Client, data string, useLoginPath bool) (protocol.ServerInfo, error) {
 	info, err := api.Info(ctx)
-	if err == nil {
-		return info, nil
-	}
-	if !errors.Is(err, syscall.ENOENT) && !errors.Is(err, syscall.ECONNREFUSED) {
+	if err == nil || !backendDown(err) {
 		return info, err
 	}
-	if err := launch(ctx, data, useLoginPath); err != nil {
+	// Serialize launches between clients. Without this, two clients starting
+	// at once both launch a backend and the loser, which exits because the
+	// winner holds the writer lock, would be reported as a startup crash.
+	unlock, err := lockLaunch(ctx, data)
+	if err != nil {
 		return info, err
 	}
-	deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	for {
-		info, err = api.Info(deadline)
-		if err == nil {
-			return info, nil
-		}
-		if !errors.Is(err, syscall.ENOENT) && !errors.Is(err, syscall.ECONNREFUSED) {
-			return info, err
-		}
-		select {
-		case <-deadline.Done():
-			return info, errors.New("daemon did not become ready; run workspace server logs")
-		case <-time.After(100 * time.Millisecond):
-		}
+	defer unlock()
+	// Another client may have started the backend while this one waited.
+	if info, err = api.Info(ctx); err == nil || !backendDown(err) {
+		return info, err
 	}
+	_, info, err = startServer(ctx, api, data, useLoginPath, "")
+	return info, err
 }
 
 func privateData(data string) error {
@@ -225,13 +226,15 @@ func privateData(data string) error {
 	return nil
 }
 
-func launch(ctx context.Context, data string, useLoginPath bool) error {
+// launch starts a detached backend and returns its handle. The caller owns
+// the startup wait; the backend itself keeps running after this client exits.
+func launch(ctx context.Context, data string, useLoginPath bool) (*backendChild, error) {
 	if err := privateData(data); err != nil {
-		return err
+		return nil, err
 	}
 	path, pathSource, err := agentPath(ctx, data, useLoginPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	entry := os.Getenv("PI_WORKSPACE_SERVER")
 	release := bundledServer()
@@ -244,24 +247,29 @@ func launch(ctx context.Context, data string, useLoginPath bool) error {
 		} else {
 			binary, err := os.Executable()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			entry = filepath.Join(filepath.Dir(binary), "..", "server", "main.ts")
 		}
 	}
 	entry, err = filepath.Abs(entry)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	entryInfo, err := os.Stat(entry)
 	if err != nil {
-		return fmt.Errorf("locate daemon entrypoint with PI_WORKSPACE_SERVER: %w", err)
+		return nil, fmt.Errorf("locate daemon entrypoint with PI_WORKSPACE_SERVER: %w", err)
 	}
 	logfile, err := os.OpenFile(filepath.Join(data, "server.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer logfile.Close()
+	// Remember where this child's output starts so startup errors can quote it.
+	var logStart int64
+	if stat, err := logfile.Stat(); err == nil {
+		logStart = stat.Size()
+	}
 	cmd := exec.Command(entry)
 	switch filepath.Ext(entry) {
 	case ".ts", ".mts", ".cts", ".js", ".mjs", ".cjs":
@@ -300,13 +308,22 @@ func launch(ctx context.Context, data string, useLoginPath bool) error {
 		}
 	}
 	cmd.Stdout, cmd.Stderr = logfile, logfile
+	// A new session detaches the backend from this client's terminal and
+	// process group: it is shared by every client and must outlive this one.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	// Reap a startup loser while this client is still running.
-	go func() { _ = cmd.Wait() }()
-	return nil
+	child := &backendChild{process: cmd.Process, done: make(chan struct{}), logPath: logfile.Name(), logStart: logStart}
+	// Reap the child in the background and publish its exit on done. This
+	// lets the startup wait notice a crash at once, and keeps a backend that
+	// exits while a long-lived client runs from lingering as a zombie. If this
+	// client exits first, the backend keeps running and is reparented.
+	go func() {
+		child.err = cmd.Wait()
+		close(child.done)
+	}()
+	return child, nil
 }
 
 func pathHasClaude(path string) bool {

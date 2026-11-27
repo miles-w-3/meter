@@ -23,7 +23,7 @@ func (a *app) paneSelection(p *pane) protocol.Selection {
 		return *p.state.Current.Selection
 	}
 	if p.modelDraft != nil && p.conversation == "" {
-		return protocol.Selection{Model: &p.modelDraft.Model, ThinkingLevel: protocol.SelectionThinkingLevel(p.modelDraft.ThinkingLevel)}
+		return protocol.Selection{Model: &p.modelDraft.Model, ThinkingLevel: protocol.ThinkingLevel(p.modelDraft.ThinkingLevel)}
 	}
 	if p.conversation != "" {
 		if info, ok := a.metadata(p.conversation); ok && info.Selection != nil {
@@ -31,9 +31,9 @@ func (a *app) paneSelection(p *pane) protocol.Selection {
 		}
 		return protocol.Selection{ThinkingLevel: "off"}
 	}
-	level := protocol.SelectionThinkingLevel("off")
+	level := protocol.ThinkingLevel("off")
 	if a.modelDefaults.ThinkingLevel != nil {
-		level = protocol.SelectionThinkingLevel(*a.modelDefaults.ThinkingLevel)
+		level = protocol.ThinkingLevel(*a.modelDefaults.ThinkingLevel)
 	}
 	return protocol.Selection{Model: a.modelDefaults.Model, ThinkingLevel: level}
 }
@@ -89,7 +89,7 @@ func (a *app) modelChip(c *ui.Context, node protocol.LayoutNode, p *pane, locked
 		picker.open, picker.query, picker.error, picker.index = true, "", "", 0
 		picker.scroll.Y, picker.lastQuery = 0, ""
 		picker.expected = current
-		picker.draft = protocol.SelectionInput{ThinkingLevel: protocol.SelectionInputThinkingLevel(current.ThinkingLevel)}
+		picker.draft = protocol.SelectionInput{ThinkingLevel: protocol.ThinkingLevel(current.ThinkingLevel)}
 		if current.Model != nil {
 			picker.draft.Model = *current.Model
 		}
@@ -131,10 +131,10 @@ func (a *app) matchingModels(query string) []protocol.ModelInfo {
 
 func (a *app) choosePickerModel(picker *modelPickerState, model protocol.ModelInfo) {
 	picker.draft.Model = protocol.ModelRef{Provider: model.Provider, ModelId: model.ModelId}
-	if !slices.Contains(model.ThinkingLevels, protocol.ModelInfoThinkingLevels(picker.draft.ThinkingLevel)) {
+	if !slices.Contains(model.ThinkingLevels, protocol.ThinkingLevel(picker.draft.ThinkingLevel)) {
 		picker.draft.ThinkingLevel = "off"
 		if len(model.ThinkingLevels) > 0 {
-			picker.draft.ThinkingLevel = protocol.SelectionInputThinkingLevel(model.ThinkingLevels[0])
+			picker.draft.ThinkingLevel = protocol.ThinkingLevel(model.ThinkingLevels[0])
 		}
 	}
 }
@@ -223,7 +223,7 @@ func (a *app) modelPickerPanel(c *ui.Context, node protocol.LayoutNode, p *pane)
 						}
 						button.Children(func() { text(c, string(level), 11, ink) })
 						if button.Clicked() {
-							picker.draft.ThinkingLevel = protocol.SelectionInputThinkingLevel(level)
+							picker.draft.ThinkingLevel = protocol.ThinkingLevel(level)
 						}
 					}
 				})
@@ -255,7 +255,7 @@ func (a *app) applyModelSelection(node protocol.LayoutNode, p *pane) {
 	selected := picker.draft
 	if p == &a.defaultModelPane {
 		picker.pending, picker.error = true, ""
-		level := protocol.DefaultSettingsThinkingLevel(selected.ThinkingLevel)
+		level := protocol.ThinkingLevel(selected.ThinkingLevel)
 		input := protocol.DefaultSettings{Model: &selected.Model, ThinkingLevel: &level}
 		go func() {
 			updated, err := a.api.SetDefaults(a.ctx, input)
@@ -280,7 +280,7 @@ func (a *app) applyModelSelection(node protocol.LayoutNode, p *pane) {
 	}
 	id := *node.ConversationId
 	picker.pending, picker.error = true, ""
-	input := protocol.SelectionChange{Model: selected.Model, ThinkingLevel: protocol.SelectionChangeThinkingLevel(selected.ThinkingLevel), Expected: picker.expected}
+	input := protocol.SelectionChange{Model: selected.Model, ThinkingLevel: protocol.ThinkingLevel(selected.ThinkingLevel), Expected: picker.expected}
 	go func() {
 		updated, err := a.api.SetConversationModel(a.ctx, id, input)
 		a.update(func() {

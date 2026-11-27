@@ -1,6 +1,6 @@
 import { defineTool } from "@earendil-works/pi-durable";
 import { z } from "zod";
-import { searchProvider, type ToolSettings } from "../../contracts/schemas.ts";
+import { searchProvider, toolsStatus, type ToolSettings } from "../../contracts/schemas.ts";
 
 type Provider = z.infer<typeof searchProvider>;
 const result = z.object({
@@ -102,7 +102,10 @@ async function search(provider: Provider, key: string, query: string, limit: num
 }
 
 export class WebSearch {
-  private readonly health = new Map<Provider, SearchFailure>();
+  private readonly health = new Map<Provider, {
+    status: Exclude<SearchFailure["status"], "rejected">;
+    retryAt: number;
+  }>();
   private readonly keys: Record<Provider, string>;
   private readonly braveStorage: boolean;
 
@@ -118,7 +121,7 @@ export class WebSearch {
     this.braveStorage = env.BRAVE_SEARCH_STORAGE_RIGHTS === "1";
   }
 
-  status() {
+  status(): z.infer<typeof toolsStatus> {
     const settings = this.preferences();
     return {
       webFetch: settings.webFetch,
@@ -191,9 +194,10 @@ export class WebSearch {
       } catch (error) {
         canceled?.throwIfAborted();
         const failure = error instanceof SearchFailure ? error : new SearchFailure("unavailable", Date.now() + 15_000);
-        if (failure.retryAt > (this.health.get(id)?.retryAt ?? 0)) this.health.set(id, failure);
-        attempted.push(id + ": " + failure.status.replaceAll("_", " "));
-        if (failure.status === "rejected") break;
+        const { status, retryAt } = failure;
+        attempted.push(id + ": " + status.replaceAll("_", " "));
+        if (status === "rejected") break;
+        if (retryAt > (this.health.get(id)?.retryAt ?? 0)) this.health.set(id, { status, retryAt });
       }
     }
     return fail(attempted.length ? "Web search failed (" + attempted.join("; ") + ")." : "No web search providers are enabled.");

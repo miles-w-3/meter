@@ -17,7 +17,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { createHash } from "node:crypto";
 import type { z } from "zod";
-import { contextUsage, submitInput, view } from "../contracts/schemas.ts";
+import type { submitInput } from "../contracts/schemas.ts";
 
 import type { WebSearch } from "./tools/web-search.ts";
 import { webFetchTool } from "./tools/web-fetch.ts";
@@ -172,7 +172,7 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
         // Retain a diff for errors such as timeouts when the invocation still
         // permits progress; cancellation can invalidate the execution API.
         if (!context.abortSignal?.aborted && before) {
-          const after = await snapshot(root).catch(() => undefined);
+          const after = await snapshot(root, before).catch(() => undefined);
           if (after) {
             const changes = compare(before, after);
             await api.details({ computedDiffs: changes.diffs, diffIncomplete: changes.incomplete }, context).catch(() => {});
@@ -181,7 +181,7 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
         throw error;
       }
       if (!before) return { ...result, details: { computedDiffs: [], diffIncomplete: true } };
-      const after = await snapshot(root).catch(() => undefined);
+      const after = await snapshot(root, before).catch(() => undefined);
       if (!after) return { ...result, details: { computedDiffs: [], diffIncomplete: true } };
       const changes = compare(before, after);
       return { ...result, details: { computedDiffs: changes.diffs, diffIncomplete: changes.incomplete } };
@@ -410,11 +410,54 @@ export function entryText(entry: EntryRecord) {
   }).join("\n");
 }
 
+// A tool call's id, its target for display (path, command, query or URL), and
+// its input, from the assistant message that made it.
+type ToolCall = readonly [id: string, target: string | undefined, input: string];
+
+function toolCalls(entry: EntryRecord): ToolCall[] {
+  const assistant = (entry.model ?? []).findLast((message) => message.role === "assistant");
+  return (assistant?.content ?? []).flatMap((block): ToolCall[] => {
+    if (block.type !== "toolCall") return [];
+    const target = block.arguments.path ?? block.arguments.file_path ?? block.arguments.command ?? block.arguments.query ?? block.arguments.url;
+    const input = block.arguments.command;
+    return [[block.id, typeof target === "string" ? target : undefined, typeof input === "string" ? input : JSON.stringify(block.arguments, null, 2)]];
+  });
+}
+
+type ProjectedEntry = ReturnType<typeof projectEntry>;
+
+// Projects windows of entries, reusing earlier projections. Committed entries
+// do not change, so a stream watcher projects each entry once, not once per
+// update. A projection is kept while its entry stays in the window.
+export class EntryProjections {
+  #items = new Map<string, { calls: ToolCall[]; projected: ProjectedEntry }>();
+
+  project(entries: readonly EntryRecord[]) {
+    const targets = new Map<string, string>();
+    const inputs = new Map<string, string>();
+    const seen = new Set<string>();
+    const projected = entries.map((entry) => {
+      const id = String(entry.id);
+      seen.add(id);
+      let item = this.#items.get(id);
+      const calls = item?.calls ?? toolCalls(entry);
+      for (const [call, target, input] of calls) {
+        if (target !== undefined) targets.set(call, target);
+        inputs.set(call, input);
+      }
+      if (!item) {
+        item = { calls, projected: projectEntry(entry, targets, inputs) };
+        this.#items.set(id, item);
+      }
+      return item.projected;
+    });
+    for (const id of this.#items.keys()) if (!seen.has(id)) this.#items.delete(id);
+    return { projected, targets, inputs };
+  }
+}
+
 export function projectEntries(entries: readonly EntryRecord[]) {
-  const targets = new Map<string, string>();
-  const inputs = new Map<string, string>();
-  const projected = entries.map((entry) => projectEntry(entry, targets, inputs));
-  return { projected, targets, inputs };
+  return new EntryProjections().project(entries);
 }
 
 // Restore the actual user input, not its clipped transcript projection.
@@ -435,17 +478,30 @@ export function entryImages(entry: EntryRecord) {
       : []);
 }
 
+function toolDetails(entry: EntryRecord) {
+  const details = (entry.model ?? []).find((message) => message.role === "toolResult")?.details;
+  return details && typeof details === "object" ? details as Record<string, unknown> : undefined;
+}
+
+const fileDiffs = (value: unknown) => Array.isArray(value)
+  ? value.flatMap((item) => item && typeof item === "object" && typeof item.path === "string" && typeof item.before === "string" && typeof item.after === "string"
+    ? [{ path: item.path as string, before: item.before as string, after: item.after as string }] : [])
+  : [];
+
+// The diffs a tool entry recorded: the edit tool's patch, then the files the
+// write tool wrote and the files that changed during a bash call. The stream
+// carries only their count (diffCount); clients fetch them per entry.
+export function entryDiffs(entry: EntryRecord) {
+  const details = toolDetails(entry);
+  const patch = details?.patch;
+  // Preserve complete patches only: a clipped unified patch is not parseable.
+  return { patch: typeof patch === "string" && patch.length <= 100_000 ? patch : undefined, files: [...fileDiffs(details?.writeDiffs), ...fileDiffs(details?.computedDiffs)] };
+}
+
 function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: Map<string, string>) {
   const messages = entry.model ?? [];
   const assistant = messages.findLast((message) => message.role === "assistant");
   const tool = messages.find((message) => message.role === "toolResult");
-  for (const block of assistant?.content ?? []) {
-    if (block.type !== "toolCall") continue;
-    const target = block.arguments.path ?? block.arguments.file_path ?? block.arguments.command ?? block.arguments.query ?? block.arguments.url;
-    if (typeof target === "string") targets.set(block.id, target);
-    const input = block.arguments.command;
-    inputs.set(block.id, typeof input === "string" ? input : JSON.stringify(block.arguments, null, 2));
-  }
   const text = entryText(entry);
   // Match the harness's answer boundary, even if a queued run has already started.
   const finalText = entry.kind === "pi.assistant" && assistant?.content.some((block) => block.type === "text" && block.text.trim()) &&
@@ -454,6 +510,8 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: 
   const details = tool?.details;
   const diff = details && typeof details === "object" && "diff" in details && typeof details.diff === "string" ? details.diff : undefined;
   const changes = diff?.split("\n");
+  const diffs = entryDiffs(entry);
+  const diffCount = (diffs.patch === undefined ? 0 : 1) + diffs.files.length;
   return {
     id: String(entry.id), kind: entry.kind,
     blocks: assistant?.content.flatMap<{ type: "text" | "thinking"; text: string }>((block) => block.type === "text" ? [{ type: "text" as const, text: clip(block.text) }] : block.type === "thinking" && block.thinking ? [{ type: "thinking" as const, text: clip(block.thinking) }] : []),
@@ -464,13 +522,8 @@ function projectEntry(entry: EntryRecord, targets: Map<string, string>, inputs: 
     toolCallId: tool?.toolCallId,
     toolTarget: tool && targets.get(tool.toolCallId) ? clip(targets.get(tool.toolCallId)!.replace(/\s+/g, " ").trim(), 400) : undefined,
     toolCommand: tool && inputs.get(tool.toolCallId),
-    writeDiffs: details && typeof details === "object" && "writeDiffs" in details && Array.isArray(details.writeDiffs)
-      ? details.writeDiffs.flatMap((item) => item && typeof item === "object" && typeof item.path === "string" && typeof item.before === "string" && typeof item.after === "string" ? [{ path: item.path, before: item.before, after: item.after }] : []) : undefined,
-    computedDiffs: details && typeof details === "object" && "computedDiffs" in details && Array.isArray(details.computedDiffs)
-      ? details.computedDiffs.flatMap((item) => item && typeof item === "object" && typeof item.path === "string" && typeof item.before === "string" && typeof item.after === "string" ? [{ path: item.path, before: item.before, after: item.after }] : []) : undefined,
+    diffCount: diffCount || undefined,
     diffIncomplete: details && typeof details === "object" && "diffIncomplete" in details && details.diffIncomplete === true ? true : undefined,
-    // Preserve complete patches only: a clipped unified patch is not parseable.
-    diffPatch: details && typeof details === "object" && "patch" in details && typeof details.patch === "string" && details.patch.length <= 100_000 ? details.patch : undefined,
     durationMs: tool?.durationMs ?? assistant?.durationMs,
     timestamp: finalText ? assistant?.timestamp : undefined,
     cacheInput: assistant?.usage.input, cacheRead: assistant?.usage.cacheRead, cacheWrite: assistant?.usage.cacheWrite,
@@ -498,20 +551,22 @@ export function contextTokens(active: ContextView) {
   return active.messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
 }
 
-export function project(value: ConversationView, usage?: z.infer<typeof contextUsage>) {
+// The stream's view of a conversation. A stream watcher passes its own
+// EntryProjections so that each entry is projected once.
+export function project(value: ConversationView, projections = new EntryProjections()) {
   const live = value.docs["pi.live"] as LiveState | undefined;
   const partial = live?.generation?.message?.content?.flatMap((block) => block.type === "text" ? [block.text] : []).join("");
   const partialBlocks = live?.generation?.message?.content?.flatMap<{ type: "text" | "thinking"; text: string }>((block) => block.type === "text" ? [{ type: "text" as const, text: clip(block.text) }] : block.type === "thinking" && block.thinking ? [{ type: "thinking" as const, text: clip(block.thinking) }] : []);
-  const { projected, targets, inputs } = projectEntries(value.entries);
+  const { projected, targets, inputs } = projections.project(value.entries);
   const agent = value.docs["pi.agent"] as AgentState | undefined;
-  return view.parse({
+  return {
     conversationId: String(value.conversation.id), selection: { model: agent?.model ?? null, thinkingLevel: agent?.thinkingLevel ?? "off" },
     status: live?.run ? "running" : live?.runFailure ? "failed" : "idle",
     failure: live?.runFailure?.reason,
     abortTarget: live?.run && String(live.run.taskId),
     before: value.before && value.entries.length ? historyCursor(value.entries[0].id) : undefined,
     partial: partial ? clip(partial) : null, partialBlocks,
-    entries: projected, contextUsage: usage,
+    entries: projected,
     queued: ((value.docs["pi.inbox"] as InboxState | undefined)?.items ?? [])
       .filter((item) => item.mode !== "write").map((item) => {
         const blocks = typeof item.content === "string" ? [] : item.content;
@@ -522,6 +577,76 @@ export function project(value: ConversationView, usage?: z.infer<typeof contextU
       callId: slot.callId, taskId: slot.taskId === undefined ? undefined : String(slot.taskId),
       entryId: slot.entry === undefined ? undefined : String(slot.entry),
       name: slot.name, status: slot.status, output: slot.output && clip(slot.output, 2500), command: inputs.get(slot.callId), target: targets.get(slot.callId) && clip(targets.get(slot.callId)!.replace(/\s+/g, " ").trim(), 400),
+      startedAt: undefined as number | undefined,
     })) ?? [],
-  });
+  };
+}
+
+export type StreamView = ReturnType<typeof project> & { contextUsage?: { tokens: number; window: number } };
+
+// The client refuses larger stream frames too.
+export const maxFrameBytes = 2_500_000;
+
+// Encodes one client's stream frames. The first frame is a snapshot; after it,
+// each update is a change to the frame before it, keeping the entries the
+// client already holds and appending the rest. A view too large for one frame
+// is sent as a snapshot without its oldest entries, and they stay out of the
+// stream from then on: the client pages them in as older history.
+export class FrameEncoder {
+  readonly #generation: string;
+  readonly #limit: number;
+  #revision = 0;
+  #sent: string[] | undefined;
+  #floor = 0; // Entries with a lower id are left out of the stream.
+
+  constructor(generation: string, limit = maxFrameBytes) {
+    this.#generation = generation;
+    this.#limit = limit;
+  }
+
+  // The next frame, or undefined if even a view without entries does not fit.
+  next(input: StreamView) {
+    const view = this.#trim(input);
+    const ids = view.entries.map((entry) => entry.id);
+    const update = this.#sent ? this.#update(view, ids, this.#sent) : undefined;
+    const encoded = update && Buffer.byteLength(update.json) <= this.#limit ? update : this.#snapshot(view);
+    if (!encoded) return undefined;
+    this.#revision++;
+    this.#sent = encoded.ids;
+    return encoded;
+  }
+
+  #trim(view: StreamView): StreamView {
+    const floor = this.#floor;
+    if (!floor || !view.entries.length || Number(view.entries[0].id) >= floor) return view;
+    return { ...view, entries: view.entries.filter((entry) => Number(entry.id) >= floor), before: historyCursor(floor) };
+  }
+
+  #update(view: StreamView, ids: string[], sent: readonly string[]) {
+    const start = ids.length ? sent.indexOf(ids[0]) : -1;
+    const drop = start < 0 ? sent.length : start;
+    let keep = 0;
+    while (drop + keep < sent.length && keep < ids.length && sent[drop + keep] === ids[keep]) keep++;
+    const frame = { type: "update" as const, generation: this.#generation, revision: this.#revision, drop, keep, view: { ...view, entries: view.entries.slice(keep) } };
+    return { frame, json: JSON.stringify(frame), ids };
+  }
+
+  #snapshot(view: StreamView) {
+    const encode = (shown: StreamView) => {
+      const frame = { type: "snapshot" as const, generation: this.#generation, revision: this.#revision, view: shown };
+      return { frame, json: JSON.stringify(frame), ids: shown.entries.map((entry) => entry.id) };
+    };
+    const whole = encode(view);
+    const excess = Buffer.byteLength(whole.json) - this.#limit;
+    if (excess <= 0) return whole;
+    if (!view.entries.length) return undefined;
+    // Leave out the fewest oldest entries that make it fit, with a margin for the cursor.
+    let start = 0;
+    for (let over = excess + 64; start < view.entries.length && over > 0; start++) {
+      over -= Buffer.byteLength(JSON.stringify(view.entries[start])) + 1;
+    }
+    this.#floor = start < view.entries.length ? Number(view.entries[start].id) : Number(view.entries[view.entries.length - 1].id) + 1;
+    const trimmed = encode(this.#trim(view));
+    return Buffer.byteLength(trimmed.json) <= this.#limit ? trimmed : undefined;
+  }
 }

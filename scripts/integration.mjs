@@ -10,7 +10,17 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import { WebSocket } from "ws";
+import * as wire from "../contracts/schemas.ts";
 
+const responseSchemas = new Map([
+  ["GET /v1/server", wire.serverInfo],
+  ["GET /v1/catalog", wire.catalog],
+  ["GET /v1/models", wire.modelInventory],
+  ["GET /v1/settings/defaults", wire.settings],
+  ["GET /v1/settings/tools", wire.toolsStatus],
+  ["PATCH /v1/settings/tools", wire.toolsStatus],
+  ["POST /v1/conversations", wire.conversation],
+]);
 const exec = promisify(execFile);
 const transport = process.env.PI_TRANSPORT ?? "unix";
 const directory = await mkdtemp(join(tmpdir(), "pi-m1-"));
@@ -53,7 +63,15 @@ async function request(path, method = "GET", body, { drop = false, authorized = 
         const chunks = [];
         for await (const chunk of res) chunks.push(chunk);
         const text = Buffer.concat(chunks).toString("utf8");
-        resolve({ status: res.statusCode, value: text && JSON.parse(text) });
+        const value = text && JSON.parse(text);
+        const schema = res.statusCode >= 400 ? wire.problem :
+          responseSchemas.get(method + " " + path) ??
+          (method === "GET" && /^\/v1\/conversations\/[^/?]+$/.test(path) ? wire.conversation : undefined);
+        if (schema) {
+          const checked = schema.safeParse(value);
+          assert.ok(checked.success, `${method} ${path} (${res.statusCode}) violates its response contract: ${checked.error?.message}`);
+        }
+        resolve({ status: res.statusCode, value });
       } catch (error) { reject(error); }
     });
     req.on("error", reject);
@@ -93,7 +111,18 @@ async function watch(id) {
     : new WebSocket("ws://127.0.0.1:" + config.port + pathOf(id) + "/stream", { headers: config.headers });
   sockets.add(ws);
   const frames = [];
-  ws.on("message", (data) => frames.push(JSON.parse(String(data))));
+  let held = [];
+  ws.on("message", (data) => {
+    const frame = JSON.parse(String(data));
+    assert.equal(frame.revision, frames.length, "frames arrive in revision order");
+    // An update carries only appended entries; rebuild its full view as the clients do.
+    if (frame.type === "update") {
+      assert.ok(frame.drop + frame.keep <= held.length, "an update keeps only entries the client holds");
+      frame.view.entries = [...held.slice(frame.drop, frame.drop + frame.keep), ...frame.view.entries];
+    }
+    held = frame.view.entries;
+    frames.push(frame);
+  });
   ws.on("close", () => sockets.delete(ws));
   await once(ws, "open");
   await until(() => frames[0], "initial snapshot");
@@ -143,6 +172,8 @@ async function regular() {
   let server = start();
   await server.ready;
   assert.equal((await request("/v1/server")).value.id, id);
+  assert.equal((await request("/v1/models")).status, 200);
+  assert.equal((await request("/v1/settings/defaults")).status, 200);
   if (transport === "tcp") {
     assert.equal((await request("/v1/server", "GET", undefined, { authorized: false })).status, 401);
     assert.equal((await stat(join(directory, "endpoint.json"))).mode & 0o777, 0o600);
@@ -168,7 +199,10 @@ async function regular() {
   const write = entries(finished).find((entry) => entry.toolName === "write" && entry.toolSucceeded === true);
   assert.ok(write);
   assert.equal(write.toolTarget, "result.txt");
-  assert.ok(write.writeDiffs?.some(d => d.path === "result.txt" && d.after === "written by Durable\n"));
+  // The stream carries only how many diffs an entry has; their contents are fetched per entry.
+  assert.equal(write.diffCount, 1);
+  const writeDiffs = (await request(pathOf(conversation) + "/entries/" + write.id + "/diffs")).value;
+  assert.ok(writeDiffs.files.some(d => d.path === "result.txt" && d.after === "written by Durable\n"));
   assert.ok(Number.isInteger(write.durationMs));
   const stored = await request(pathOf(conversation) + "/entries/" + write.id + "/output");
   assert.equal(stored.status, 200);
@@ -210,14 +244,15 @@ async function regular() {
   const withDiff = await waitFor(diffWatch, f => f.view.status === "idle" && entries(f).some(e => e.toolName === "bash"), "bash diff");
   const bash = entries(withDiff).find(e => e.toolName === "bash");
   assert.match(bash.toolCommand, /diff-fixture/);
-  assert.deepEqual(bash.computedDiffs.find(d => d.path === "diff-fixture.txt"), { path: "diff-fixture.txt", before: "original\n", after: "updated\n" });
+  const bashDiffs = (await request(pathOf(diffConversation) + "/entries/" + bash.id + "/diffs")).value;
+  assert.deepEqual(bashDiffs.files.find(d => d.path === "diff-fixture.txt"), { path: "diff-fixture.txt", before: "original\n", after: "updated\n" });
   assert.equal((await request("/v1/settings/tools", "PATCH", { computedDiffs: false })).value.computedDiffs, false);
   await writeFile(join(project, "diff-fixture.txt"), "again\n");
   const disabledConversation = await create();
   const disabledWatch = await watch(disabledConversation);
   assert.equal((await submit(disabledConversation, input("fixture:bash-diff", "bash-diff-off"))).status, 202);
   const noDiff = await waitFor(disabledWatch, f => f.view.status === "idle" && entries(f).some(e => e.toolName === "bash"), "disabled bash diff");
-  assert.equal(entries(noDiff).find(e => e.toolName === "bash").computedDiffs, undefined);
+  assert.equal(entries(noDiff).find(e => e.toolName === "bash").diffCount, undefined);
   assert.equal(await readFile(join(project, "diff-fixture.txt"), "utf8"), "updated\n");
   diffWatch.ws.close(); disabledWatch.ws.close();
   await kill(server);
@@ -226,7 +261,8 @@ async function regular() {
   await server.ready;
   assert.equal((await request("/v1/settings/tools")).value.computedDiffs, false, "setting survives restart");
   const diffReload = await watch(diffConversation);
-  assert.deepEqual(entries(diffReload.frames[0]).find(e => e.toolName === "bash").computedDiffs, bash.computedDiffs, "diff survives restart");
+  assert.equal(entries(diffReload.frames[0]).find(e => e.toolName === "bash").diffCount, bash.diffCount);
+  assert.deepEqual((await request(pathOf(diffConversation) + "/entries/" + bash.id + "/diffs")).value, bashDiffs, "diff survives restart");
   diffReload.ws.close();
   assert.equal((await request("/v1/settings/tools", "PATCH", { computedDiffs: true })).value.computedDiffs, true);
   await recovered(conversation, active.generation, replay.value.submissionId, prompt, "Fixture completed");

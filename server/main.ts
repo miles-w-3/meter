@@ -13,9 +13,10 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Conversation, ConversationId, Cursor, EntryId, LiveState } from "@earendil-works/pi-durable";
 import { WebSocket, WebSocketServer } from "ws";
+import type * as wire from "../contracts/schemas.ts";
 import { abortInput, conversationFrame, createInput, cwdInput, defaultSettings, forkInput, layout, projectInput, projectRenameInput, providerSessions, providerSetting, selectionChange, submitInput, toolSettingsChange } from "../contracts/schemas.ts";
 import type { z, ZodType } from "zod";
-import { abortTarget, admit, completedFork, contextTokens, entryText, entryImages, entryUserMessage, forkAndAdmit, historyCursor, NavigationBusy, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
+import { abortTarget, admit, completedFork, contextTokens, entryDiffs, entryText, entryImages, entryUserMessage, EntryProjections, forkAndAdmit, FrameEncoder, historyCursor, maxFrameBytes, NavigationBusy, openHarness, project, projectEntries, RequestConflict, steerQueued, recallQueued } from "./durable.ts";
 import type { Provider } from "./durable.ts";
 
 import { WebSearch } from "./tools/web-search.ts";
@@ -148,13 +149,20 @@ async function titleFor(conversation: Conversation, id: string) {
   return title;
 }
 
-async function metadata(conversation: Conversation) {
+async function metadata(conversation: Conversation): Promise<z.infer<typeof wire.conversation>> {
   const agent = await conversation.agent(context);
   const id = String(conversation.id);
+  const cwd = agent.cwd ?? "";
   const tail = await conversation.entries({ order: "descending" }, 8, undefined, context);
   const lastActivity = tail.items.flatMap((entry) => [...(entry.model ?? [])].reverse())
     .find((message) => Number.isSafeInteger(message.timestamp) && message.timestamp >= 0)?.timestamp;
-  return { id, cwd: agent.cwd, lastActivity, title: workspaces.conversationTitle(id) ?? await titleFor(conversation, id), projectId: workspaces.projectFor(id, agent.cwd ?? ""), model: agent.model ? agent.model.provider + "/" + agent.model.modelId : "unconfigured", selection: { model: agent.model ?? null, thinkingLevel: agent.thinkingLevel } };
+  return {
+    id, cwd, lastActivity,
+    title: workspaces.conversationTitle(id) ?? await titleFor(conversation, id),
+    projectId: workspaces.projectFor(id, cwd),
+    model: agent.model ? agent.model.provider + "/" + agent.model.modelId : "unconfigured",
+    selection: { model: agent.model ?? null, thinkingLevel: agent.thinkingLevel },
+  };
 }
 
 async function canonicalCwd(cwd: string) {
@@ -198,10 +206,10 @@ function validateSelection(value: { model: { provider: string; modelId: string }
   if (!getSupportedThinkingLevels(selected).includes(value.thinkingLevel)) throw new Problem(400, "invalid_thinking", "Thinking level is not supported by this model");
 }
 
-function currentDefaults() {
+function currentDefaults(): z.infer<typeof wire.settings> {
   const saved = workspaces.defaults();
-  if (saved) return { ...saved, source: "saved" as const };
-  return { model: model ?? null, thinkingLevel: null, source: model ? provider === "fixture" ? "fixture" as const : "environment" as const : "unconfigured" as const };
+  if (saved) return { ...saved, source: "saved" };
+  return { model: model ?? null, thinkingLevel: null, source: model ? provider === "fixture" ? "fixture" : "environment" : "unconfigured" };
 }
 
 // Admission and session-limit updates share a gate. A check alone is not
@@ -233,9 +241,9 @@ async function conversationsBusy(): Promise<boolean> {
   }, context);
 }
 
-async function inventory() {
+async function inventory(): Promise<z.infer<typeof wire.modelInventory>> {
   const sessionsBusy = plugins.get(claudeProviderId)?.enabled?.() ? await conversationsBusy() : false;
-  const providers = await Promise.all(models.getProviders().map(async (item) => {
+  const providers = await Promise.all(models.getProviders().map(async (item): Promise<z.infer<typeof wire.providerInfo>> => {
     const plugin = plugins.get(item.id);
     const methods = plugin?.externalAuth ? [] : [
       ...(item.auth.apiKey ? [{ type: "api_key" as const, name: item.auth.apiKey.name, interactive: !!item.auth.apiKey.login }] : []),
@@ -305,10 +313,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (url.pathname === "/v1/server" && req.method === "GET") {
     const status = voice.status;
     return reply(res, 200, {
-      id, protocol: "v1", ready: true, provider, revision, dirty, generation, transport, dictation: status,
+      id, protocol: "v1", ready: true, provider, revision, dirty, generation, transport: tcp ? "tcp" : "unix", dictation: status,
       agentPath: process.env.PATH, agentPathSource: process.env.METER_AGENT_PATH_SOURCE,
       capabilities: status === "ready" ? [...capabilities, "dictation"] : capabilities,
-    });
+    } satisfies z.infer<typeof wire.serverInfo>);
   }
   if (stopping) throw new Problem(503, "server_stopping", "Backend is shutting down");
   if (url.pathname === "/v1/server/stop" && req.method === "POST") {
@@ -371,7 +379,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
   }
   if (url.pathname === "/v1/catalog" && req.method === "GET") {
-    const conversations = [];
+    const conversations: z.infer<typeof wire.catalog>["conversations"] = [];
     let cursor: Cursor | undefined;
     do {
       const page = await harness.commit((tx) => tx.scanConversations({ order: "descending" }, 80, cursor), context);
@@ -383,7 +391,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       }
       cursor = page.next;
     } while (cursor);
-    return reply(res, 200, { projects: workspaces.projects(), conversations });
+    return reply(res, 200, { projects: workspaces.projects(), conversations } satisfies z.infer<typeof wire.catalog>);
   }
   if (url.pathname === "/v1/directories/resolve" && req.method === "POST") {
     const { cwd } = await parseBody(req, cwdInput);
@@ -578,6 +586,16 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     if (!result) throw new Problem(404, "not_found", "Tool result not found");
     return reply(res, 200, { text: entryText(result) });
   }
+  const diffPath = url.pathname.match(/^\/v1\/conversations\/([^/]+)\/entries\/([1-9][0-9]*)\/diffs$/);
+  if (req.method === "GET" && diffPath) {
+    const id = Number(diffPath[2]) as EntryId;
+    if (!Number.isSafeInteger(id)) throw new Problem(400, "invalid_entry", "Invalid entry ID");
+    const conversation = await conversationFor(diffPath[1]);
+    const page = await conversation.entries({ minEntryId: id, maxEntryId: id }, 1, undefined, context);
+    const result = page.items.find((entry) => entry.id === id && entry.model?.some((message) => message.role === "toolResult"));
+    if (!result) throw new Problem(404, "not_found", "Tool result not found");
+    return reply(res, 200, entryDiffs(result));
+  }
   const queued = url.pathname.match(/^\/v1\/conversations\/([1-9][0-9]*)\/queue\/([1-9][0-9]*)\/(steer|recall)$/);
   if (queued && req.method === "POST") {
     const conversation = await conversationFor(queued[1]);
@@ -660,7 +678,7 @@ const server = createServer({ requestTimeout: 7000 }, (req, res) => {
       error instanceof Error && error.constructor.name === "ConversationBusy" ? new Problem(409, "busy", "Conversation already running") :
       error instanceof Error && error.constructor.name === "ConversationIdle" ? new Problem(409, "idle", "Steering requires an active run") : undefined;
     if (!known) console.error(error);
-    if (!res.headersSent) reply(res, known?.status ?? 500, { code: known?.code ?? "internal", message: known?.message ?? "Server error" });
+    if (!res.headersSent) reply(res, known?.status ?? 500, { code: known?.code ?? "internal", message: known?.message ?? "Server error" } satisfies z.infer<typeof wire.problem>);
   });
 });
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 512 });
@@ -693,19 +711,21 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
+// Validate outgoing stream frames against the contract in development and
+// tests. Release builds, compiled by Bun, skip it: one malformed entry must not
+// end every frame of a conversation.
+const strictFrames = process.env.METER_STRICT_FRAMES ? process.env.METER_STRICT_FRAMES === "1" : !process.versions.bun;
+// Close code for a view that cannot be streamed at all; the client stops retrying.
+const closeViewTooLarge = 4413;
+
 async function attach(ws: WebSocket, id: string) {
   const conversation = await conversationFor(id);
   if (ws.readyState !== WebSocket.OPEN) return;
   const watch = await conversation.watch(context, { min: 48, max: 96 });
   ws.once("close", () => { void watch.stop(); });
   if (ws.readyState !== WebSocket.OPEN) return watch.stop();
-  let revision = 0;
-  const send = (type: "snapshot" | "update", value: ReturnType<typeof project>) => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-    const frame = JSON.stringify(conversationFrame.parse({ type, generation, revision: revision++, view: value }));
-    if (Buffer.byteLength(frame) > 2_500_000 || ws.bufferedAmount > 2_500_000) return ws.terminate();
-    ws.send(frame);
-  };
+  const projections = new EntryProjections();
+  const encoder = new FrameEncoder(generation);
   let committed: EntryId | undefined;
   let usage: { tokens: number; window: number } | undefined;
   // Task start times survive reconnects and server restarts; cache them per
@@ -713,7 +733,7 @@ async function attach(ws: WebSocket, id: string) {
   const started = new Map<string, number>();
   const frame = async (value: typeof watch.value) => {
     const last = value.entries.at(-1)?.id;
-    const projected = project(value);
+    const projected = project(value, projections);
     const slots = (value.docs["pi.live"] as LiveState | undefined)?.tools?.slice(0, 24) ?? [];
     const active = new Set<string>();
     await Promise.all(slots.map(async (slot, index) => {
@@ -738,11 +758,41 @@ async function attach(ws: WebSocket, id: string) {
     } else if (!window) usage = undefined;
     return { ...projected, contextUsage: usage };
   };
-  send("snapshot", await frame(watch.value));
+  const send = (view: Awaited<ReturnType<typeof frame>>) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    // A client this far behind gets a fresh snapshot when it reconnects.
+    if (ws.bufferedAmount > maxFrameBytes) return ws.terminate();
+    const next = encoder.next(view);
+    if (!next) return ws.close(closeViewTooLarge, "Conversation view is too large to stream");
+    if (strictFrames) conversationFrame.parse(next.frame);
+    ws.send(next.json);
+  };
+  send(await frame(watch.value));
   if (ws.readyState !== WebSocket.OPEN) return watch.stop();
+  // Each update is a change to the frame before it, so build frames one at a
+  // time and in order, always from the latest value; values that arrive while a
+  // frame is being built are coalesced.
+  let latest: typeof watch.value | undefined;
+  let pumping = false;
+  const pump = async () => {
+    pumping = true;
+    try {
+      while (latest && ws.readyState === WebSocket.OPEN) {
+        const value = latest;
+        latest = undefined;
+        send(await frame(value));
+      }
+    } catch (error) {
+      console.error(error);
+      ws.close(1011, "Watch failed");
+    } finally {
+      pumping = false;
+    }
+  };
   watch.start(async (call) => {
-    if (call.kind === "value") send("update", await frame(call.value));
-    else ws.close();
+    if (call.kind !== "value") return ws.close();
+    latest = call.value;
+    if (!pumping) void pump();
   });
 }
 

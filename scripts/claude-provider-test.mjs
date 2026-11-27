@@ -8,6 +8,8 @@ import { ProviderDoc } from "@earendil-works/pi-durable";
 import { openHarness } from "../server/durable.ts";
 import { ClaudeCwdBridge } from "../server/claude-code/bridge.ts";
 import { ProviderPlugins } from "../server/provider-plugins.ts";
+// Bridge-level check of streamed tool input; runs first, on its own.
+import "./claude-tool-input-test.ts";
 
 const root = await mkdtemp(join(tmpdir(), "meter-claude-test-"));
 const a = join(root, "a"), b = join(root, "b"), log = join(root, "cwd.log"), pidFile = join(root, "claude.pid");

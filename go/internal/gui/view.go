@@ -300,17 +300,42 @@ func (a *app) runningCount(project protocol.Project) int {
 	return count
 }
 
-func (a *app) daemonPill(c *ui.Context) {
-	online := a.loaded && len(a.panes) == 0
+// daemonStatus reflects the backend's own state. Conversation streams
+// reconnect independently and report that in their panes; an empty pane has
+// no stream at all, so pane subscriptions must not decide backend health.
+func (a *app) daemonStatus() (string, ui.Color) {
+	switch {
+	case !a.backendOnline && a.backendPending != "":
+		return "Reconnecting", warning
+	case !a.backendOnline:
+		return "Backend offline", warning
+	case !a.loaded:
+		return "Connecting", warning
+	case a.streamsDown():
+		// The backend can stop between health checks; the streams notice first.
+		return "Reconnecting", warning
+	}
+	return "Local daemon", theme.Success
+}
+
+// streamsDown reports whether every pane showing a conversation has lost its
+// stream. Empty panes have no stream, so they never count as disconnected.
+func (a *app) streamsDown() bool {
+	watching := false
 	for _, p := range a.panes {
-		online = online || p.connected
+		if p.conversation == "" {
+			continue
+		}
+		if p.connected {
+			return false
+		}
+		watching = true
 	}
-	label, color := "Connecting", warning
-	if online {
-		label, color = "Local daemon", theme.Success
-	} else if a.loaded {
-		label = "Reconnecting"
-	}
+	return watching
+}
+
+func (a *app) daemonPill(c *ui.Context) {
+	label, color := a.daemonStatus()
 	if mygoui.Button(c, mygoui.ButtonOptions{
 		Label: label, Tooltip: "Backend info", Variant: mygoui.ButtonSecondary, Size: uitheme.ButtonExtraSmall,
 		Content: func() {

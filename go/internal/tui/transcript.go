@@ -11,8 +11,8 @@ import (
 	"charm.land/glamour/v2"
 	"github.com/charmbracelet/x/ansi"
 	"pi-workspace.local/workspace/internal/client"
-	"pi-workspace.local/workspace/internal/protocol"
 	"pi-workspace.local/workspace/internal/theme"
+	projection "pi-workspace.local/workspace/internal/transcript"
 )
 
 type blockKind uint8
@@ -24,7 +24,7 @@ const (
 	noticeBlock
 )
 
-const streamingID = "streaming"
+const streamingID = projection.PartialID
 const toolPreviewLines = 20
 const codeStart, codeEnd = "\uE000", "\uE001"
 
@@ -60,60 +60,60 @@ type transcript struct {
 	streamLines               []string
 }
 
-func blocksFor(state client.State, expanded map[string]bool) []Block {
-	entries := state.Entries()
-	blocks := make([]Block, 0, len(entries)+len(state.Current.Tools)+2)
-	committed := make(map[string]bool)
-	for _, entry := range entries {
-		kind := strings.TrimPrefix(entry.Kind, "pi.")
-		block := Block{id: entry.Id, text: clean(entry.Text), stats: theme.Stats(entry.DurationMs, entry.Tokens)}
+func blocksFor(state client.State, expanded map[string]bool, hideThinking bool) []Block {
+	items := projection.Build(&state, hideThinking, expanded)
+	blocks := make([]Block, 0, len(items))
+	for _, item := range items {
+		block := Block{id: item.ID, kind: noticeBlock, text: item.Text}
+		entry := item.Entry
 		switch {
-		case entry.ToolName != nil:
-			block.kind, block.tool, block.entry = toolBlock, clean(*entry.ToolName), entry.Id
-			block.target = clean(value(entry.ToolTarget))
-			block.clipped = value(entry.OutputClipped)
-			block.added, block.removed = value(entry.Added), value(entry.Removed)
-			block.diff = entry.Added != nil || entry.Removed != nil
-			if entry.ToolSucceeded != nil {
-				block.status = "✓"
-				if !*entry.ToolSucceeded {
-					block.status = "✗"
+		case item.Kind == projection.Tool:
+			block.kind, block.tool, block.target = toolBlock, item.Label, item.Target
+			if item.Live != nil {
+				block.status = item.Live.Status
+				block.stats = theme.LiveToolStats(item.Live.Status, item.Live.StartedAt, time.Now())
+			} else {
+				block.entry, block.clipped = entry.Id, value(entry.OutputClipped)
+				block.stats = theme.Stats(entry.DurationMs, entry.Tokens)
+				block.added, block.removed = value(entry.Added), value(entry.Removed)
+				block.diff = entry.Added != nil || entry.Removed != nil
+				if entry.ToolSucceeded != nil {
+					block.status = "✓"
+					if !*entry.ToolSucceeded {
+						block.status = "✗"
+					}
 				}
 			}
-			committed[entry.Id] = true
-		case kind == "user":
-			block.kind = userBlock
-		case kind == "assistant":
-			block.kind = assistantBlock
-		default:
-			block.kind = noticeBlock
-		}
-		if block.text != "" || block.kind == toolBlock {
-			blocks = append(blocks, block)
-		}
-	}
-	for i, tool := range state.Current.Tools {
-		key := fmt.Sprintf("live:%d:%s", i, value(tool.CallId))
-		if tool.TaskId != nil {
-			key = "live:" + *tool.TaskId
-		}
-		if tool.EntryId != nil {
-			if expanded[key] {
-				delete(expanded, key)
-				expanded[*tool.EntryId] = true
+		case item.Kind == projection.Message:
+			switch item.Label {
+			case "user":
+				block.kind = userBlock
+			case "assistant":
+				block.kind = assistantBlock
 			}
-			if committed[*tool.EntryId] {
-				continue
+			var sections []string
+			if entry != nil {
+				block.stats = theme.Stats(entry.DurationMs, entry.Tokens)
+				if count := value(entry.ImageCount); count > 0 {
+					sections = append(sections, plural(count, "image")+" attached")
+				}
 			}
-			key = *tool.EntryId
+			for _, part := range item.Parts {
+				content := part.Text
+				if part.Thinking {
+					content = "> Thinking\n>\n> " + strings.ReplaceAll(content, "\n", "\n> ")
+				}
+				sections = append(sections, content)
+			}
+			if item.Text != "" {
+				sections = append(sections, item.Text)
+			}
+			if item.Error != "" {
+				sections = append(sections, "Error: "+item.Error)
+			}
+			block.text = strings.Join(sections, "\n\n")
 		}
-		blocks = append(blocks, Block{id: key, kind: toolBlock, tool: clean(tool.Name), target: clean(value(tool.Target)), status: clean(tool.Status), text: clean(value(tool.Output)), stats: theme.LiveToolStats(tool.Status, tool.StartedAt, time.Now())})
-	}
-	if partial := value(state.Current.Partial); partial != "" {
-		blocks = append(blocks, Block{id: streamingID, kind: assistantBlock, text: clean(partial)})
-	}
-	if state.Current.Failure != nil && state.Current.Status == protocol.Failed {
-		blocks = append(blocks, Block{id: "failure", kind: noticeBlock, text: clean(*state.Current.Failure)})
+		blocks = append(blocks, block)
 	}
 	return blocks
 }
@@ -133,7 +133,7 @@ func (m *Model) refresh() {
 	if t.expanded == nil {
 		t.expanded = make(map[string]bool)
 	}
-	blocks := blocksFor(m.state, t.expanded)
+	blocks := blocksFor(m.state, t.expanded, m.options.HideThinking)
 	previous := t.blocks
 	bottomChanged := len(previous) == 0 && len(blocks) > 0
 	if len(previous) > 0 && len(blocks) > 0 {

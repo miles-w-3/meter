@@ -190,15 +190,22 @@ func (a *app) agentPathSettings(c *ui.Context) {
 	if a.backend.LoadAgentPath == nil || a.backend.SaveAgentPath == nil {
 		return
 	}
-	if !a.agentPathLoaded {
-		path, err := a.backend.LoadAgentPath()
-		a.agentPathSaved, a.agentPathDraft = path, path
-		if err != nil {
-			a.agentPathNotice = err.Error()
-		}
-		a.agentPathLoaded = true
+	if !a.agentPathLoaded && !a.agentPathPending && a.update != nil {
+		// Read the override off the frame; the field stays read-only until then.
+		a.agentPathPending = true
+		load := a.backend.LoadAgentPath
+		go func() {
+			path, err := load()
+			a.update(func() {
+				a.agentPathPending, a.agentPathLoaded = false, true
+				a.agentPathSaved, a.agentPathDraft = path, path
+				if err != nil {
+					a.agentPathNotice = err.Error()
+				}
+			})
+		}()
 	}
-	pending := a.backendPending != ""
+	pending := a.backendPending != "" || a.agentPathPending || !a.agentPathLoaded
 	ui.Column(c.Key("agent-path")).Gap(4).MinWidth(0).Children(func() {
 		text(c, "Agent PATH", 12, muted)
 		if source := a.backendInfo.AgentPathSource; source != nil {
@@ -218,12 +225,7 @@ func (a *app) agentPathSettings(c *ui.Context) {
 			ui.TextInputBase(c, &a.agentPathDraft).Label("Agent PATH").Placeholder("Automatic").
 				Grow(1).MinWidth(0).Padding(7, 9).Radius(6).Background(panel).ReadOnly(pending)
 			if action(c, "Save PATH", pending || a.agentPathDraft == a.agentPathSaved) {
-				if err := a.backend.SaveAgentPath(a.agentPathDraft); err != nil {
-					a.agentPathNotice = err.Error()
-				} else {
-					a.agentPathSaved = a.agentPathDraft
-					a.agentPathNotice = ""
-				}
+				a.saveAgentPath(a.agentPathDraft)
 			}
 		})
 		if a.agentPathNotice != "" {
@@ -231,6 +233,25 @@ func (a *app) agentPathSettings(c *ui.Context) {
 		}
 		text(c, "Override replaces PATH. Use colon-separated directories; blank means automatic. Restart backend to apply.", 12, muted)
 	})
+}
+
+// saveAgentPath stores the override off the frame. The callback writes it
+// atomically; the field and button stay disabled until it finishes.
+func (a *app) saveAgentPath(path string) {
+	a.agentPathPending = true
+	save := a.backend.SaveAgentPath
+	go func() {
+		err := save(path)
+		a.update(func() {
+			a.agentPathPending = false
+			if err != nil {
+				a.agentPathNotice = err.Error()
+				return
+			}
+			a.agentPathSaved = path
+			a.agentPathNotice = ""
+		})
+	}()
 }
 
 func backendField(c *ui.Context, label, value string) {

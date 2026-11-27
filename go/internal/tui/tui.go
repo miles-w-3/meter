@@ -20,6 +20,7 @@ import (
 
 type Options struct {
 	NoMouse, Transparent bool
+	HideThinking         bool
 	Workspace            string
 }
 
@@ -299,7 +300,10 @@ func (m *Model) flush(now time.Time) {
 	}
 	for _, event := range m.pending {
 		m.connected = event.View != nil
-		m.reconnecting = !m.connected && event.Err != nil
+		m.reconnecting = !m.connected && event.Err != nil && !event.Fatal
+		if event.Fatal {
+			m.notice = clean(event.Err.Error())
+		}
 		m.state.Apply(event)
 	}
 	m.pending = nil

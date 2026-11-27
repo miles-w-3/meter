@@ -14,7 +14,7 @@ mkdir -p .bin
 (
   cd go
   test -z "$(gofmt -l cmd internal)"
-  go test ./...
+  go test -race ./...
   go vet ./...
   go build -buildvcs=false -o ../.bin/workspace ./cmd/workspace
 )
@@ -26,6 +26,7 @@ node scripts/claude-pool-race-test.mjs
 node scripts/claude-inventory-test.mjs
 node scripts/claude-session-guard-test.mjs
 node scripts/transcript-error-test.mjs
+node scripts/stream-frames-test.mjs
 node scripts/search-test.mjs
 node scripts/code-search-test.mjs
 node scripts/tool-clock-test.mjs

@@ -51,7 +51,8 @@ try {
   assert.ok(tool.startedAt <= Date.now() && tool.startedAt > Date.now() - 10_000);
   const reconnected = await watch();
   assert.equal(reconnected[0].view.tools.find(item => item.taskId === tool.taskId)?.startedAt, tool.startedAt);
-  await until(() => frames.find(frame => frame.view.status === 'idle' && frame.view.entries.some(entry => entry.toolName === 'bash')), 'tool completion');
+  // Updates carry only appended entries, so look for the bash entry in any frame.
+  await until(() => frames.at(-1)?.view.status === 'idle' && frames.some(frame => frame.view.entries.some(entry => entry.toolName === 'bash')), 'tool completion');
   console.log('tool start time and reconnect tests passed');
 } finally {
   for (const ws of sockets) ws.terminate();

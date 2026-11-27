@@ -15,6 +15,7 @@ import (
 	"pi-workspace.local/workspace/internal/client"
 	"pi-workspace.local/workspace/internal/protocol"
 	palette "pi-workspace.local/workspace/internal/theme"
+	"pi-workspace.local/workspace/internal/transcript"
 )
 
 func ghost(c *ui.Context, label string, disabled bool) bool {
@@ -38,18 +39,17 @@ type fileDiff struct {
 	computed            bool
 }
 
-type transcriptBlock struct{ kind, text string }
-
 type message struct {
-	blocks                                    []transcriptBlock
+	blocks                                    []transcript.Part
 	id, label, text, target, stats, errorText string
 	diffPatch                                 string
 	toolCommand                               string
 	computed                                  []fileDiff
+	diffCount                                 int
 	diffIncomplete                            bool
 	diffLayout                                int
 	diffInline                                string
-	tool, user, cacheNotice                   bool
+	tool, user, notice                        bool
 	failed                                    bool
 	imageCount                                int
 }
@@ -101,47 +101,6 @@ func (g *transcriptScrollGuard) embedded(e ui.InputEvent, scroll *ui.ScrollState
 	return false
 }
 
-// cacheNotices estimates re-billed prompt tokens, following Pi's noise floor.
-// Entries outside the loaded history are unknown, so the first request is not compared.
-func cacheNotices(entries []protocol.Entry) map[string]string {
-	notices := make(map[string]string)
-	previous, reported := 0, false
-	model := ""
-	for _, entry := range entries {
-		if strings.Contains(entry.Kind, "compaction") || strings.Contains(entry.Kind, "branch_summary") {
-			previous, reported, model = 0, false, ""
-		}
-		if entry.CacheInput == nil || entry.CacheRead == nil || entry.CacheWrite == nil {
-			continue
-		}
-		prompt := *entry.CacheInput + *entry.CacheRead + *entry.CacheWrite
-		if prompt <= 0 {
-			continue
-		}
-		activity := *entry.CacheRead+*entry.CacheWrite > 0
-		missed := min(previous, prompt) - *entry.CacheRead
-		if previous > 0 && (reported || activity) && missed > 1024 {
-			notice := fmt.Sprintf("Possible cache miss: ~%s tokens reprocessed", formatCacheTokens(missed))
-			if model != "" && entry.CacheModel != nil && model != *entry.CacheModel {
-				notice += " · model changed"
-			}
-			notices[entry.Id] = notice
-		}
-		previous, reported = prompt, reported || activity
-		if entry.CacheModel != nil {
-			model = *entry.CacheModel
-		}
-	}
-	return notices
-}
-
-func formatCacheTokens(n int) string {
-	if n >= 1000 {
-		return fmt.Sprintf("%.1fk", float64(n)/1000)
-	}
-	return fmt.Sprint(n)
-}
-
 func messageStats(entry protocol.Entry) string {
 	stats := palette.Stats(entry.DurationMs, entry.Tokens)
 	if entry.Timestamp != nil && *entry.Timestamp > 0 {
@@ -158,8 +117,50 @@ func (a *app) transcript(c *ui.Context, p *pane, conversationID string) {
 	a.transcriptState(c, p, conversationID, &p.state, func() { a.history(p, conversationID) }, p.loading || !p.connected)
 }
 
+// Cache the projection of committed entries separately from live content.
+type transcriptKey struct {
+	state        *client.State
+	revision     uint64
+	first        *protocol.Entry
+	count        int
+	hideThinking bool
+	diffLayout   int
+	diffInline   string
+}
+type transcriptCache struct {
+	valid     bool
+	key       transcriptKey
+	messages  []message
+	completed map[string]bool
+	calls     map[string]string
+}
+
+func (a *app) committedMessages(p *pane, state *client.State) ([]message, map[string]bool) {
+	key := transcriptKey{state: state, revision: state.Revision(), count: len(state.Current.Entries), hideThinking: a.hideThinking, diffLayout: a.diffLayout, diffInline: a.diffInline}
+	if key.count > 0 {
+		key.first = &state.Current.Entries[0]
+	}
+	if p.transcriptCache.valid && p.transcriptCache.key == key {
+		return p.transcriptCache.messages, p.transcriptCache.completed
+	}
+	items, completed, calls := transcript.BuildEntries(state.Entries(), a.hideThinking)
+	messages := make([]message, 0, len(items))
+	for _, item := range items {
+		messages = append(messages, a.transcriptMessage(item))
+	}
+	p.transcriptCache = transcriptCache{valid: true, key: key, messages: messages, completed: completed, calls: calls}
+	return messages, completed
+}
+func (a *app) liveMessages(p *pane, state *client.State, completed map[string]bool) []message {
+	items := transcript.BuildLive(&state.Current, a.hideThinking, p.expandedTools, completed, p.transcriptCache.calls)
+	messages := make([]message, 0, len(items))
+	for _, item := range items {
+		messages = append(messages, a.transcriptMessage(item))
+	}
+	return messages
+}
+
 func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, state *client.State, older func(), loading bool) {
-	entries := state.Entries()
 	// A collapse during one stream must not make the next run start collapsed.
 	run := valueOrEmpty(state.Current.AbortTarget)
 	if run != p.thinkingRun {
@@ -170,104 +171,16 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 		}
 		p.thinkingRun = run
 	}
-	messages := make([]message, 0, len(entries)+len(state.Current.Tools)+1)
-	completed := make(map[string]bool)
-	notices := cacheNotices(entries)
-	for _, entry := range entries {
-		if notice := notices[entry.Id]; notice != "" {
-			messages = append(messages, message{id: "cache:" + entry.Id, text: notice, cacheNotice: true})
+	committed, completed := a.committedMessages(p, state)
+	live := a.liveMessages(p, state, completed)
+	count := len(committed) + len(live)
+	at := func(i int) message {
+		if i < len(committed) {
+			return committed[i]
 		}
-		var blocks []transcriptBlock
-		if entry.Blocks != nil {
-			for _, block := range *entry.Blocks {
-				if block.Text != "" && (!a.hideThinking || string(block.Type) != "thinking") {
-					blocks = append(blocks, transcriptBlock{string(block.Type), clean(block.Text)})
-				}
-			}
-		}
-		if entry.Text == "" && len(blocks) == 0 && entry.ToolName == nil && (entry.Error == nil || *entry.Error == "") && (entry.ImageCount == nil || *entry.ImageCount == 0) {
-			continue
-		}
-		label := strings.TrimPrefix(entry.Kind, "pi.")
-		if entry.ToolName == nil {
-			imageCount := 0
-			if entry.ImageCount != nil {
-				imageCount = *entry.ImageCount
-			}
-			errorText := ""
-			if entry.Error != nil {
-				errorText = clean(*entry.Error)
-			}
-			messages = append(messages, message{id: entry.Id, label: label, text: clean(entry.Text), blocks: blocks, errorText: errorText, user: label == "user", imageCount: imageCount,
-				stats: messageStats(entry)})
-			continue
-		}
-		completed[entry.Id] = true
-		target := ""
-		if entry.ToolTarget != nil {
-			target = clean(*entry.ToolTarget)
-		}
-		stats := ""
-		if entry.DurationMs != nil && *entry.DurationMs >= slowToolMs {
-			stats = palette.Stats(entry.DurationMs, nil)
-		}
-		patch := ""
-		if entry.DiffPatch != nil {
-			patch = *entry.DiffPatch
-		}
-		var computed []fileDiff
-		if entry.WriteDiffs != nil {
-			for _, d := range *entry.WriteDiffs {
-				computed = append(computed, fileDiff{d.Path, d.Before, d.After, true})
-			}
-		}
-		if entry.ComputedDiffs != nil {
-			for _, d := range *entry.ComputedDiffs {
-				computed = append(computed, fileDiff{d.Path, d.Before, d.After, true})
-			}
-		}
-		messages = append(messages, message{id: entry.Id, label: *entry.ToolName, text: clean(entry.Text), tool: true,
-			target: target, stats: stats, toolCommand: valueOrEmpty(entry.ToolCommand), diffPatch: patch, computed: computed, diffIncomplete: entry.DiffIncomplete != nil && *entry.DiffIncomplete,
-			diffLayout: a.diffLayout, diffInline: a.diffInline, failed: entry.ToolSucceeded != nil && !*entry.ToolSucceeded})
+		return live[i-len(committed)]
 	}
-	for i, tool := range state.Current.Tools {
-		key := fmt.Sprintf("live:%s:%d", tool.Name, i)
-		if tool.CallId != nil {
-			key = "call:" + *tool.CallId
-		}
-		if tool.TaskId != nil {
-			key = "tool:" + *tool.TaskId
-		}
-		if tool.EntryId != nil {
-			if p.expandedTools[key] {
-				p.expandedTools[*tool.EntryId] = true
-				delete(p.expandedTools, key)
-			}
-			key = *tool.EntryId
-			if completed[key] {
-				continue
-			}
-		}
-		output := ""
-		if tool.Output != nil {
-			output = clean(*tool.Output)
-		}
-		messages = append(messages, message{id: key, label: tool.Name + " · " + tool.Status, text: output, tool: true, target: valueOrEmpty(tool.Target), toolCommand: valueOrEmpty(tool.Command), stats: palette.LiveToolStats(tool.Status, tool.StartedAt, time.Now())})
-	}
-	var partialBlocks []transcriptBlock
-	if state.Current.PartialBlocks != nil {
-		for _, block := range *state.Current.PartialBlocks {
-			if block.Text != "" && (!a.hideThinking || string(block.Type) != "thinking") {
-				partialBlocks = append(partialBlocks, transcriptBlock{string(block.Type), clean(block.Text)})
-			}
-		}
-	}
-	if len(partialBlocks) > 0 {
-		messages = append(messages, message{id: "partial", label: "assistant · streaming", blocks: partialBlocks})
-	} else if partial := state.Current.Partial; partial != nil {
-		messages = append(messages, message{id: "partial", label: "assistant · streaming", text: clean(*partial) + " ▍"})
-	}
-	if len(messages) == 0 && state.Before == nil {
+	if count == 0 && state.Before == nil {
 		ui.Column(c).Grow(1).MinHeight(0).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			text(c, "Messages appear here", 14, muted)
 		})
@@ -281,11 +194,11 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 		if offset == 1 && row == 0 {
 			return "older-history"
 		}
-		return messages[row-offset].id
+		return at(row - offset).id
 	}
 	p.list.FollowEnd = true
 	ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Background(contentSurface).Clip().Children(func() {
-		viewport := ui.List(c, &p.list, len(messages)+offset, func(i int) {
+		viewport := ui.List(c, &p.list, count+offset, func(i int) {
 			if offset == 1 && i == 0 {
 				ui.Row(c).FillWidth().Justify(ui.Center).Children(func() {
 					if ui.Button(c, "Older history").FontSize(12).TextColor(muted).Background(panel).Radius(12).Disabled(loading).Clicked() {
@@ -294,22 +207,31 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 				})
 				return
 			}
-			msg := messages[i-offset]
+			msg := at(i - offset)
 			top := float32(turnGap)
 			switch {
 			case i == 0:
 				top = 0
-			case msg.tool && i > offset && messages[i-offset-1].tool:
+			case msg.tool && i > offset && at(i-offset-1).tool:
 				top = toolGap
 			}
 			ui.Column(c).FillWidth().MinWidth(0).Padding(top, 0, 0, 0).Children(func() {
 				paneContent(c, func() {
-					if msg.cacheNotice {
+					if msg.notice {
 						text(c, msg.text, 12, warning).Padding(0, paneGutter, 0, paneTextInset)
 						return
 					}
 					if msg.tool {
+						var diffs *transcriptDiffs
+						if msg.diffCount > 0 {
+							// Only rows the virtualized list builds fetch their diffs.
+							diffs = a.messageDiffs(p, conversationID, msg.id)
+							msg.diffPatch, msg.computed = diffs.patch, diffs.files
+						}
 						toolRow(c, p, msg)
+						if diffs != nil {
+							diffStatus(c, p, msg.id, msg.diffCount, diffs)
+						}
 						return
 					}
 					a.messageBody(c, p, conversationID, msg)
@@ -322,6 +244,41 @@ func (a *app) transcriptState(c *ui.Context, p *pane, conversationID string, sta
 			Mode: mygoui.SurfaceFade, Surface: contentSurface, Edges: mygoui.FadeTop, Size: 24,
 		})
 	})
+}
+
+func (a *app) transcriptMessage(item transcript.Item) message {
+	msg := message{
+		id: item.ID, label: item.Label, text: item.Text, blocks: item.Parts,
+		errorText: item.Error, target: item.Target, toolCommand: item.Command,
+		tool: item.Kind == transcript.Tool, notice: item.Kind == transcript.Notice,
+		user: item.Kind == transcript.Message && item.Label == "user",
+	}
+	if item.Live != nil {
+		msg.label += " · " + item.Live.Status
+		msg.stats = palette.LiveToolStats(item.Live.Status, item.Live.StartedAt, time.Now())
+		return msg
+	}
+	entry := item.Entry
+	if entry == nil {
+		return msg
+	}
+	if !msg.tool {
+		msg.stats = messageStats(*entry)
+		if entry.ImageCount != nil {
+			msg.imageCount = *entry.ImageCount
+		}
+		return msg
+	}
+	if entry.DurationMs != nil && *entry.DurationMs >= slowToolMs {
+		msg.stats = palette.Stats(entry.DurationMs, nil)
+	}
+	if entry.DiffCount != nil {
+		msg.diffCount = *entry.DiffCount
+	}
+	msg.diffIncomplete = entry.DiffIncomplete != nil && *entry.DiffIncomplete
+	msg.diffLayout, msg.diffInline = a.diffLayout, a.diffInline
+	msg.failed = entry.ToolSucceeded != nil && !*entry.ToolSucceeded
+	return msg
 }
 
 func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg message) {
@@ -339,25 +296,29 @@ func (a *app) messageBody(c *ui.Context, p *pane, conversationID string, msg mes
 			}
 		} else {
 			if len(msg.blocks) > 0 {
-				for i, block := range msg.blocks {
-					if block.kind == "thinking" {
-						key := fmt.Sprintf("%s:%d", msg.id, i)
+				for _, block := range msg.blocks {
+					if block.Thinking {
+						key := fmt.Sprintf("%s:%d", msg.id, block.Index)
 						expanded, set := p.thinkingExpanded[key]
 						if !set {
 							expanded = true
 						}
-						a.thinkingBlock(c.Key(key), p, block.text, msg.id == "partial", expanded, func() {
+						a.thinkingBlock(c.Key(key), p, block.Text, msg.id == transcript.PartialID, expanded, func() {
 							if p.thinkingExpanded == nil {
 								p.thinkingExpanded = make(map[string]bool)
 							}
 							p.thinkingExpanded[key] = !expanded
 						})
-					} else if strings.TrimSpace(block.text) != "" {
-						a.prose(c, block.text, msg.id == "partial", p)
+					} else if strings.TrimSpace(block.Text) != "" {
+						a.prose(c, block.Text, msg.id == transcript.PartialID, p)
 					}
 				}
-			} else if body := strings.TrimSpace(msg.text); body != "" {
-				a.prose(c, body, msg.id == "partial", p)
+			}
+			if body := strings.TrimSpace(msg.text); body != "" {
+				if msg.id == transcript.PartialID {
+					body += " ▍"
+				}
+				a.prose(c, body, msg.id == transcript.PartialID, p)
 			}
 			if msg.stats != "" {
 				ui.Row(c).FillWidth().Justify(ui.End).Children(func() { text(c, msg.stats, 11, faint).Font(monoFont).FontFeatures("tnum") })
@@ -570,7 +531,9 @@ func toolRow(c *ui.Context, p *pane, msg message) {
 }
 
 type toolDiffState struct {
+	// The patch or file contents diff was built from.
 	patch string
+	file  fileDiff
 	diff  *diffeditor.DiffState
 	open  bool
 }
@@ -578,12 +541,14 @@ type toolDiffState struct {
 func toolDiff(c *ui.Context, msg message, computed *fileDiff) {
 	root := ui.Column(c).FillWidth().MinWidth(0).Padding(0, paneGutter, 4, paneTextInset)
 	state := *ui.Local(root, "tool-diff", func() *toolDiffState { return &toolDiffState{open: true} })
-	key := msg.diffPatch
+	// Compare the sources field by field rather than joining them into a key,
+	// which copied whole file contents every frame.
+	var file fileDiff
 	if computed != nil {
-		key = computed.path + "\x00" + computed.before + "\x00" + computed.after
+		file = *computed
 	}
-	if state.patch != key {
-		state.patch, state.diff = key, nil
+	if state.patch != msg.diffPatch || state.file != file {
+		state.patch, state.file, state.diff = msg.diffPatch, file, nil
 		if computed != nil {
 			old, next := diffeditor.NewBuffer(computed.before), diffeditor.NewBuffer(computed.after)
 			old.SetLanguage(diffeditor.LanguageFor(computed.path))

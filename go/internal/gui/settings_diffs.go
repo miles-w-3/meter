@@ -13,7 +13,7 @@ func (a *app) diffsPanel(c *ui.Context) {
 			previous := a.diffLayout
 			ui.Segmented(c, &a.diffLayout, "Split", "Unified").Disabled(a.toolsPending || !a.toolsLoaded)
 			if previous != a.diffLayout {
-				value := protocol.ToolSettingsChangeDiffLayout("split")
+				value := protocol.DiffLayout("split")
 				if a.diffLayout == 1 {
 					value = "unified"
 				}
@@ -28,7 +28,7 @@ func (a *app) diffsPanel(c *ui.Context) {
 			previous := a.diffInline
 			ui.Select(c, &a.diffInline, []string{"Words", "Characters", "Off"}).Disabled(a.toolsPending || !a.toolsLoaded)
 			if previous != a.diffInline {
-				value := protocol.ToolSettingsChangeDiffInline("words")
+				value := protocol.DiffInline("words")
 				if a.diffInline == "Characters" {
 					value = "characters"
 				} else if a.diffInline == "Off" {

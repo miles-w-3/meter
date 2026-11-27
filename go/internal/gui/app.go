@@ -55,6 +55,8 @@ type pane struct {
 	moveDictatedCaret         bool
 	images                    []draftImage
 	transcriptImages          map[string]*transcriptImageState
+	transcriptDiffs           map[string]*transcriptDiffs
+	transcriptCache           transcriptCache
 	notice                    string
 	connected                 bool
 	starting                  bool
@@ -101,6 +103,7 @@ type app struct {
 	readHeads            map[string]string
 	clientData           string
 	readHeadsPath        string
+	readHeadsSaver       *readHeadsWriter
 	unreadConversations  map[string]bool
 	widthDrag            *paneResize
 	revealPane           uuid.UUID
@@ -145,6 +148,7 @@ type app struct {
 	agentPathDraft       string
 	agentPathSaved       string
 	agentPathNotice      string
+	agentPathPending     bool
 	diffLayout           int
 	diffInline           string
 	toolsStatus          protocol.ToolsStatus
@@ -229,11 +233,12 @@ func Run(parent context.Context, api *client.Client, info protocol.ServerInfo, d
 			}
 		})
 		a.window.OnBlur(a.cancelDictation)
-		a.window.OnClosed(func() { cancel(); mygo.App.Quit() })
+		a.window.OnClosed(func() { a.flushReadHeads(); cancel(); mygo.App.Quit() })
 		a.reload()
 		a.refreshModels()
 	})
 	err := mygo.App.Run()
+	a.flushReadHeads()
 	a.shutdownTerminals()
 	return err
 }
@@ -367,6 +372,9 @@ func (a *app) syncPanes() {
 					a.update(func() {
 						if a.panes[id] == p && p.conversation == conversation {
 							p.connected = event.View != nil
+							if event.Fatal {
+								p.notice = event.Err.Error()
+							}
 							old := p.state.Current.Entries
 							p.state.Apply(event)
 							if event.View != nil {

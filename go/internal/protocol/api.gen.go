@@ -67,24 +67,6 @@ func (e ConversationUpdateType) Valid() bool {
 	}
 }
 
-// Defines values for ConversationViewPartialBlocksType.
-const (
-	ConversationViewPartialBlocksTypeText     ConversationViewPartialBlocksType = "text"
-	ConversationViewPartialBlocksTypeThinking ConversationViewPartialBlocksType = "thinking"
-)
-
-// Valid indicates whether the value is a known member of the ConversationViewPartialBlocksType enum.
-func (e ConversationViewPartialBlocksType) Valid() bool {
-	switch e {
-	case ConversationViewPartialBlocksTypeText:
-		return true
-	case ConversationViewPartialBlocksTypeThinking:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ConversationViewStatus.
 const (
 	Failed  ConversationViewStatus = "failed"
@@ -106,51 +88,39 @@ func (e ConversationViewStatus) Valid() bool {
 	}
 }
 
-// Defines values for DefaultSettingsThinkingLevel.
+// Defines values for DiffInline.
 const (
-	DefaultSettingsThinkingLevelHigh    DefaultSettingsThinkingLevel = "high"
-	DefaultSettingsThinkingLevelLow     DefaultSettingsThinkingLevel = "low"
-	DefaultSettingsThinkingLevelMax     DefaultSettingsThinkingLevel = "max"
-	DefaultSettingsThinkingLevelMedium  DefaultSettingsThinkingLevel = "medium"
-	DefaultSettingsThinkingLevelMinimal DefaultSettingsThinkingLevel = "minimal"
-	DefaultSettingsThinkingLevelOff     DefaultSettingsThinkingLevel = "off"
-	DefaultSettingsThinkingLevelXhigh   DefaultSettingsThinkingLevel = "xhigh"
+	DiffInlineCharacters DiffInline = "characters"
+	DiffInlineOff        DiffInline = "off"
+	DiffInlineWords      DiffInline = "words"
 )
 
-// Valid indicates whether the value is a known member of the DefaultSettingsThinkingLevel enum.
-func (e DefaultSettingsThinkingLevel) Valid() bool {
+// Valid indicates whether the value is a known member of the DiffInline enum.
+func (e DiffInline) Valid() bool {
 	switch e {
-	case DefaultSettingsThinkingLevelHigh:
+	case DiffInlineCharacters:
 		return true
-	case DefaultSettingsThinkingLevelLow:
+	case DiffInlineOff:
 		return true
-	case DefaultSettingsThinkingLevelMax:
-		return true
-	case DefaultSettingsThinkingLevelMedium:
-		return true
-	case DefaultSettingsThinkingLevelMinimal:
-		return true
-	case DefaultSettingsThinkingLevelOff:
-		return true
-	case DefaultSettingsThinkingLevelXhigh:
+	case DiffInlineWords:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for EntryBlocksType.
+// Defines values for DiffLayout.
 const (
-	EntryBlocksTypeText     EntryBlocksType = "text"
-	EntryBlocksTypeThinking EntryBlocksType = "thinking"
+	Split   DiffLayout = "split"
+	Unified DiffLayout = "unified"
 )
 
-// Valid indicates whether the value is a known member of the EntryBlocksType enum.
-func (e EntryBlocksType) Valid() bool {
+// Valid indicates whether the value is a known member of the DiffLayout enum.
+func (e DiffLayout) Valid() bool {
 	switch e {
-	case EntryBlocksTypeText:
+	case Split:
 		return true
-	case EntryBlocksTypeThinking:
+	case Unified:
 		return true
 	default:
 		return false
@@ -220,39 +190,6 @@ func (e LayoutNodeEmpty) Valid() bool {
 	}
 }
 
-// Defines values for ModelInfoThinkingLevels.
-const (
-	ModelInfoThinkingLevelsHigh    ModelInfoThinkingLevels = "high"
-	ModelInfoThinkingLevelsLow     ModelInfoThinkingLevels = "low"
-	ModelInfoThinkingLevelsMax     ModelInfoThinkingLevels = "max"
-	ModelInfoThinkingLevelsMedium  ModelInfoThinkingLevels = "medium"
-	ModelInfoThinkingLevelsMinimal ModelInfoThinkingLevels = "minimal"
-	ModelInfoThinkingLevelsOff     ModelInfoThinkingLevels = "off"
-	ModelInfoThinkingLevelsXhigh   ModelInfoThinkingLevels = "xhigh"
-)
-
-// Valid indicates whether the value is a known member of the ModelInfoThinkingLevels enum.
-func (e ModelInfoThinkingLevels) Valid() bool {
-	switch e {
-	case ModelInfoThinkingLevelsHigh:
-		return true
-	case ModelInfoThinkingLevelsLow:
-		return true
-	case ModelInfoThinkingLevelsMax:
-		return true
-	case ModelInfoThinkingLevelsMedium:
-		return true
-	case ModelInfoThinkingLevelsMinimal:
-		return true
-	case ModelInfoThinkingLevelsOff:
-		return true
-	case ModelInfoThinkingLevelsXhigh:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ProviderInfoCatalogSource.
 const (
 	Account ProviderInfoCatalogSource = "account"
@@ -313,42 +250,21 @@ func (e QueuedMessageMode) Valid() bool {
 	}
 }
 
-// Defines values for SearchProviderChangeId.
+// Defines values for SearchProvider.
 const (
-	SearchProviderChangeIdBrave     SearchProviderChangeId = "brave"
-	SearchProviderChangeIdExa       SearchProviderChangeId = "exa"
-	SearchProviderChangeIdFirecrawl SearchProviderChangeId = "firecrawl"
+	Brave     SearchProvider = "brave"
+	Exa       SearchProvider = "exa"
+	Firecrawl SearchProvider = "firecrawl"
 )
 
-// Valid indicates whether the value is a known member of the SearchProviderChangeId enum.
-func (e SearchProviderChangeId) Valid() bool {
+// Valid indicates whether the value is a known member of the SearchProvider enum.
+func (e SearchProvider) Valid() bool {
 	switch e {
-	case SearchProviderChangeIdBrave:
+	case Brave:
 		return true
-	case SearchProviderChangeIdExa:
+	case Exa:
 		return true
-	case SearchProviderChangeIdFirecrawl:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SearchProviderStatusId.
-const (
-	SearchProviderStatusIdBrave     SearchProviderStatusId = "brave"
-	SearchProviderStatusIdExa       SearchProviderStatusId = "exa"
-	SearchProviderStatusIdFirecrawl SearchProviderStatusId = "firecrawl"
-)
-
-// Valid indicates whether the value is a known member of the SearchProviderStatusId enum.
-func (e SearchProviderStatusId) Valid() bool {
-	switch e {
-	case SearchProviderStatusIdBrave:
-		return true
-	case SearchProviderStatusIdExa:
-		return true
-	case SearchProviderStatusIdFirecrawl:
+	case Firecrawl:
 		return true
 	default:
 		return false
@@ -385,105 +301,6 @@ func (e SearchProviderStatusStatus) Valid() bool {
 	case SearchProviderStatusStatusStorageRightsRequired:
 		return true
 	case SearchProviderStatusStatusUnavailable:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SelectionThinkingLevel.
-const (
-	SelectionThinkingLevelHigh    SelectionThinkingLevel = "high"
-	SelectionThinkingLevelLow     SelectionThinkingLevel = "low"
-	SelectionThinkingLevelMax     SelectionThinkingLevel = "max"
-	SelectionThinkingLevelMedium  SelectionThinkingLevel = "medium"
-	SelectionThinkingLevelMinimal SelectionThinkingLevel = "minimal"
-	SelectionThinkingLevelOff     SelectionThinkingLevel = "off"
-	SelectionThinkingLevelXhigh   SelectionThinkingLevel = "xhigh"
-)
-
-// Valid indicates whether the value is a known member of the SelectionThinkingLevel enum.
-func (e SelectionThinkingLevel) Valid() bool {
-	switch e {
-	case SelectionThinkingLevelHigh:
-		return true
-	case SelectionThinkingLevelLow:
-		return true
-	case SelectionThinkingLevelMax:
-		return true
-	case SelectionThinkingLevelMedium:
-		return true
-	case SelectionThinkingLevelMinimal:
-		return true
-	case SelectionThinkingLevelOff:
-		return true
-	case SelectionThinkingLevelXhigh:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SelectionChangeThinkingLevel.
-const (
-	SelectionChangeThinkingLevelHigh    SelectionChangeThinkingLevel = "high"
-	SelectionChangeThinkingLevelLow     SelectionChangeThinkingLevel = "low"
-	SelectionChangeThinkingLevelMax     SelectionChangeThinkingLevel = "max"
-	SelectionChangeThinkingLevelMedium  SelectionChangeThinkingLevel = "medium"
-	SelectionChangeThinkingLevelMinimal SelectionChangeThinkingLevel = "minimal"
-	SelectionChangeThinkingLevelOff     SelectionChangeThinkingLevel = "off"
-	SelectionChangeThinkingLevelXhigh   SelectionChangeThinkingLevel = "xhigh"
-)
-
-// Valid indicates whether the value is a known member of the SelectionChangeThinkingLevel enum.
-func (e SelectionChangeThinkingLevel) Valid() bool {
-	switch e {
-	case SelectionChangeThinkingLevelHigh:
-		return true
-	case SelectionChangeThinkingLevelLow:
-		return true
-	case SelectionChangeThinkingLevelMax:
-		return true
-	case SelectionChangeThinkingLevelMedium:
-		return true
-	case SelectionChangeThinkingLevelMinimal:
-		return true
-	case SelectionChangeThinkingLevelOff:
-		return true
-	case SelectionChangeThinkingLevelXhigh:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SelectionInputThinkingLevel.
-const (
-	SelectionInputThinkingLevelHigh    SelectionInputThinkingLevel = "high"
-	SelectionInputThinkingLevelLow     SelectionInputThinkingLevel = "low"
-	SelectionInputThinkingLevelMax     SelectionInputThinkingLevel = "max"
-	SelectionInputThinkingLevelMedium  SelectionInputThinkingLevel = "medium"
-	SelectionInputThinkingLevelMinimal SelectionInputThinkingLevel = "minimal"
-	SelectionInputThinkingLevelOff     SelectionInputThinkingLevel = "off"
-	SelectionInputThinkingLevelXhigh   SelectionInputThinkingLevel = "xhigh"
-)
-
-// Valid indicates whether the value is a known member of the SelectionInputThinkingLevel enum.
-func (e SelectionInputThinkingLevel) Valid() bool {
-	switch e {
-	case SelectionInputThinkingLevelHigh:
-		return true
-	case SelectionInputThinkingLevelLow:
-		return true
-	case SelectionInputThinkingLevelMax:
-		return true
-	case SelectionInputThinkingLevelMedium:
-		return true
-	case SelectionInputThinkingLevelMinimal:
-		return true
-	case SelectionInputThinkingLevelOff:
-		return true
-	case SelectionInputThinkingLevelXhigh:
 		return true
 	default:
 		return false
@@ -583,39 +400,6 @@ func (e SettingsSource) Valid() bool {
 	}
 }
 
-// Defines values for SettingsThinkingLevel.
-const (
-	SettingsThinkingLevelHigh    SettingsThinkingLevel = "high"
-	SettingsThinkingLevelLow     SettingsThinkingLevel = "low"
-	SettingsThinkingLevelMax     SettingsThinkingLevel = "max"
-	SettingsThinkingLevelMedium  SettingsThinkingLevel = "medium"
-	SettingsThinkingLevelMinimal SettingsThinkingLevel = "minimal"
-	SettingsThinkingLevelOff     SettingsThinkingLevel = "off"
-	SettingsThinkingLevelXhigh   SettingsThinkingLevel = "xhigh"
-)
-
-// Valid indicates whether the value is a known member of the SettingsThinkingLevel enum.
-func (e SettingsThinkingLevel) Valid() bool {
-	switch e {
-	case SettingsThinkingLevelHigh:
-		return true
-	case SettingsThinkingLevelLow:
-		return true
-	case SettingsThinkingLevelMax:
-		return true
-	case SettingsThinkingLevelMedium:
-		return true
-	case SettingsThinkingLevelMinimal:
-		return true
-	case SettingsThinkingLevelOff:
-		return true
-	case SettingsThinkingLevelXhigh:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SubmitInputMode.
 const (
 	SubmitInputModeFollowup SubmitInputMode = "followup"
@@ -637,78 +421,51 @@ func (e SubmitInputMode) Valid() bool {
 	}
 }
 
-// Defines values for ToolSettingsChangeDiffInline.
+// Defines values for ThinkingLevel.
 const (
-	ToolSettingsChangeDiffInlineCharacters ToolSettingsChangeDiffInline = "characters"
-	ToolSettingsChangeDiffInlineOff        ToolSettingsChangeDiffInline = "off"
-	ToolSettingsChangeDiffInlineWords      ToolSettingsChangeDiffInline = "words"
+	ThinkingLevelHigh    ThinkingLevel = "high"
+	ThinkingLevelLow     ThinkingLevel = "low"
+	ThinkingLevelMax     ThinkingLevel = "max"
+	ThinkingLevelMedium  ThinkingLevel = "medium"
+	ThinkingLevelMinimal ThinkingLevel = "minimal"
+	ThinkingLevelOff     ThinkingLevel = "off"
+	ThinkingLevelXhigh   ThinkingLevel = "xhigh"
 )
 
-// Valid indicates whether the value is a known member of the ToolSettingsChangeDiffInline enum.
-func (e ToolSettingsChangeDiffInline) Valid() bool {
+// Valid indicates whether the value is a known member of the ThinkingLevel enum.
+func (e ThinkingLevel) Valid() bool {
 	switch e {
-	case ToolSettingsChangeDiffInlineCharacters:
+	case ThinkingLevelHigh:
 		return true
-	case ToolSettingsChangeDiffInlineOff:
+	case ThinkingLevelLow:
 		return true
-	case ToolSettingsChangeDiffInlineWords:
+	case ThinkingLevelMax:
+		return true
+	case ThinkingLevelMedium:
+		return true
+	case ThinkingLevelMinimal:
+		return true
+	case ThinkingLevelOff:
+		return true
+	case ThinkingLevelXhigh:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for ToolSettingsChangeDiffLayout.
+// Defines values for TranscriptBlockType.
 const (
-	ToolSettingsChangeDiffLayoutSplit   ToolSettingsChangeDiffLayout = "split"
-	ToolSettingsChangeDiffLayoutUnified ToolSettingsChangeDiffLayout = "unified"
+	Text     TranscriptBlockType = "text"
+	Thinking TranscriptBlockType = "thinking"
 )
 
-// Valid indicates whether the value is a known member of the ToolSettingsChangeDiffLayout enum.
-func (e ToolSettingsChangeDiffLayout) Valid() bool {
+// Valid indicates whether the value is a known member of the TranscriptBlockType enum.
+func (e TranscriptBlockType) Valid() bool {
 	switch e {
-	case ToolSettingsChangeDiffLayoutSplit:
+	case Text:
 		return true
-	case ToolSettingsChangeDiffLayoutUnified:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ToolsStatusDiffInline.
-const (
-	ToolsStatusDiffInlineCharacters ToolsStatusDiffInline = "characters"
-	ToolsStatusDiffInlineOff        ToolsStatusDiffInline = "off"
-	ToolsStatusDiffInlineWords      ToolsStatusDiffInline = "words"
-)
-
-// Valid indicates whether the value is a known member of the ToolsStatusDiffInline enum.
-func (e ToolsStatusDiffInline) Valid() bool {
-	switch e {
-	case ToolsStatusDiffInlineCharacters:
-		return true
-	case ToolsStatusDiffInlineOff:
-		return true
-	case ToolsStatusDiffInlineWords:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ToolsStatusDiffLayout.
-const (
-	ToolsStatusDiffLayoutSplit   ToolsStatusDiffLayout = "split"
-	ToolsStatusDiffLayoutUnified ToolsStatusDiffLayout = "unified"
-)
-
-// Valid indicates whether the value is a known member of the ToolsStatusDiffLayout enum.
-func (e ToolsStatusDiffLayout) Valid() bool {
-	switch e {
-	case ToolsStatusDiffLayoutSplit:
-		return true
-	case ToolsStatusDiffLayoutUnified:
+	case Thinking:
 		return true
 	default:
 		return false
@@ -758,7 +515,7 @@ type ConversationFrame struct {
 	union json.RawMessage
 }
 
-// ConversationSnapshot defines model for ConversationSnapshot.
+// ConversationSnapshot The whole view. The first frame of a stream is a snapshot; a later snapshot (revision + 1) replaces the view.
 type ConversationSnapshot struct {
 	Generation openapi_types.UUID       `json:"generation"`
 	Revision   int                      `json:"revision"`
@@ -769,12 +526,17 @@ type ConversationSnapshot struct {
 // ConversationSnapshotType defines model for ConversationSnapshot.Type.
 type ConversationSnapshotType string
 
-// ConversationUpdate defines model for ConversationUpdate.
+// ConversationUpdate The next view, as a change to the previous one. Its entries are previous.entries[drop : drop+keep] followed by view.entries; every other field of view is complete.
 type ConversationUpdate struct {
-	Generation openapi_types.UUID     `json:"generation"`
-	Revision   int                    `json:"revision"`
-	Type       ConversationUpdateType `json:"type"`
-	View       ConversationView       `json:"view"`
+	// Drop How many entries to remove from the front of the previous view's entries
+	Drop       int                `json:"drop"`
+	Generation openapi_types.UUID `json:"generation"`
+
+	// Keep How many of the previous view's entries, after the dropped ones, to keep
+	Keep     int                    `json:"keep"`
+	Revision int                    `json:"revision"`
+	Type     ConversationUpdateType `json:"type"`
+	View     ConversationView       `json:"view"`
 }
 
 // ConversationUpdateType defines model for ConversationUpdate.Type.
@@ -782,35 +544,19 @@ type ConversationUpdateType string
 
 // ConversationView defines model for ConversationView.
 type ConversationView struct {
-	AbortTarget    *string       `json:"abortTarget,omitempty"`
-	Before         *string       `json:"before,omitempty"`
-	ContextUsage   *ContextUsage `json:"contextUsage,omitempty"`
-	ConversationId string        `json:"conversationId"`
-	Entries        []Entry       `json:"entries"`
-	Failure        *string       `json:"failure,omitempty"`
-	Partial        *string       `json:"partial"`
-	PartialBlocks  *[]struct {
-		Text string                            `json:"text"`
-		Type ConversationViewPartialBlocksType `json:"type"`
-	} `json:"partialBlocks,omitempty"`
-	Queued    *[]QueuedMessage       `json:"queued,omitempty"`
-	Selection *Selection             `json:"selection,omitempty"`
-	Status    ConversationViewStatus `json:"status"`
-	Tools     []struct {
-		CallId    *string `json:"callId,omitempty"`
-		Command   *string `json:"command,omitempty"`
-		EntryId   *string `json:"entryId,omitempty"`
-		Name      string  `json:"name"`
-		Output    *string `json:"output,omitempty"`
-		StartedAt *int    `json:"startedAt,omitempty"`
-		Status    string  `json:"status"`
-		Target    *string `json:"target,omitempty"`
-		TaskId    *string `json:"taskId,omitempty"`
-	} `json:"tools"`
+	AbortTarget    *string                `json:"abortTarget,omitempty"`
+	Before         *string                `json:"before,omitempty"`
+	ContextUsage   *ContextUsage          `json:"contextUsage,omitempty"`
+	ConversationId string                 `json:"conversationId"`
+	Entries        []Entry                `json:"entries"`
+	Failure        *string                `json:"failure,omitempty"`
+	Partial        *string                `json:"partial"`
+	PartialBlocks  *[]TranscriptBlock     `json:"partialBlocks,omitempty"`
+	Queued         *[]QueuedMessage       `json:"queued,omitempty"`
+	Selection      *Selection             `json:"selection,omitempty"`
+	Status         ConversationViewStatus `json:"status"`
+	Tools          []LiveTool             `json:"tools"`
 }
-
-// ConversationViewPartialBlocksType defines model for ConversationView.PartialBlocks.Type.
-type ConversationViewPartialBlocksType string
 
 // ConversationViewStatus defines model for ConversationView.Status.
 type ConversationViewStatus string
@@ -829,34 +575,28 @@ type CwdInput struct {
 
 // DefaultSettings defines model for DefaultSettings.
 type DefaultSettings struct {
-	Model *struct {
-		ModelId  string `json:"modelId"`
-		Provider string `json:"provider"`
-	} `json:"model"`
-	ThinkingLevel *DefaultSettingsThinkingLevel `json:"thinkingLevel"`
+	Model         *ModelRef      `json:"model"`
+	ThinkingLevel *ThinkingLevel `json:"thinkingLevel"`
 }
 
-// DefaultSettingsThinkingLevel defines model for DefaultSettings.ThinkingLevel.
-type DefaultSettingsThinkingLevel string
+// DiffInline defines model for DiffInline.
+type DiffInline string
+
+// DiffLayout defines model for DiffLayout.
+type DiffLayout string
 
 // Entry defines model for Entry.
 type Entry struct {
-	Added  *int `json:"added,omitempty"`
-	Blocks *[]struct {
-		Text string          `json:"text"`
-		Type EntryBlocksType `json:"type"`
-	} `json:"blocks,omitempty"`
-	CacheInput    *int    `json:"cacheInput,omitempty"`
-	CacheModel    *string `json:"cacheModel,omitempty"`
-	CacheRead     *int    `json:"cacheRead,omitempty"`
-	CacheWrite    *int    `json:"cacheWrite,omitempty"`
-	ComputedDiffs *[]struct {
-		After  string `json:"after"`
-		Before string `json:"before"`
-		Path   string `json:"path"`
-	} `json:"computedDiffs,omitempty"`
+	Added      *int               `json:"added,omitempty"`
+	Blocks     *[]TranscriptBlock `json:"blocks,omitempty"`
+	CacheInput *int               `json:"cacheInput,omitempty"`
+	CacheModel *string            `json:"cacheModel,omitempty"`
+	CacheRead  *int               `json:"cacheRead,omitempty"`
+	CacheWrite *int               `json:"cacheWrite,omitempty"`
+
+	// DiffCount Number of diffs stored for this entry; fetch them with GetEntryDiffs
+	DiffCount      *int    `json:"diffCount,omitempty"`
 	DiffIncomplete *bool   `json:"diffIncomplete,omitempty"`
-	DiffPatch      *string `json:"diffPatch,omitempty"`
 	DurationMs     *int    `json:"durationMs,omitempty"`
 	Error          *string `json:"error,omitempty"`
 	Id             string  `json:"id"`
@@ -872,19 +612,27 @@ type Entry struct {
 	ToolName       *string `json:"toolName,omitempty"`
 	ToolSucceeded  *bool   `json:"toolSucceeded,omitempty"`
 	ToolTarget     *string `json:"toolTarget,omitempty"`
-	WriteDiffs     *[]struct {
-		After  string `json:"after"`
-		Before string `json:"before"`
-		Path   string `json:"path"`
-	} `json:"writeDiffs,omitempty"`
 }
 
-// EntryBlocksType defines model for Entry.Blocks.Type.
-type EntryBlocksType string
+// EntryDiffs defines model for EntryDiffs.
+type EntryDiffs struct {
+	// Files Before and after contents of files written by the tool, or changed during a bash call
+	Files []FileDiff `json:"files"`
+
+	// Patch Unified patch reported by the edit tool
+	Patch *string `json:"patch,omitempty"`
+}
 
 // EntryImages defines model for EntryImages.
 type EntryImages struct {
 	Images []ImageAttachment `json:"images"`
+}
+
+// FileDiff defines model for FileDiff.
+type FileDiff struct {
+	After  string `json:"after"`
+	Before string `json:"before"`
+	Path   string `json:"path"`
 }
 
 // ForkInput defines model for ForkInput.
@@ -984,18 +732,28 @@ type LayoutTab struct {
 	Root      openapi_types.UUID  `json:"root"`
 }
 
-// ModelInfo defines model for ModelInfo.
-type ModelInfo struct {
-	ContextWindow  float32                   `json:"contextWindow"`
-	ModelId        string                    `json:"modelId"`
-	Name           string                    `json:"name"`
-	Provider       string                    `json:"provider"`
-	Reasoning      bool                      `json:"reasoning"`
-	ThinkingLevels []ModelInfoThinkingLevels `json:"thinkingLevels"`
+// LiveTool defines model for LiveTool.
+type LiveTool struct {
+	CallId    *string `json:"callId,omitempty"`
+	Command   *string `json:"command,omitempty"`
+	EntryId   *string `json:"entryId,omitempty"`
+	Name      string  `json:"name"`
+	Output    *string `json:"output,omitempty"`
+	StartedAt *int    `json:"startedAt,omitempty"`
+	Status    string  `json:"status"`
+	Target    *string `json:"target,omitempty"`
+	TaskId    *string `json:"taskId,omitempty"`
 }
 
-// ModelInfoThinkingLevels defines model for ModelInfo.ThinkingLevels.
-type ModelInfoThinkingLevels string
+// ModelInfo defines model for ModelInfo.
+type ModelInfo struct {
+	ContextWindow  float32         `json:"contextWindow"`
+	ModelId        string          `json:"modelId"`
+	Name           string          `json:"name"`
+	Provider       string          `json:"provider"`
+	Reasoning      bool            `json:"reasoning"`
+	ThinkingLevels []ThinkingLevel `json:"thinkingLevels"`
+}
 
 // ModelInventory defines model for ModelInventory.
 type ModelInventory struct {
@@ -1106,66 +864,45 @@ type Receipt struct {
 	SubmissionId string `json:"submissionId"`
 }
 
+// SearchProvider defines model for SearchProvider.
+type SearchProvider string
+
 // SearchProviderChange defines model for SearchProviderChange.
 type SearchProviderChange struct {
-	Enabled bool                   `json:"enabled"`
-	Id      SearchProviderChangeId `json:"id"`
+	Enabled bool           `json:"enabled"`
+	Id      SearchProvider `json:"id"`
 }
-
-// SearchProviderChangeId defines model for SearchProviderChange.Id.
-type SearchProviderChangeId string
 
 // SearchProviderStatus defines model for SearchProviderStatus.
 type SearchProviderStatus struct {
 	Configured bool                       `json:"configured"`
 	Enabled    bool                       `json:"enabled"`
-	Id         SearchProviderStatusId     `json:"id"`
+	Id         SearchProvider             `json:"id"`
 	RetryAt    *time.Time                 `json:"retryAt,omitempty"`
 	Status     SearchProviderStatusStatus `json:"status"`
 }
-
-// SearchProviderStatusId defines model for SearchProviderStatus.Id.
-type SearchProviderStatusId string
 
 // SearchProviderStatusStatus defines model for SearchProviderStatus.Status.
 type SearchProviderStatusStatus string
 
 // Selection defines model for Selection.
 type Selection struct {
-	Model *struct {
-		ModelId  string `json:"modelId"`
-		Provider string `json:"provider"`
-	} `json:"model"`
-	ThinkingLevel SelectionThinkingLevel `json:"thinkingLevel"`
+	Model         *ModelRef     `json:"model"`
+	ThinkingLevel ThinkingLevel `json:"thinkingLevel"`
 }
-
-// SelectionThinkingLevel defines model for Selection.ThinkingLevel.
-type SelectionThinkingLevel string
 
 // SelectionChange defines model for SelectionChange.
 type SelectionChange struct {
-	Expected Selection `json:"expected"`
-	Model    struct {
-		ModelId  string `json:"modelId"`
-		Provider string `json:"provider"`
-	} `json:"model"`
-	ThinkingLevel SelectionChangeThinkingLevel `json:"thinkingLevel"`
+	Expected      Selection     `json:"expected"`
+	Model         ModelRef      `json:"model"`
+	ThinkingLevel ThinkingLevel `json:"thinkingLevel"`
 }
-
-// SelectionChangeThinkingLevel defines model for SelectionChange.ThinkingLevel.
-type SelectionChangeThinkingLevel string
 
 // SelectionInput defines model for SelectionInput.
 type SelectionInput struct {
-	Model struct {
-		ModelId  string `json:"modelId"`
-		Provider string `json:"provider"`
-	} `json:"model"`
-	ThinkingLevel SelectionInputThinkingLevel `json:"thinkingLevel"`
+	Model         ModelRef      `json:"model"`
+	ThinkingLevel ThinkingLevel `json:"thinkingLevel"`
 }
-
-// SelectionInputThinkingLevel defines model for SelectionInput.ThinkingLevel.
-type SelectionInputThinkingLevel string
 
 // ServerInfo defines model for ServerInfo.
 type ServerInfo struct {
@@ -1197,19 +934,13 @@ type ServerInfoTransport string
 
 // Settings defines model for Settings.
 type Settings struct {
-	Model *struct {
-		ModelId  string `json:"modelId"`
-		Provider string `json:"provider"`
-	} `json:"model"`
-	Source        SettingsSource         `json:"source"`
-	ThinkingLevel *SettingsThinkingLevel `json:"thinkingLevel"`
+	Model         *ModelRef      `json:"model"`
+	Source        SettingsSource `json:"source"`
+	ThinkingLevel *ThinkingLevel `json:"thinkingLevel"`
 }
 
 // SettingsSource defines model for Settings.Source.
 type SettingsSource string
-
-// SettingsThinkingLevel defines model for Settings.ThinkingLevel.
-type SettingsThinkingLevel string
 
 // SubmitInput defines model for SubmitInput.
 type SubmitInput struct {
@@ -1222,6 +953,9 @@ type SubmitInput struct {
 // SubmitInputMode defines model for SubmitInput.Mode.
 type SubmitInputMode string
 
+// ThinkingLevel defines model for ThinkingLevel.
+type ThinkingLevel string
+
 // ToolOutput defines model for ToolOutput.
 type ToolOutput struct {
 	Text string `json:"text"`
@@ -1229,10 +963,10 @@ type ToolOutput struct {
 
 // ToolSettingsChange defines model for ToolSettingsChange.
 type ToolSettingsChange struct {
-	ComputedDiffs *bool                         `json:"computedDiffs,omitempty"`
-	DiffInline    *ToolSettingsChangeDiffInline `json:"diffInline,omitempty"`
-	DiffLayout    *ToolSettingsChangeDiffLayout `json:"diffLayout,omitempty"`
-	ShowThinking  *bool                         `json:"showThinking,omitempty"`
+	ComputedDiffs *bool       `json:"computedDiffs,omitempty"`
+	DiffInline    *DiffInline `json:"diffInline,omitempty"`
+	DiffLayout    *DiffLayout `json:"diffLayout,omitempty"`
+	ShowThinking  *bool       `json:"showThinking,omitempty"`
 	WebFetch      *struct {
 		Enabled *bool `json:"enabled,omitempty"`
 	} `json:"webFetch,omitempty"`
@@ -1242,18 +976,12 @@ type ToolSettingsChange struct {
 	} `json:"webSearch,omitempty"`
 }
 
-// ToolSettingsChangeDiffInline defines model for ToolSettingsChange.DiffInline.
-type ToolSettingsChangeDiffInline string
-
-// ToolSettingsChangeDiffLayout defines model for ToolSettingsChange.DiffLayout.
-type ToolSettingsChangeDiffLayout string
-
 // ToolsStatus defines model for ToolsStatus.
 type ToolsStatus struct {
-	ComputedDiffs bool                  `json:"computedDiffs"`
-	DiffInline    ToolsStatusDiffInline `json:"diffInline"`
-	DiffLayout    ToolsStatusDiffLayout `json:"diffLayout"`
-	ShowThinking  *bool                 `json:"showThinking,omitempty"`
+	ComputedDiffs bool       `json:"computedDiffs"`
+	DiffInline    DiffInline `json:"diffInline"`
+	DiffLayout    DiffLayout `json:"diffLayout"`
+	ShowThinking  *bool      `json:"showThinking,omitempty"`
 	WebFetch      *struct {
 		Enabled bool `json:"enabled"`
 	} `json:"webFetch,omitempty"`
@@ -1263,11 +991,14 @@ type ToolsStatus struct {
 	} `json:"webSearch"`
 }
 
-// ToolsStatusDiffInline defines model for ToolsStatus.DiffInline.
-type ToolsStatusDiffInline string
+// TranscriptBlock defines model for TranscriptBlock.
+type TranscriptBlock struct {
+	Text string              `json:"text"`
+	Type TranscriptBlockType `json:"type"`
+}
 
-// ToolsStatusDiffLayout defines model for ToolsStatus.DiffLayout.
-type ToolsStatusDiffLayout string
+// TranscriptBlockType defines model for TranscriptBlock.Type.
+type TranscriptBlockType string
 
 // TreePosition defines model for TreePosition.
 type TreePosition struct {
@@ -1544,6 +1275,9 @@ type ClientInterface interface {
 	// GetEntries performs a GET /v1/conversations/{id}/entries (the `GetEntries` operationId) request.
 	GetEntries(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetEntryDiffs performs a GET /v1/conversations/{id}/entries/{entryId}/diffs (the `GetEntryDiffs` operationId) request.
+	GetEntryDiffs(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetEntryImages performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
 	GetEntryImages(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1788,6 +1522,19 @@ func (c *Client) SetConversationCwd(ctx context.Context, id string, body SetConv
 // GetEntries performs a GET /v1/conversations/{id}/entries (the `GetEntries` operationId) request.
 func (c *Client) GetEntries(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetEntriesRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetEntryDiffs performs a GET /v1/conversations/{id}/entries/{entryId}/diffs (the `GetEntryDiffs` operationId) request.
+func (c *Client) GetEntryDiffs(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetEntryDiffsRequest(c.Server, id, entryId)
 	if err != nil {
 		return nil, err
 	}
@@ -2534,6 +2281,47 @@ func NewGetEntriesRequest(server string, id string, params *GetEntriesParams) (*
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetEntryDiffsRequest constructs an http.Request for the GetEntryDiffs method
+func NewGetEntryDiffsRequest(server string, id string, entryId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "entryId", entryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/entries/%s/diffs", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -3633,6 +3421,11 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	GetEntriesWithResponse(ctx context.Context, id string, params *GetEntriesParams, reqEditors ...RequestEditorFn) (*GetEntriesResponse, error)
 
+	// GetEntryDiffsWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/diffs (the `GetEntryDiffs` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetEntryDiffsWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetEntryDiffsResponse, error)
+
 	// GetEntryImagesWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4215,6 +4008,75 @@ func (r GetEntriesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetEntryDiffsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *EntryDiffs
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetEntryDiffsResponse) GetJSON200() *EntryDiffs {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetEntryDiffsResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetEntryDiffsResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetEntryDiffsResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetEntryDiffsResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetEntryDiffsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetEntryDiffsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetEntryDiffsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetEntryDiffsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5975,6 +5837,17 @@ func (c *ClientWithResponses) GetEntriesWithResponse(ctx context.Context, id str
 	return ParseGetEntriesResponse(rsp)
 }
 
+// GetEntryDiffsWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/diffs (the `GetEntryDiffs` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetEntryDiffsWithResponse(ctx context.Context, id string, entryId string, reqEditors ...RequestEditorFn) (*GetEntryDiffsResponse, error) {
+	rsp, err := c.GetEntryDiffs(ctx, id, entryId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetEntryDiffsResponse(rsp)
+}
+
 // GetEntryImagesWithResponse performs a GET /v1/conversations/{id}/entries/{entryId}/images (the `GetEntryImages` operationId) request.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6653,6 +6526,60 @@ func ParseGetEntriesResponse(rsp *http.Response) (*GetEntriesResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest HistoryPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetEntryDiffsResponse parses an HTTP response from a GetEntryDiffsWithResponse call
+func ParseGetEntryDiffsResponse(rsp *http.Response) (*GetEntryDiffsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetEntryDiffsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EntryDiffs
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

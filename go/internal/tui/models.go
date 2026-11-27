@@ -142,10 +142,12 @@ func (m *Model) modelKey(msg tea.KeyPressMsg) tea.Cmd {
 				return nil
 			}
 			m.overlay.modelPending = true
-			chosen, expected, s, api, ctx := m.overlay.chosen, m.overlay.expected, m.session, m.api, m.ctx
-			input := protocol.SelectionChange{Model: protocol.ModelRef{Provider: chosen.Provider, ModelId: chosen.ModelId}, ThinkingLevel: protocol.SelectionChangeThinkingLevel(item), Expected: expected}
+			// Commands run off the Update goroutine: capture values, not the
+			// session, whose conversation Update replaces.
+			chosen, expected, s, id, api, ctx := m.overlay.chosen, m.overlay.expected, m.session, m.conversation.Id, m.api, m.ctx
+			input := protocol.SelectionChange{Model: protocol.ModelRef{Provider: chosen.Provider, ModelId: chosen.ModelId}, ThinkingLevel: protocol.ThinkingLevel(item), Expected: expected}
 			return func() tea.Msg {
-				conversation, err := api.SetConversationModel(ctx, s.conversation.Id, input)
+				conversation, err := api.SetConversationModel(ctx, id, input)
 				return modelChangedMsg{s, conversation, err}
 			}
 		}

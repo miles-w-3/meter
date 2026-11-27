@@ -57,7 +57,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -67,7 +67,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -114,7 +114,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -124,7 +124,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -171,7 +171,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -191,7 +191,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -201,7 +201,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -258,7 +258,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -268,7 +268,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -315,7 +315,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -325,7 +325,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -360,7 +360,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -380,7 +380,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -390,7 +390,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -437,7 +437,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -447,7 +447,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -482,7 +482,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -502,7 +502,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -512,7 +512,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -549,7 +549,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -569,7 +569,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -579,7 +579,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -616,7 +616,7 @@
         },
         "responses": {
           "201": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -636,7 +636,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -646,7 +646,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -693,7 +693,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -713,7 +713,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -723,7 +723,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -780,7 +780,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -790,7 +790,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -825,7 +825,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -845,7 +845,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -855,7 +855,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -892,7 +892,7 @@
         },
         "responses": {
           "201": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -912,7 +912,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -922,7 +922,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -979,7 +979,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -989,7 +989,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1046,7 +1046,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1056,7 +1056,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1131,7 +1131,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1141,7 +1141,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1188,7 +1188,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1208,7 +1208,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1218,7 +1218,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1265,7 +1265,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1285,7 +1285,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1295,7 +1295,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1342,7 +1342,7 @@
         },
         "responses": {
           "200": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1362,7 +1362,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1372,7 +1372,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1438,7 +1438,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1448,7 +1448,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1513,7 +1513,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1523,7 +1523,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1588,7 +1588,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1598,7 +1598,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1663,7 +1663,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1673,7 +1673,82 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/entries/{entryId}/diffs": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "entryId",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "GetEntryDiffs",
+        "responses": {
+          "200": {
+            "description": "Stored tool diffs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryDiffs"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1720,7 +1795,7 @@
         },
         "responses": {
           "202": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1740,7 +1815,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1750,7 +1825,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1797,7 +1872,7 @@
         },
         "responses": {
           "202": {
-            "description": "Accepted",
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1817,7 +1892,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1827,7 +1902,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1892,7 +1967,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1902,7 +1977,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1960,7 +2035,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1970,7 +2045,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2030,7 +2105,7 @@
             }
           },
           "404": {
-            "description": "Unknown conversation",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2040,7 +2115,7 @@
             }
           },
           "409": {
-            "description": "Control conflict",
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2065,25 +2140,40 @@
   },
   "components": {
     "schemas": {
-      "ImageAttachment": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "string",
-            "minLength": 4,
-            "maxLength": 2796204,
-            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
-          },
-          "mimeType": {
-            "type": "string",
-            "const": "image/png"
-          }
-        },
-        "required": [
-          "data",
-          "mimeType"
-        ],
-        "additionalProperties": false
+      "ThinkingLevel": {
+        "type": "string",
+        "enum": [
+          "off",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      "SearchProvider": {
+        "type": "string",
+        "enum": [
+          "brave",
+          "exa",
+          "firecrawl"
+        ]
+      },
+      "DiffLayout": {
+        "type": "string",
+        "enum": [
+          "split",
+          "unified"
+        ]
+      },
+      "DiffInline": {
+        "type": "string",
+        "enum": [
+          "words",
+          "characters",
+          "off"
+        ]
       },
       "ServerInfo": {
         "type": "object",
@@ -2152,6 +2242,530 @@
         ],
         "additionalProperties": false
       },
+      "ModelRef": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "provider",
+          "modelId"
+        ],
+        "additionalProperties": false
+      },
+      "DefaultSettings": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thinkingLevel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThinkingLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "model",
+          "thinkingLevel"
+        ],
+        "additionalProperties": false
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thinkingLevel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThinkingLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "saved",
+              "environment",
+              "fixture",
+              "unconfigured"
+            ]
+          }
+        },
+        "required": [
+          "model",
+          "thinkingLevel",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "SearchProviderChange": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/SearchProvider"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
+      "ToolSettingsChange": {
+        "type": "object",
+        "properties": {
+          "webFetch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "webSearch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "provider": {
+                "$ref": "#/components/schemas/SearchProviderChange"
+              }
+            },
+            "additionalProperties": false
+          },
+          "showThinking": {
+            "type": "boolean"
+          },
+          "computedDiffs": {
+            "type": "boolean"
+          },
+          "diffLayout": {
+            "$ref": "#/components/schemas/DiffLayout"
+          },
+          "diffInline": {
+            "$ref": "#/components/schemas/DiffInline"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchProviderStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/SearchProvider"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "retryAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "disabled",
+              "missing_key",
+              "storage_rights_required",
+              "rate_limited",
+              "unavailable",
+              "auth_error",
+              "quota_exhausted"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "enabled",
+          "configured",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "ToolsStatus": {
+        "type": "object",
+        "properties": {
+          "webFetch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "enabled"
+            ],
+            "additionalProperties": false
+          },
+          "showThinking": {
+            "type": "boolean"
+          },
+          "webSearch": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "providers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SearchProviderStatus"
+                }
+              }
+            },
+            "required": [
+              "enabled",
+              "providers"
+            ],
+            "additionalProperties": false
+          },
+          "computedDiffs": {
+            "type": "boolean"
+          },
+          "diffLayout": {
+            "$ref": "#/components/schemas/DiffLayout"
+          },
+          "diffInline": {
+            "$ref": "#/components/schemas/DiffInline"
+          }
+        },
+        "required": [
+          "webSearch",
+          "computedDiffs",
+          "diffLayout",
+          "diffInline"
+        ],
+        "additionalProperties": false
+      },
+      "AuthMethod": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "oauth"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "interactive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "interactive"
+        ],
+        "additionalProperties": false
+      },
+      "ProviderSessions": {
+        "type": "object",
+        "properties": {
+          "keepaliveMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240
+          },
+          "toolWaitMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+          },
+          "maxParked": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "dateOverride": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "keepaliveMinutes",
+          "toolWaitMinutes",
+          "maxParked"
+        ],
+        "additionalProperties": false
+      },
+      "ProviderSessionStats": {
+        "type": "object",
+        "properties": {
+          "liveProcesses": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "activeTurns": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "parkedIdle": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "parkedWaitingForTools": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "liveProcesses",
+          "activeTurns",
+          "parkedIdle",
+          "parkedWaitingForTools"
+        ],
+        "additionalProperties": false
+      },
+      "ProviderInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthMethod"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "unconfigured",
+              "unknown"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "externalAuth": {
+            "type": "string"
+          },
+          "catalogSource": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "cached",
+              "account"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/ProviderSessions"
+          },
+          "sessionsBusy": {
+            "type": "boolean"
+          },
+          "sessionStats": {
+            "$ref": "#/components/schemas/ProviderSessionStats"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "methods",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "ModelInfo": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "contextWindow": {
+            "type": "number"
+          },
+          "reasoning": {
+            "type": "boolean"
+          },
+          "thinkingLevels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThinkingLevel"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "modelId",
+          "name",
+          "contextWindow",
+          "reasoning",
+          "thinkingLevels"
+        ],
+        "additionalProperties": false
+      },
+      "ModelInventory": {
+        "type": "object",
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderInfo"
+            }
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelInfo"
+            }
+          }
+        },
+        "required": [
+          "providers",
+          "models"
+        ],
+        "additionalProperties": false
+      },
+      "ProviderSetting": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/ProviderSessions"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CwdInput": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "additionalProperties": false
+      },
+      "Selection": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thinkingLevel": {
+            "$ref": "#/components/schemas/ThinkingLevel"
+          }
+        },
+        "required": [
+          "model",
+          "thinkingLevel"
+        ],
+        "additionalProperties": false
+      },
+      "SelectionInput": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "thinkingLevel": {
+            "$ref": "#/components/schemas/ThinkingLevel"
+          }
+        },
+        "required": [
+          "model",
+          "thinkingLevel"
+        ],
+        "additionalProperties": false
+      },
+      "SelectionChange": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelRef"
+          },
+          "thinkingLevel": {
+            "$ref": "#/components/schemas/ThinkingLevel"
+          },
+          "expected": {
+            "$ref": "#/components/schemas/Selection"
+          }
+        },
+        "required": [
+          "model",
+          "thinkingLevel",
+          "expected"
+        ],
+        "additionalProperties": false
+      },
       "CreateInput": {
         "type": "object",
         "properties": {
@@ -2167,20 +2781,6 @@
           },
           "selection": {
             "$ref": "#/components/schemas/SelectionInput"
-          }
-        },
-        "required": [
-          "cwd"
-        ],
-        "additionalProperties": false
-      },
-      "CwdInput": {
-        "type": "object",
-        "properties": {
-          "cwd": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 4096
           }
         },
         "required": [
@@ -2223,6 +2823,26 @@
           "id",
           "cwd",
           "model"
+        ],
+        "additionalProperties": false
+      },
+      "ImageAttachment": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 2796204,
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+          },
+          "mimeType": {
+            "type": "string",
+            "const": "image/png"
+          }
+        },
+        "required": [
+          "data",
+          "mimeType"
         ],
         "additionalProperties": false
       },
@@ -2319,38 +2939,6 @@
         ],
         "additionalProperties": false
       },
-      "QueuedMessage": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          },
-          "text": {
-            "type": "string"
-          },
-          "images": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "followUp",
-              "steer"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "text",
-          "images",
-          "mode"
-        ],
-        "additionalProperties": false
-      },
       "RecalledMessage": {
         "type": "object",
         "properties": {
@@ -2439,30 +3027,73 @@
         ],
         "additionalProperties": false
       },
+      "TranscriptBlock": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "thinking"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "FileDiff": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "before",
+          "after"
+        ],
+        "additionalProperties": false
+      },
+      "EntryDiffs": {
+        "type": "object",
+        "properties": {
+          "patch": {
+            "description": "Unified patch reported by the edit tool",
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileDiff"
+            },
+            "description": "Before and after contents of files written by the tool, or changed during a bash call"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "additionalProperties": false
+      },
       "Entry": {
         "type": "object",
         "properties": {
           "blocks": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "text",
-                    "thinking"
-                  ]
-                },
-                "text": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "type",
-                "text"
-              ],
-              "additionalProperties": false
+              "$ref": "#/components/schemas/TranscriptBlock"
             }
           },
           "id": {
@@ -2499,54 +3130,11 @@
           "toolCommand": {
             "type": "string"
           },
-          "diffPatch": {
-            "type": "string"
-          },
-          "computedDiffs": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "before": {
-                  "type": "string"
-                },
-                "after": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "path",
-                "before",
-                "after"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "writeDiffs": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "before": {
-                  "type": "string"
-                },
-                "after": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "path",
-                "before",
-                "after"
-              ],
-              "additionalProperties": false
-            }
+          "diffCount": {
+            "description": "Number of diffs stored for this entry; fetch them with GetEntryDiffs",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
           "diffIncomplete": {
             "type": "boolean"
@@ -2605,26 +3193,6 @@
         ],
         "additionalProperties": false
       },
-      "HistoryPage": {
-        "type": "object",
-        "properties": {
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Entry"
-            }
-          },
-          "before": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          }
-        },
-        "required": [
-          "entries"
-        ],
-        "additionalProperties": false
-      },
       "ToolOutput": {
         "type": "object",
         "properties": {
@@ -2649,6 +3217,26 @@
         },
         "required": [
           "images"
+        ],
+        "additionalProperties": false
+      },
+      "HistoryPage": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            }
+          },
+          "before": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "entries"
         ],
         "additionalProperties": false
       },
@@ -2743,6 +3331,81 @@
         ],
         "additionalProperties": false
       },
+      "LiveTool": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "entryId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "output": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "QueuedMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "text": {
+            "type": "string"
+          },
+          "images": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "followUp",
+              "steer"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "images",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
       "ConversationView": {
         "type": "object",
         "properties": {
@@ -2768,24 +3431,7 @@
           "partialBlocks": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "text",
-                    "thinking"
-                  ]
-                },
-                "text": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "type",
-                "text"
-              ],
-              "additionalProperties": false
+              "$ref": "#/components/schemas/TranscriptBlock"
             }
           },
           "failure": {
@@ -2810,47 +3456,7 @@
           "tools": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "callId": {
-                  "type": "string"
-                },
-                "taskId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 160
-                },
-                "entryId": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 160
-                },
-                "name": {
-                  "type": "string"
-                },
-                "status": {
-                  "type": "string"
-                },
-                "startedAt": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "output": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                },
-                "command": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "name",
-                "status"
-              ],
-              "additionalProperties": false
+              "$ref": "#/components/schemas/LiveTool"
             }
           },
           "queued": {
@@ -2902,7 +3508,8 @@
           "generation",
           "view"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The whole view. The first frame of a stream is a snapshot; a later snapshot (revision + 1) replaces the view."
       },
       "ConversationUpdate": {
         "type": "object",
@@ -2921,6 +3528,18 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
+          "drop": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "How many entries to remove from the front of the previous view's entries"
+          },
+          "keep": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "How many of the previous view's entries, after the dropped ones, to keep"
+          },
           "view": {
             "$ref": "#/components/schemas/ConversationView"
           }
@@ -2929,9 +3548,12 @@
           "type",
           "revision",
           "generation",
+          "drop",
+          "keep",
           "view"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The next view, as a change to the previous one. Its entries are previous.entries[drop : drop+keep] followed by view.entries; every other field of view is complete."
       },
       "ConversationFrame": {
         "oneOf": [
@@ -3239,683 +3861,6 @@
         "required": [
           "revision",
           "tabs"
-        ],
-        "additionalProperties": false
-      },
-      "ModelRef": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          },
-          "modelId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
-          }
-        },
-        "required": [
-          "provider",
-          "modelId"
-        ],
-        "additionalProperties": false
-      },
-      "Selection": {
-        "type": "object",
-        "properties": {
-          "model": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 160
-                  },
-                  "modelId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 160
-                  }
-                },
-                "required": [
-                  "provider",
-                  "modelId"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "thinkingLevel": {
-            "type": "string",
-            "enum": [
-              "off",
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          }
-        },
-        "required": [
-          "model",
-          "thinkingLevel"
-        ],
-        "additionalProperties": false
-      },
-      "SelectionInput": {
-        "type": "object",
-        "properties": {
-          "model": {
-            "type": "object",
-            "properties": {
-              "provider": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 160
-              },
-              "modelId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 160
-              }
-            },
-            "required": [
-              "provider",
-              "modelId"
-            ],
-            "additionalProperties": false
-          },
-          "thinkingLevel": {
-            "type": "string",
-            "enum": [
-              "off",
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          }
-        },
-        "required": [
-          "model",
-          "thinkingLevel"
-        ],
-        "additionalProperties": false
-      },
-      "SelectionChange": {
-        "type": "object",
-        "properties": {
-          "model": {
-            "type": "object",
-            "properties": {
-              "provider": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 160
-              },
-              "modelId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 160
-              }
-            },
-            "required": [
-              "provider",
-              "modelId"
-            ],
-            "additionalProperties": false
-          },
-          "thinkingLevel": {
-            "type": "string",
-            "enum": [
-              "off",
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "expected": {
-            "$ref": "#/components/schemas/Selection"
-          }
-        },
-        "required": [
-          "model",
-          "thinkingLevel",
-          "expected"
-        ],
-        "additionalProperties": false
-      },
-      "DefaultSettings": {
-        "type": "object",
-        "properties": {
-          "model": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 160
-                  },
-                  "modelId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 160
-                  }
-                },
-                "required": [
-                  "provider",
-                  "modelId"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "thinkingLevel": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "off",
-                  "minimal",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "model",
-          "thinkingLevel"
-        ],
-        "additionalProperties": false
-      },
-      "Settings": {
-        "type": "object",
-        "properties": {
-          "model": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 160
-                  },
-                  "modelId": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 160
-                  }
-                },
-                "required": [
-                  "provider",
-                  "modelId"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "thinkingLevel": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "off",
-                  "minimal",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "saved",
-              "environment",
-              "fixture",
-              "unconfigured"
-            ]
-          }
-        },
-        "required": [
-          "model",
-          "thinkingLevel",
-          "source"
-        ],
-        "additionalProperties": false
-      },
-      "ToolSettingsChange": {
-        "type": "object",
-        "properties": {
-          "webFetch": {
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "type": "boolean"
-              }
-            },
-            "additionalProperties": false
-          },
-          "webSearch": {
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "type": "boolean"
-              },
-              "provider": {
-                "$ref": "#/components/schemas/SearchProviderChange"
-              }
-            },
-            "additionalProperties": false
-          },
-          "showThinking": {
-            "type": "boolean"
-          },
-          "computedDiffs": {
-            "type": "boolean"
-          },
-          "diffLayout": {
-            "type": "string",
-            "enum": [
-              "split",
-              "unified"
-            ]
-          },
-          "diffInline": {
-            "type": "string",
-            "enum": [
-              "words",
-              "characters",
-              "off"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "SearchProviderChange": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "enum": [
-              "brave",
-              "exa",
-              "firecrawl"
-            ]
-          },
-          "enabled": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "enabled"
-        ],
-        "additionalProperties": false
-      },
-      "ToolsStatus": {
-        "type": "object",
-        "properties": {
-          "webFetch": {
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "enabled"
-            ],
-            "additionalProperties": false
-          },
-          "showThinking": {
-            "type": "boolean"
-          },
-          "webSearch": {
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "type": "boolean"
-              },
-              "providers": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/SearchProviderStatus"
-                }
-              }
-            },
-            "required": [
-              "enabled",
-              "providers"
-            ],
-            "additionalProperties": false
-          },
-          "computedDiffs": {
-            "type": "boolean"
-          },
-          "diffLayout": {
-            "type": "string",
-            "enum": [
-              "split",
-              "unified"
-            ]
-          },
-          "diffInline": {
-            "type": "string",
-            "enum": [
-              "words",
-              "characters",
-              "off"
-            ]
-          }
-        },
-        "required": [
-          "webSearch",
-          "computedDiffs",
-          "diffLayout",
-          "diffInline"
-        ],
-        "additionalProperties": false
-      },
-      "SearchProviderStatus": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "enum": [
-              "brave",
-              "exa",
-              "firecrawl"
-            ]
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "configured": {
-            "type": "boolean"
-          },
-          "retryAt": {
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ready",
-              "disabled",
-              "missing_key",
-              "storage_rights_required",
-              "rate_limited",
-              "unavailable",
-              "auth_error",
-              "quota_exhausted"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "enabled",
-          "configured",
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "AuthMethod": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "api_key",
-              "oauth"
-            ]
-          },
-          "name": {
-            "type": "string"
-          },
-          "interactive": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "type",
-          "name",
-          "interactive"
-        ],
-        "additionalProperties": false
-      },
-      "ProviderInfo": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "methods": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AuthMethod"
-            }
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "configured",
-              "unconfigured",
-              "unknown"
-            ]
-          },
-          "source": {
-            "type": "string"
-          },
-          "externalAuth": {
-            "type": "string"
-          },
-          "catalogSource": {
-            "type": "string",
-            "enum": [
-              "builtin",
-              "cached",
-              "account"
-            ]
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "sessions": {
-            "$ref": "#/components/schemas/ProviderSessions"
-          },
-          "sessionsBusy": {
-            "type": "boolean"
-          },
-          "sessionStats": {
-            "$ref": "#/components/schemas/ProviderSessionStats"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "methods",
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "ModelInfo": {
-        "type": "object",
-        "properties": {
-          "provider": {
-            "type": "string"
-          },
-          "modelId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "contextWindow": {
-            "type": "number"
-          },
-          "reasoning": {
-            "type": "boolean"
-          },
-          "thinkingLevels": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "off",
-                "minimal",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max"
-              ]
-            }
-          }
-        },
-        "required": [
-          "provider",
-          "modelId",
-          "name",
-          "contextWindow",
-          "reasoning",
-          "thinkingLevels"
-        ],
-        "additionalProperties": false
-      },
-      "ModelInventory": {
-        "type": "object",
-        "properties": {
-          "providers": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProviderInfo"
-            }
-          },
-          "models": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModelInfo"
-            }
-          }
-        },
-        "required": [
-          "providers",
-          "models"
-        ],
-        "additionalProperties": false
-      },
-      "ProviderSetting": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "sessions": {
-            "$ref": "#/components/schemas/ProviderSessions"
-          }
-        },
-        "additionalProperties": false
-      },
-      "ProviderSessions": {
-        "type": "object",
-        "properties": {
-          "keepaliveMinutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 240
-          },
-          "toolWaitMinutes": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 60
-          },
-          "maxParked": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 8
-          },
-          "dateOverride": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "keepaliveMinutes",
-          "toolWaitMinutes",
-          "maxParked"
-        ],
-        "additionalProperties": false
-      },
-      "ProviderSessionStats": {
-        "type": "object",
-        "properties": {
-          "liveProcesses": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "activeTurns": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "parkedIdle": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "parkedWaitingForTools": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": [
-          "liveProcesses",
-          "activeTurns",
-          "parkedIdle",
-          "parkedWaitingForTools"
         ],
         "additionalProperties": false
       }

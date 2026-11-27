@@ -4,15 +4,26 @@ import "pi-workspace.local/workspace/internal/protocol"
 
 // State is an in-memory transcript with a separately pageable older prefix.
 type State struct {
-	Current protocol.ConversationView
-	Before  *string
-	older   []protocol.Entry
+	Current  protocol.ConversationView
+	Before   *string
+	older    []protocol.Entry
+	revision uint64
 }
+
+// Revision changes whenever the committed entries change, so projections can be cached.
+func (s *State) Revision() uint64 { return s.revision }
 
 func (s *State) Apply(event Event) {
 	if event.View == nil {
 		return
 	}
+	if event.EntriesUnchanged && !event.Reset {
+		next := *event.View
+		next.Entries = s.Current.Entries
+		s.Current = next
+		return
+	}
+	s.revision++
 	next := *event.View
 	nextIDs := make(map[string]bool, len(next.Entries))
 	for _, entry := range next.Entries {
@@ -43,6 +54,7 @@ func (s *State) Prepend(cursor *string, page protocol.HistoryPage) {
 	if cursor == nil || s.Before == nil || *s.Before != *cursor {
 		return
 	}
+	s.revision++
 	existing := make(map[string]bool)
 	for _, entry := range s.Entries() {
 		existing[entry.Id] = true

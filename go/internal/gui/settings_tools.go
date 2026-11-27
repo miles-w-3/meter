@@ -125,7 +125,7 @@ func (a *app) toolsPanel(c *ui.Context) {
 						Provider *protocol.SearchProviderChange `json:"provider,omitempty"`
 					})
 					change.WebSearch.Provider = &protocol.SearchProviderChange{
-						Id: protocol.SearchProviderChangeId(provider.Id), Enabled: !provider.Enabled,
+						Id: protocol.SearchProvider(provider.Id), Enabled: !provider.Enabled,
 					}
 					a.updateTools(change)
 				}
@@ -141,7 +141,7 @@ func toolSwitchLabel(enabled bool) string {
 	return "Turn on"
 }
 
-func searchProviderLabel(id protocol.SearchProviderStatusId) (string, string) {
+func searchProviderLabel(id protocol.SearchProvider) (string, string) {
 	switch string(id) {
 	case "brave":
 		return "Brave", "BRAVE_SEARCH_API_KEY"

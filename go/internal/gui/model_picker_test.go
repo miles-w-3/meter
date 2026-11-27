@@ -11,8 +11,8 @@ func TestModelPickerStagesAndAppliesToEmptyPane(t *testing.T) {
 	a := &app{modelsLoaded: true, modelsInventory: protocol.ModelInventory{
 		Providers: []protocol.ProviderInfo{{Id: "test", Name: "Test", Status: "configured"}},
 		Models: []protocol.ModelInfo{
-			{Provider: "test", ModelId: "first", Name: "First", ThinkingLevels: []protocol.ModelInfoThinkingLevels{"off", "high"}},
-			{Provider: "test", ModelId: "second", Name: "Second", ThinkingLevels: []protocol.ModelInfoThinkingLevels{"off", "high"}},
+			{Provider: "test", ModelId: "first", Name: "First", ThinkingLevels: []protocol.ThinkingLevel{"off", "high"}},
+			{Provider: "test", ModelId: "second", Name: "Second", ThinkingLevels: []protocol.ThinkingLevel{"off", "high"}},
 		},
 	}}
 	p := &pane{}

@@ -1,47 +1,20 @@
 import { writeFile } from "node:fs/promises";
 import { z } from "zod";
-import { models, conversationFrame } from "./schemas.ts";
+import { conversationFrame } from "./schemas.ts";
 
-const schemas = Object.fromEntries(Object.entries(models).map(([name, model]) => {
-  const schema = z.toJSONSchema(model, { target: "draft-2020-12" });
-  delete schema.$schema;
-  return [name, schema];
-}));
-const ref = (name: keyof typeof models) => ({ $ref: "#/components/schemas/" + name });
-for (const name of ["ConversationSnapshot", "ConversationUpdate"]) {
-  Object.assign(schemas[name].properties!, { view: ref("ConversationView") });
+// Every schema registered with an id in schemas.ts becomes a component, and
+// zod refers to it by $ref wherever another schema uses it.
+const { schemas } = z.toJSONSchema(z.globalRegistry, { target: "draft-2020-12", uri: (id) => "#/components/schemas/" + id });
+if ("__shared" in schemas) throw new Error("A schema without an id is shared recursively; give it an id in schemas.ts");
+for (const schema of Object.values(schemas)) {
+  for (const key of ["$schema", "$id", "id"] as const) delete (schema as Record<string, unknown>)[key];
 }
-Object.assign((schemas.EntryImages.properties!.images as object), { items: ref("ImageAttachment") });
-Object.assign((schemas.RecalledMessage.properties!.images as object), { items: ref("ImageAttachment") });
-Object.assign((schemas.UserMessage.properties!.images as object), { items: ref("ImageAttachment") });
-Object.assign((schemas.SubmitInput.properties!.images as object), { items: ref("ImageAttachment") });
-Object.assign((schemas.ForkInput.properties!.images as object), { items: ref("ImageAttachment") });
-Object.assign((schemas.PendingFork.properties!.images as object), { items: ref("ImageAttachment") });
-Object.assign(schemas.ConversationView.properties!, { contextUsage: ref("ContextUsage"), selection: ref("Selection") });
-Object.assign(schemas.Conversation.properties!, { selection: ref("Selection") });
-Object.assign(schemas.CreateInput.properties!, { selection: ref("SelectionInput") });
-Object.assign(schemas.LayoutNode.properties!, { treePosition: ref("TreePosition"), pendingFork: ref("PendingFork") });
-Object.assign(schemas.SelectionChange.properties!, { expected: ref("Selection") });
-Object.assign(schemas.ProviderInfo.properties!, { sessions: ref("ProviderSessions"), sessionStats: ref("ProviderSessionStats") });
-Object.assign(schemas.ProviderSetting.properties!, { sessions: ref("ProviderSessions") });
-Object.assign((schemas.ConversationView.properties!.entries as object), { items: ref("Entry") });
-Object.assign((schemas.ConversationView.properties!.queued as object), { items: ref("QueuedMessage") });
-Object.assign((schemas.HistoryPage.properties!.entries as object), { items: ref("Entry") });
-Object.assign((schemas.HistoricalPath.properties!.entries as object), { items: ref("Entry") });
-Object.assign((schemas.HistoryTree.properties!.branches as object), { items: ref("HistoryBranch") });
-for (const [model, property, item] of [
-  ["Catalog", "projects", "Project"], ["Catalog", "conversations", "Conversation"],
-  ["Layout", "tabs", "LayoutTab"], ["LayoutTab", "nodes", "LayoutNode"],
-  ["ProviderInfo", "methods", "AuthMethod"], ["ModelInventory", "providers", "ProviderInfo"], ["ModelInventory", "models", "ModelInfo"],
-] as const) {
-  Object.assign(schemas[model].properties![property] as object, { items: ref(item) });
-}
-const webSearchProperties = (schemas.ToolsStatus.properties!.webSearch as unknown as { properties: Record<string, object> }).properties;
-Object.assign(webSearchProperties.providers!, { items: ref("SearchProviderStatus") });
-const toolChangeProperties = (schemas.ToolSettingsChange.properties!.webSearch as unknown as { properties: Record<string, object> }).properties;
-toolChangeProperties.provider = ref("SearchProviderChange");
-const body = (name: keyof typeof models) => ({ "application/json": { schema: ref(name) } });
-const response = (description: string, name: keyof typeof models) => ({ description, content: body(name) });
+type Model = keyof typeof schemas;
+const ref = (name: Model) => {
+  if (!(name in schemas)) throw new Error("Unknown schema " + name);
+  return { $ref: "#/components/schemas/" + name };
+};
+// oapi-codegen needs the discriminator mapping to decode the union.
 Object.assign(schemas, {
   ConversationFrame: {
     oneOf: [ref("ConversationSnapshot"), ref("ConversationUpdate")],
@@ -51,18 +24,21 @@ Object.assign(schemas, {
     },
   },
 });
+const body = (name: Model) => ({ "application/json": { schema: ref(name) } });
+const response = (description: string, name: Model) => ({ description, content: body(name) });
 const id = { in: "path", name: "id", required: true, schema: { type: "string" } };
 const failures = {
   "400": response("Invalid request", "Problem"),
-  "404": response("Unknown conversation", "Problem"),
-  "409": response("Control conflict", "Problem"),
+  "404": response("Not found", "Problem"),
+  "409": response("Conflict", "Problem"),
   "500": response("Server error", "Problem"),
 };
-const post = (operationId: string, input: keyof typeof models, status: string, output?: keyof typeof models) => ({
+const operation = (operationId: string, input: Model, status: string, output?: Model) => ({
   operationId,
   requestBody: { required: true, content: body(input) },
-  responses: { [status]: output ? response("Accepted", output) : { description: "Accepted" }, ...failures },
+  responses: { [status]: output ? response("OK", output) : { description: "Accepted" }, ...failures },
 });
+const entry = [id, { ...id, name: "entryId" }];
 const spec = {
   openapi: "3.1.0",
   info: { title: "Pi Durable Workspace", version: "1.0.0" },
@@ -71,24 +47,24 @@ const spec = {
     "/v1/server/stop": { post: { operationId: "StopServer", responses: { "202": { description: "Stopping" } } } },
     "/v1/catalog": { get: { operationId: "GetCatalog", responses: { "200": response("Catalog", "Catalog"), ...failures } } },
     "/v1/models": { get: { operationId: "GetModels", responses: { "200": response("Provider and model inventory", "ModelInventory"), ...failures } } },
-    "/v1/providers/{id}": { parameters: [id], put: post("SetProvider", "ProviderSetting", "200", "ModelInventory") },
+    "/v1/providers/{id}": { parameters: [id], put: operation("SetProvider", "ProviderSetting", "200", "ModelInventory") },
     "/v1/providers/{id}/refresh": { parameters: [id], post: { operationId: "RefreshProvider", responses: { "200": response("Provider and model inventory", "ModelInventory"), ...failures } } },
     "/v1/settings/tools": {
       get: { operationId: "GetTools", responses: { "200": response("Tool settings and status", "ToolsStatus"), ...failures } },
-      patch: post("UpdateTools", "ToolSettingsChange", "200", "ToolsStatus"),
+      patch: operation("UpdateTools", "ToolSettingsChange", "200", "ToolsStatus"),
     },
     "/v1/settings/defaults": {
       get: { operationId: "GetDefaults", responses: { "200": response("Default model settings", "Settings"), ...failures } },
-      put: post("SetDefaults", "DefaultSettings", "200", "Settings"),
+      put: operation("SetDefaults", "DefaultSettings", "200", "Settings"),
     },
-    "/v1/directories/resolve": { post: post("ResolveCwd", "CwdInput", "200", "CwdInput") },
-    "/v1/projects": { post: post("RegisterProject", "ProjectInput", "201", "Project") },
-    "/v1/projects/{id}": { parameters: [id], put: post("RenameProject", "ProjectRenameInput", "200", "Project") },
+    "/v1/directories/resolve": { post: operation("ResolveCwd", "CwdInput", "200", "CwdInput") },
+    "/v1/projects": { post: operation("RegisterProject", "ProjectInput", "201", "Project") },
+    "/v1/projects/{id}": { parameters: [id], put: operation("RenameProject", "ProjectRenameInput", "200", "Project") },
     "/v1/workspaces/{id}": { parameters: [id],
       get: { operationId: "GetLayout", responses: { "200": response("Layout", "Layout"), ...failures } },
-      put: post("SaveLayout", "Layout", "200", "Layout"),
+      put: operation("SaveLayout", "Layout", "200", "Layout"),
     },
-    "/v1/conversations": { post: post("CreateConversation", "CreateInput", "201", "Conversation") },
+    "/v1/conversations": { post: operation("CreateConversation", "CreateInput", "201", "Conversation") },
     "/v1/conversations/{id}": { parameters: [id], get: {
       operationId: "GetConversation", responses: { "200": response("Conversation", "Conversation"), ...failures },
     } },
@@ -103,31 +79,35 @@ const spec = {
       ],
       responses: { "200": response("Historical transcript page and context usage", "HistoricalPath"), ...failures },
     } },
-    "/v1/conversations/{id}/title": { parameters: [id], put: post("RenameConversation", "ProjectRenameInput", "200", "Conversation") },
-    "/v1/conversations/{id}/cwd": { parameters: [id], put: post("SetConversationCwd", "CwdInput", "200", "Conversation") },
-    "/v1/conversations/{id}/model": { parameters: [id], put: post("SetConversationModel", "SelectionChange", "200", "Conversation") },
+    "/v1/conversations/{id}/title": { parameters: [id], put: operation("RenameConversation", "ProjectRenameInput", "200", "Conversation") },
+    "/v1/conversations/{id}/cwd": { parameters: [id], put: operation("SetConversationCwd", "CwdInput", "200", "Conversation") },
+    "/v1/conversations/{id}/model": { parameters: [id], put: operation("SetConversationModel", "SelectionChange", "200", "Conversation") },
     "/v1/conversations/{id}/entries": { parameters: [id], get: {
       operationId: "GetEntries",
       parameters: [{ in: "query", name: "before", schema: { type: "string" } }],
       responses: { "200": response("Transcript page", "HistoryPage"), ...failures },
     } },
-    "/v1/conversations/{id}/entries/{entryId}/message": { parameters: [id, { ...id, name: "entryId" }], get: {
+    "/v1/conversations/{id}/entries/{entryId}/message": { parameters: entry, get: {
       operationId: "GetUserMessage", responses: { "200": response("Full stored user message", "UserMessage"), ...failures },
     } },
-    "/v1/conversations/{id}/entries/{entryId}/images": { parameters: [id, { ...id, name: "entryId" }], get: {
+    "/v1/conversations/{id}/entries/{entryId}/images": { parameters: entry, get: {
       operationId: "GetEntryImages", responses: { "200": response("Stored message images", "EntryImages"), ...failures },
     } },
-    "/v1/conversations/{id}/entries/{entryId}/output": { parameters: [id, { ...id, name: "entryId" }], get: {
+    "/v1/conversations/{id}/entries/{entryId}/output": { parameters: entry, get: {
       operationId: "GetToolOutput", responses: { "200": response("Stored tool output", "ToolOutput"), ...failures },
     } },
-    "/v1/conversations/{id}/messages": { parameters: [id], post: post("SubmitMessage", "SubmitInput", "202", "Receipt") },
-    "/v1/conversations/{id}/fork-messages": { parameters: [id], post: post("ForkAndSubmitMessage", "ForkInput", "202", "ForkReceipt") },
+    "/v1/conversations/{id}/entries/{entryId}/diffs": { parameters: entry, get: {
+      operationId: "GetEntryDiffs", responses: { "200": response("Stored tool diffs", "EntryDiffs"), ...failures },
+    } },
+    "/v1/conversations/{id}/messages": { parameters: [id], post: operation("SubmitMessage", "SubmitInput", "202", "Receipt") },
+    "/v1/conversations/{id}/fork-messages": { parameters: [id], post: operation("ForkAndSubmitMessage", "ForkInput", "202", "ForkReceipt") },
     "/v1/conversations/{id}/queue/{submission}/recall": { parameters: [id, { in: "path", name: "submission", required: true, schema: { type: "string" } }], post: { operationId: "RecallQueued", responses: { "200": response("Recalled", "RecalledMessage"), ...failures } } },
     "/v1/conversations/{id}/queue/{submission}/steer": { parameters: [id, { in: "path", name: "submission", required: true, schema: { type: "string" } }], post: { operationId: "SteerQueued", responses: { "202": { description: "Steering" }, ...failures } } },
-    "/v1/conversations/{id}/abort": { parameters: [id], post: post("AbortRun", "AbortInput", "202") },
+    "/v1/conversations/{id}/abort": { parameters: [id], post: operation("AbortRun", "AbortInput", "202") },
   },
   components: { schemas },
 };
+const generation = "d6f2c699-f2dc-4884-86af-ccc78f16a35d";
 const base = {
   conversationId: "conversation-1",
   status: "idle",
@@ -136,10 +116,10 @@ const base = {
   tools: [],
 };
 const fixtures = [
-  { type: "snapshot", generation: "d6f2c699-f2dc-4884-86af-ccc78f16a35d", revision: 0, view: base },
-  { type: "update", generation: "d6f2c699-f2dc-4884-86af-ccc78f16a35d", revision: 1, view: {
+  { type: "snapshot", generation, revision: 0, view: base },
+  { type: "update", generation, revision: 1, drop: 0, keep: 1, view: {
     ...base, status: "running", partial: "streaming",
-    entries: [{ id: "entry-2", kind: "tool", text: "file", toolName: "read" }],
+    entries: [{ id: "entry-2", kind: "tool", text: "file", toolName: "read", diffCount: 1 }],
   } },
 ].map((value) => conversationFrame.parse(value));
 const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";

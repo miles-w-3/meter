@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type { z } from "zod";
-import { defaultSettings, layout, providerSessions, toolSettings, toolSettingsChange } from "../contracts/schemas.ts";
+import { defaultSettings, layout, projectRecord, providerSessions, toolSettings, toolSettingsChange } from "../contracts/schemas.ts";
 
 type Layout = z.infer<typeof layout>;
 
@@ -144,7 +144,8 @@ export class Workspaces {
   }
 
   projects() {
-    return this.db.prepare("SELECT id, cwd, name FROM projects ORDER BY name, cwd").all();
+    const rows = this.db.prepare("SELECT id, cwd, name FROM projects ORDER BY name, cwd").all();
+    return projectRecord.array().parse(rows);
   }
 
   projectExists(id: string) {

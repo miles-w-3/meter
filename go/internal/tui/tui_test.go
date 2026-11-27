@@ -305,7 +305,7 @@ func TestModelPickerListsAndSelectsLevels(t *testing.T) {
 	m := testModel()
 	m.overlay = overlay{kind: overlayModel}
 	m.overlay.list = list.New(nil, modelDelegate{m.colors}, 60, 5)
-	m.receiveModels(modelsMsg{session: m.session, inventory: protocol.ModelInventory{Providers: []protocol.ProviderInfo{{Id: "ok", Status: "configured"}}, Models: []protocol.ModelInfo{{Name: "Model", ModelId: "id", Provider: "ok", ThinkingLevels: []protocol.ModelInfoThinkingLevels{"off", "high"}}}}})
+	m.receiveModels(modelsMsg{session: m.session, inventory: protocol.ModelInventory{Providers: []protocol.ProviderInfo{{Id: "ok", Status: "configured"}}, Models: []protocol.ModelInfo{{Name: "Model", ModelId: "id", Provider: "ok", ThinkingLevels: []protocol.ThinkingLevel{"off", "high"}}}}})
 	m.modelKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !m.overlay.levels || len(m.overlay.list.Items()) != 2 {
 		t.Fatal("model did not expose its thinking levels")
@@ -358,8 +358,35 @@ func TestRunningToolElapsedDuration(t *testing.T) {
 	if err := json.Unmarshal([]byte(payload), &view); err != nil {
 		t.Fatal(err)
 	}
-	blocks := blocksFor(client.State{Current: view}, map[string]bool{})
+	blocks := blocksFor(client.State{Current: view}, map[string]bool{}, false)
 	if len(blocks) != 1 || blocks[0].stats != "11s" {
 		t.Fatalf("running tool duration missing: %+v", blocks)
+	}
+}
+
+func TestTranscriptDisplaysSharedContent(t *testing.T) {
+	m := testModel()
+	if err := json.Unmarshal([]byte(`{
+	  "status":"failed", "failure":"Run ended early",
+	  "entries":[
+	    {"id":"u","kind":"pi.user","text":"","imageCount":2},
+	    {"id":"a","kind":"pi.assistant","text":"Answer","error":"Connection lost",
+	     "blocks":[{"type":"thinking","text":"Reasoning in progress"},{"type":"text","text":"Answer"}]}
+	  ]
+	}`), &m.state.Current); err != nil {
+		t.Fatal(err)
+	}
+	m.refresh()
+	view := ansi.Strip(m.View().Content)
+	for _, text := range []string{"2 images attached", "Reasoning in progress", "Answer", "Connection lost", "Run ended early"} {
+		if !strings.Contains(view, text) {
+			t.Errorf("missing %q in terminal transcript: %s", text, view)
+		}
+	}
+	m.options.HideThinking = true
+	m.refresh()
+	view = ansi.Strip(m.View().Content)
+	if strings.Contains(view, "Reasoning in progress") || !strings.Contains(view, "Answer") {
+		t.Fatal("thinking setting must hide only reasoning")
 	}
 }

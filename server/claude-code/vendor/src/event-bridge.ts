@@ -78,6 +78,8 @@ interface TrackedToolBlock {
   name: string; // Already mapped to pi name
   arguments: ToolCall["arguments"];
   partialJson: string;
+  /** Where `partialJson` stands, so a delta need not re-read all of it. */
+  scan: ToolInputScan;
 }
 
 /** Union of tracked block types for the blocks array. */
@@ -128,6 +130,68 @@ export interface EventBridge {
  */
 function isArgumentObject(value: unknown): value is ToolCall["arguments"] {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * How far a tool's streamed arguments have got, advanced over each delta's
+ * new characters only.
+ *
+ * The streaming partial used to re-parse the whole buffer after every delta:
+ * a 100 KB file write in 2,000 chunks parsed ~100 MB of JSON on the server's
+ * one event loop. But a buffer parses to an object only once its top-level
+ * `{` has closed (whitespace either side aside), and until then every one of
+ * those parses threw. Tracking strings, escapes and nesting finds that moment
+ * in constant work per character, so the partial is parsed at most once per
+ * block and shows exactly what re-parsing every delta showed. After the
+ * close, more whitespace parses to the same object and anything else can
+ * never parse again; a buffer not starting with `{` is never an object.
+ */
+interface ToolInputScan {
+  /**
+   * `before`: whitespace only so far; `open`: inside the top-level object;
+   * `closed`: the object is complete, whitespace since; `never`: the buffer
+   * cannot become a JSON object any more.
+   */
+  phase: "before" | "open" | "closed" | "never";
+  /** Nesting of objects and arrays outside strings. */
+  depth: number;
+  inString: boolean;
+  /** The previous character was a backslash inside a string. */
+  escaped: boolean;
+}
+
+const isJsonWhitespace = (char: string): boolean =>
+  char === " " || char === "\t" || char === "\n" || char === "\r";
+
+/**
+ * Advance the scan over one delta. True when this delta completed the
+ * top-level object: the one moment the buffer is worth parsing.
+ */
+function scanToolInput(scan: ToolInputScan, delta: string): boolean {
+  const wasClosed = scan.phase === "closed";
+  for (let i = 0; i < delta.length && scan.phase !== "never"; i++) {
+    const char = delta[i];
+    if (scan.phase === "open") {
+      if (scan.inString) {
+        if (scan.escaped) scan.escaped = false;
+        else if (char === "\\") scan.escaped = true;
+        else if (char === '"') scan.inString = false;
+      } else if (char === '"') scan.inString = true;
+      else if (char === "{" || char === "[") scan.depth++;
+      else if (char === "}" || char === "]") {
+        scan.depth--;
+        if (scan.depth === 0) scan.phase = "closed";
+      }
+    } else if (isJsonWhitespace(char)) {
+      continue;
+    } else if (scan.phase === "before" && char === "{") {
+      scan.phase = "open";
+      scan.depth = 1;
+    } else {
+      scan.phase = "never";
+    }
+  }
+  return scan.phase === "closed" && !wasClosed;
 }
 
 /** The `diagnostics` type of the entry that holds the latest limit status. */
@@ -549,6 +613,7 @@ export function createEventBridge(
         name: piName,
         arguments: {},
         partialJson: "",
+        scan: { phase: "before", depth: 0, inString: false, escaped: false },
       };
       blocks.push(block);
       output.content.push({
@@ -628,17 +693,22 @@ export function createEventBridge(
     } else if (deltaType === "input_json_delta" && event.delta!.partial_json != null) {
       if (block.type !== "tool_use") return;
       block.partialJson += event.delta!.partial_json;
-      try {
-        const parsed = JSON.parse(block.partialJson);
-        // Only an object may overwrite the arguments. A payload that parses
-        // to null/array/scalar would otherwise land on the streaming partial
-        // and be shown to the user as the tool's arguments.
-        if (isArgumentObject(parsed)) {
-          block.arguments = parsed;
-          setToolCallArguments(block.contentIndex, block.arguments);
+      // Parsed only on the delta that completes the object (see
+      // ToolInputScan): before it every parse throws, and re-parsing each
+      // delta made a long tool input cost quadratic time.
+      if (scanToolInput(block.scan, event.delta!.partial_json)) {
+        try {
+          const parsed = JSON.parse(block.partialJson);
+          // Only an object may overwrite the arguments. A payload that parses
+          // to null/array/scalar would otherwise land on the streaming partial
+          // and be shown to the user as the tool's arguments.
+          if (isArgumentObject(parsed)) {
+            block.arguments = parsed;
+            setToolCallArguments(block.contentIndex, block.arguments);
+          }
+        } catch {
+          // Balanced but malformed -- keep previous arguments
         }
-      } catch {
-        // Partial JSON not yet parseable -- keep previous arguments
       }
       stream.push({
         type: "toolcall_delta",

@@ -31,8 +31,9 @@ func TestGeneratedFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	update, ok := value.(ConversationUpdate)
-	if !ok || update.Revision != 1 || update.View.Partial == nil || *update.View.Partial != "streaming" || len(update.View.Entries) != 1 ||
-		update.View.Entries[0].ToolName == nil || *update.View.Entries[0].ToolName != "read" {
+	if !ok || update.Revision != 1 || update.Drop != 0 || update.Keep != 1 || update.View.Partial == nil || *update.View.Partial != "streaming" || len(update.View.Entries) != 1 ||
+		update.View.Entries[0].ToolName == nil || *update.View.Entries[0].ToolName != "read" ||
+		update.View.Entries[0].DiffCount == nil || *update.View.Entries[0].DiffCount != 1 {
 		t.Fatalf("update lost fields: %+v", value)
 	}
 }

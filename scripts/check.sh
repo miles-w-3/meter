@@ -29,11 +29,14 @@ node scripts/transcript-error-test.mjs
 node scripts/stream-frames-test.mjs
 node scripts/search-test.mjs
 node scripts/code-search-test.mjs
+node --test server/background-jobs.test.ts
+node scripts/background-integration.mjs
 node scripts/tool-clock-test.mjs
 node scripts/web-fetch-test.mjs
 node scripts/file-diffs-test.mjs
 node scripts/mermaid-catalog-test.mjs
 node scripts/compaction-test.mjs
+node scripts/context-breakdown-test.mjs
 node scripts/tree-test.mjs
 node scripts/terminal-layout-test.mjs
 node scripts/integration.mjs

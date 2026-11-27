@@ -34,6 +34,7 @@ func (a *app) applyBackendInfo(info protocol.ServerInfo) {
 	}
 	a.mayRetry = slices.Contains(info.Capabilities, "retry-submit")
 	a.mayAbort = slices.Contains(info.Capabilities, "abort-target")
+	a.mayBackground = slices.Contains(info.Capabilities, "background-jobs")
 	a.mayDictate = slices.Contains(info.Capabilities, "dictation")
 	if a.update != nil && a.api != nil && a.backendOnline && !a.toolsLoaded {
 		a.refreshTools()

@@ -57,6 +57,9 @@ func BuildEntries(entries []protocol.Entry, hideThinking bool) ([]Item, map[stri
 			items = append(items, Item{ID: "cache:" + entry.Id, Kind: Notice, Text: notice})
 		}
 		item := Item{ID: entry.Id, Label: strings.TrimPrefix(entry.Kind, "pi."), Text: clean(entry.Text), Error: clean(deref(entry.Error)), Entry: entry}
+		if entry.Kind == "meter.background" {
+			item.Kind, item.Label = Notice, "background"
+		}
 		if entry.ToolName != nil {
 			completed[entry.Id] = true
 			if call := deref(entry.ToolCallId); call != "" {

@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 const root = resolve(import.meta.dirname, "..");
 const data = await mkdtemp(join(tmpdir(), "meter-background-preview-"));
 const bin = join(root, ".bin/workspace");
-const env = { ...process.env, METER_HOME: data, PI_WORKSPACE_SERVER: join(root, "server/main.ts"), PI_PROVIDER: "fixture", METER_BACKGROUND_PREVIEW: "1", PI_TRANSPORT: "unix" };
+const env = { ...process.env, METER_HOME: data, PI_WORKSPACE_SERVER: join(root, "server/main.ts"), PI_PROVIDER: "fixture", PI_TRANSPORT: "unix" };
 const boot = spawnSync(bin, ["server", "start"], { cwd: root, env, encoding: "utf8" });
 if (boot.status !== 0) throw new Error(boot.stderr || boot.stdout || "Could not start fixture backend");
 const socketPath = join(data, "workspace.sock");

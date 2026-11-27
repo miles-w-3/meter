@@ -58,6 +58,58 @@ func TestStatusBarFitsNarrowPane(t *testing.T) {
 	}
 }
 
+func TestContextMeterOpensConversationContext(t *testing.T) {
+	id := "42"
+	title := "Context details"
+	node := protocol.LayoutNode{Id: uuid.New(), ConversationId: &id}
+	tab := protocol.LayoutTab{Id: uuid.New()}
+	setPanes(&tab, []protocol.LayoutNode{node})
+	p := &pane{connected: true}
+	p.state.Current.Status = protocol.Idle
+	estimated := true
+	p.state.Current.ContextUsage = &protocol.ContextUsage{Tokens: 38000, Window: 200000, Estimated: &estimated, Breakdown: &protocol.ContextBreakdown{
+		SystemPrompt: 5000, ProjectInstructions: 3000, Skills: 1000, ToolDefinitions: 4000,
+		UserMessages: 7000, AssistantMessages: 10000, ToolResults: 8000,
+	}}
+	a := &app{
+		panes:      map[uuid.UUID]*pane{node.Id: p},
+		catalog:    protocol.Catalog{Conversations: []protocol.Conversation{{Id: id, Cwd: "/project", Model: "provider/model", Title: &title}}},
+		clientData: "/data/meter",
+	}
+	driver := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(theme)
+		a.paneStatusLine(c, &tab, node, "/project", false, p)
+		a.dialogs(c)
+	}, 800, 600)
+	driver.Frame()
+	if err := driver.Click("Context usage"); err != nil {
+		t.Fatal(err)
+	}
+	driver.Frame()
+	for _, value := range []string{"Context", "38,000 / 200,000 tokens", "19%", "Context breakdown", "System prompt", "Project instructions", "Skills", "Tool definitions", "User messages", "Assistant messages", "Tool results", "Free space", "Session", "Conversation ID", id, "/project", "provider/model", "Storage", "/data/meter", "/data/meter/durable.sqlite", "/data/meter/app.sqlite"} {
+		if !driver.HasText(value) {
+			t.Fatalf("missing %q from context screen: %v", value, driver.Texts())
+		}
+	}
+	if driver.HasText(title) {
+		t.Fatal("conversation title should not be rendered as modal copy")
+	}
+	if driver.HasText("Close") || driver.HasText("Switch conversation…") {
+		t.Fatal("context modal should not have footer actions")
+	}
+}
+
+func TestContextBreakdownIsAbsentWithoutData(t *testing.T) {
+	driver := ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(theme)
+		contextBreakdown(c, &protocol.ContextUsage{Tokens: 10, Window: 100})
+	}, 500, 200)
+	driver.Frame()
+	if driver.HasText("Context breakdown") {
+		t.Fatal("empty context breakdown should not render a section")
+	}
+}
+
 func TestStatusPathUsesAvailableWidthAndContextTooltip(t *testing.T) {
 	node := emptyPane()
 	tab := protocol.LayoutTab{Id: uuid.New()}

@@ -65,3 +65,45 @@ func TestEscapeRecallsLatestQueuedMessage(t *testing.T) {
 		t.Fatalf("recall %q, draft %q", recalled, p.draft)
 	}
 }
+
+func TestGroupBackgroundQueuePreservesOrderAndUserControls(t *testing.T) {
+	mode := protocol.QueuedBackgroundMode("monitor")
+	bg := func(id, job string) protocol.QueuedMessage {
+		return protocol.QueuedMessage{Id: id, Mode: "followUp", Text: "header\nOutput events:\nline " + id, Background: &protocol.QueuedBackground{JobId: job, Label: "CI", Notice: "output", Mode: &mode}}
+	}
+	items := []protocol.QueuedMessage{bg("1", "job"), bg("2", "job"), {Id: "3", Mode: "followUp", Text: "my question"}, bg("4", "job")}
+	groups := groupQueued(items)
+	if len(groups) != 3 || len(groups[0].items) != 2 || groups[1].items[0].Id != "3" || groups[2].items[0].Id != "4" {
+		t.Fatalf("unexpected groups: %+v", groups)
+	}
+	last, ok := latestUserQueued(items)
+	if !ok || last.Id != "3" {
+		t.Fatalf("latest user: %+v, %v", last, ok)
+	}
+	if _, ok := latestUserQueued(items[:2]); ok {
+		t.Fatal("background event must not be recalled")
+	}
+	if got := queuedBackgroundText(items[0]); got != "line 1" {
+		t.Fatalf("background text %q", got)
+	}
+	p := &pane{connected: true}
+	p.state.Current = protocol.ConversationView{Status: "running", Queued: &items}
+	driver := ui.NewTester(func(c *ui.Context) { queuedMessages(c, &app{}, p, "1") }, 600, 500)
+	driver.Frame()
+	if _, found := driver.Find("Toggle Monitor event · CI · 2 batches"); !found {
+		t.Fatal("grouped monitor row missing")
+	}
+	if _, found := driver.Find("Steer queued message"); !found {
+		t.Fatal("user follow-up controls missing")
+	}
+	// The event-only view must not expose controls for editing user messages.
+	eventsOnly := items[:2]
+	p.state.Current.Queued = &eventsOnly
+	driver.Frame()
+	if _, found := driver.Find("Steer queued message"); found {
+		t.Fatal("monitor exposed steer control")
+	}
+	if _, found := driver.Find("Return queued message to draft"); found {
+		t.Fatal("monitor exposed recall control")
+	}
+}

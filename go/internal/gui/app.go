@@ -29,44 +29,46 @@ var appIcon []byte
 var menuIcon []byte
 
 type pane struct {
-	backgroundPreviewExpanded bool
-	backgroundPreviewStopped  [2]bool
-	backgroundPreviewCleared  [2]bool
-	backgroundPreviewDetail   int
-	conversation              string
-	expandedTools             map[string]bool
-	thinkingExpanded          map[string]bool
-	thinkingRun               string
-	transcriptScroll          ui.ScrollState
-	transcriptGuard           transcriptScrollGuard
-	rejected                  bool
-	cancel                    context.CancelFunc
-	state                     client.State
-	historical                client.State
-	historyKey                string
-	historyLoading            bool
-	historyError              string
-	forkInFlight              bool
-	forkReceipt               *protocol.ForkReceipt
-	submission                client.Submission
-	list                      ui.ListState
-	draft                     string
-	focusDictatedDraft        bool
-	moveDictatedCaret         bool
-	images                    []draftImage
-	transcriptImages          map[string]*transcriptImageState
-	transcriptDiffs           map[string]*transcriptDiffs
-	transcriptCache           transcriptCache
-	notice                    string
-	connected                 bool
-	starting                  bool
-	pendingFirst              bool
-	loading                   bool
-	activity                  palette.Activity
-	toolClock                 bool
-	modelDraft                *protocol.SelectionInput
-	modelPicker               modelPickerState
-	queuePending              string
+	backgroundExpanded bool
+	backgroundDetail   string
+	backgroundJobs     []client.BackgroundJob
+	backgroundError    string
+	backgroundStopping map[string]bool
+	conversation       string
+	expandedTools      map[string]bool
+	thinkingExpanded   map[string]bool
+	thinkingRun        string
+	transcriptScroll   ui.ScrollState
+	transcriptGuard    transcriptScrollGuard
+	rejected           bool
+	cancel             context.CancelFunc
+	state              client.State
+	historical         client.State
+	historyKey         string
+	historyLoading     bool
+	historyError       string
+	forkInFlight       bool
+	forkReceipt        *protocol.ForkReceipt
+	submission         client.Submission
+	list               ui.ListState
+	draft              string
+	focusDictatedDraft bool
+	moveDictatedCaret  bool
+	images             []draftImage
+	transcriptImages   map[string]*transcriptImageState
+	transcriptDiffs    map[string]*transcriptDiffs
+	transcriptCache    transcriptCache
+	notice             string
+	connected          bool
+	starting           bool
+	pendingFirst       bool
+	loading            bool
+	activity           palette.Activity
+	toolClock          bool
+	modelDraft         *protocol.SelectionInput
+	modelPicker        modelPickerState
+	queuePending       string
+	queueExpanded      map[string]bool
 }
 
 type editor struct {
@@ -80,97 +82,98 @@ type paneDrag struct {
 }
 
 type app struct {
-	hideThinking         bool
-	mermaidCache         map[string]*mermaidEntry
-	mermaidClock         uint64
-	detailJob            *mermaidEntry // at most one whole-diagram raster in flight
-	ctx                  context.Context
-	api                  *client.Client
-	window               *mygo.Window
-	tray                 *mygo.Tray
-	update               func(func())
-	name                 string
-	provider             string
-	layout               protocol.Layout
-	catalog              protocol.Catalog
-	panes                map[uuid.UUID]*pane
-	tabScroll            ui.ScrollState
-	paneScroll           ui.ScrollState
-	selectedPane         uuid.UUID
-	selectedPaneTab      uuid.UUID
-	lastProjectTabs      map[uuid.UUID]uuid.UUID
-	recentHeads          map[string]string
-	readHeads            map[string]string
-	clientData           string
-	readHeadsPath        string
-	readHeadsSaver       *readHeadsWriter
-	unreadConversations  map[string]bool
-	widthDrag            *paneResize
-	revealPane           uuid.UUID
-	projectForm          bool
-	tabEditor, cwdEditor *editor
-	closeTabConfirm      *uuid.UUID
-	closePaneConfirm     *paneDrag
-	nameEditor           *nameEditor
-	paletteOpen          bool
-	paletteFilter        string
-	tree                 *treePreview
-	lastTreeEscape       time.Time
-	writeToast           string
-	badgeCount           int
-	pathQuery            string
-	pathResultsQuery     string
-	pathError            string
-	pathCancel           context.CancelFunc
-	pathResults          []string
-	projectPath          string
-	projectName          string
-	filter               string
-	notice               string
-	loaded, fetching     bool
-	saving, creating     bool
-	conflict             bool
-	mayRetry, mayAbort   bool
-	mayDictate           bool
-	dictation            *dictationRecording
-	spaceHold            *spaceHold
-	dictationVisible     bool
-	dictationTextFocused bool
-	backend              BackendControls
-	backendInfo          protocol.ServerInfo
-	backendOpen          bool
-	backendPending       string
-	backendConfirm       string
-	backendNotice        string
-	backendOnline        bool
-	settingsSection      string
-	agentPathLoaded      bool
-	agentPathDraft       string
-	agentPathSaved       string
-	agentPathNotice      string
-	agentPathPending     bool
-	diffLayout           int
-	diffInline           string
-	toolsStatus          protocol.ToolsStatus
-	toolsLoaded          bool
-	toolsPending         bool
-	toolsError           string
-	modelsInventory      protocol.ModelInventory
-	defaultModelPane     pane
-	modelDefaults        protocol.Settings
-	modelsFilter         string
-	modelsLoading        bool
-	modelsLoaded         bool
-	modelsError          string
-	claudeStatusLoading  bool
-	claudeStatusEpoch    uint64
-	claudeStatusAt       time.Time
-	claudeStatusError    bool
-	recentModels         []protocol.ModelRef
-	terminals            map[uuid.UUID]terminalSession
-	newTerminal          func(terminal.Options) (terminalSession, error)
-	terminalErrors       map[uuid.UUID]string
-	terminalCleanupUntil time.Time
+	hideThinking                      bool
+	mermaidCache                      map[string]*mermaidEntry
+	mermaidClock                      uint64
+	detailJob                         *mermaidEntry // at most one whole-diagram raster in flight
+	ctx                               context.Context
+	api                               *client.Client
+	window                            *mygo.Window
+	tray                              *mygo.Tray
+	update                            func(func())
+	name                              string
+	provider                          string
+	layout                            protocol.Layout
+	catalog                           protocol.Catalog
+	panes                             map[uuid.UUID]*pane
+	tabScroll                         ui.ScrollState
+	paneScroll                        ui.ScrollState
+	selectedPane                      uuid.UUID
+	selectedPaneTab                   uuid.UUID
+	lastProjectTabs                   map[uuid.UUID]uuid.UUID
+	recentHeads                       map[string]string
+	readHeads                         map[string]string
+	clientData                        string
+	readHeadsPath                     string
+	readHeadsSaver                    *readHeadsWriter
+	unreadConversations               map[string]bool
+	widthDrag                         *paneResize
+	revealPane                        uuid.UUID
+	projectForm                       bool
+	tabEditor, cwdEditor              *editor
+	closeTabConfirm                   *uuid.UUID
+	closePaneConfirm                  *paneDrag
+	nameEditor                        *nameEditor
+	contextOpen                       *contextScreen
+	paletteOpen                       bool
+	paletteFilter                     string
+	tree                              *treePreview
+	lastTreeEscape                    time.Time
+	writeToast                        string
+	badgeCount                        int
+	pathQuery                         string
+	pathResultsQuery                  string
+	pathError                         string
+	pathCancel                        context.CancelFunc
+	pathResults                       []string
+	projectPath                       string
+	projectName                       string
+	filter                            string
+	notice                            string
+	loaded, fetching                  bool
+	saving, creating                  bool
+	conflict                          bool
+	mayRetry, mayAbort, mayBackground bool
+	mayDictate                        bool
+	dictation                         *dictationRecording
+	spaceHold                         *spaceHold
+	dictationVisible                  bool
+	dictationTextFocused              bool
+	backend                           BackendControls
+	backendInfo                       protocol.ServerInfo
+	backendOpen                       bool
+	backendPending                    string
+	backendConfirm                    string
+	backendNotice                     string
+	backendOnline                     bool
+	settingsSection                   string
+	agentPathLoaded                   bool
+	agentPathDraft                    string
+	agentPathSaved                    string
+	agentPathNotice                   string
+	agentPathPending                  bool
+	diffLayout                        int
+	diffInline                        string
+	toolsStatus                       protocol.ToolsStatus
+	toolsLoaded                       bool
+	toolsPending                      bool
+	toolsError                        string
+	modelsInventory                   protocol.ModelInventory
+	defaultModelPane                  pane
+	modelDefaults                     protocol.Settings
+	modelsFilter                      string
+	modelsLoading                     bool
+	modelsLoaded                      bool
+	modelsError                       string
+	claudeStatusLoading               bool
+	claudeStatusEpoch                 uint64
+	claudeStatusAt                    time.Time
+	claudeStatusError                 bool
+	recentModels                      []protocol.ModelRef
+	terminals                         map[uuid.UUID]terminalSession
+	newTerminal                       func(terminal.Options) (terminalSession, error)
+	terminalErrors                    map[uuid.UUID]string
+	terminalCleanupUntil              time.Time
 }
 
 type terminalSession interface {
@@ -351,6 +354,10 @@ func (a *app) syncPanes() {
 			ctx, cancel := context.WithCancel(a.ctx)
 			p.cancel, p.conversation = cancel, *node.ConversationId
 			p.state, p.connected = client.State{}, false
+			p.backgroundJobs, p.backgroundError = nil, ""
+			if a.api != nil && a.update != nil && a.mayBackground {
+				go a.watchBackground(ctx, node.Id, p, *node.ConversationId)
+			}
 			if _, found := a.metadata(p.conversation); !found && a.api != nil && a.ctx != nil && a.update != nil {
 				go func(conversation string) {
 					info, err := a.api.Conversation(a.ctx, conversation)

@@ -50,3 +50,27 @@ test("event bursts are bounded and report dropped events", async () => {
     if (events?.type === "output") { assert.equal(events.lines.length, 50); assert.equal(events.dropped, 50); }
   } finally { await jobs.dispose(); }
 });
+
+test("stderr is retained but does not produce monitor events", async () => {
+  const notices: BackgroundNotice[] = [];
+  const jobs = new BackgroundJobs(n => notices.push(n));
+  try {
+    jobs.start({ conversationId: "one", label: "streams", command: "echo out; echo err >&2", cwd: process.cwd(), mode: "monitor" });
+    await waitFor(() => notices.some(n => n.type === "exit"));
+    const event = notices.find(n => n.type === "output");
+    assert.equal(event?.type, "output");
+    if (event?.type === "output") assert.deepEqual(event.lines, ["out"]);
+    assert.match(notices.find(n => n.type === "exit")!.job.output, /err/);
+  } finally { await jobs.dispose(); }
+});
+
+test("deadline stops a command and reports timed_out", async () => {
+  const notices: BackgroundNotice[] = [];
+  const jobs = new BackgroundJobs(n => notices.push(n));
+  try {
+    const job = jobs.start({ conversationId: "one", label: "deadline", command: "sleep 30", cwd: process.cwd(), timeoutMs: 1000 });
+    assert.equal(job.deadlineAt, job.startedAt + 1000);
+    await waitFor(() => notices.some(n => n.type === "exit"));
+    assert.equal(notices.find(n => n.type === "exit")!.job.status, "timed_out");
+  } finally { await jobs.dispose(); }
+});

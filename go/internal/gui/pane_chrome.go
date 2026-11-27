@@ -130,7 +130,7 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 						pct = palette.Percent(usage.Tokens, usage.Window)
 						tooltip = fmt.Sprintf("Context: %s/%s (%s)", formatCount(usage.Tokens), formatCount(usage.Window), palette.PercentLabel(pct))
 					}
-					meter := ui.Row(c).Gap(meterGap).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(tooltip)
+					meter := ui.ButtonBase(c).Gap(meterGap).AlignItems(ui.Center).Shrink(0).Label("Context usage").Tooltip(tooltip).Cursor(ui.CursorPointer)
 					if running {
 						activity, reduceMotion := &p.activity, c.Preferences().ReduceMotion
 						meter.DrawOver(func(painter *ui.Painter, bounds ui.Rect) {
@@ -143,6 +143,9 @@ func (a *app) paneStatusLine(c *ui.Context, tab *protocol.LayoutTab, node protoc
 							ui.Box(c.Key(i)).Size(meterCellWidth, meterCellHeight).Radius(1).Background(color)
 						}
 					})
+					if meter.Clicked() {
+						a.openContextScreen(node, cwd, p)
+					}
 				}
 			})
 		})

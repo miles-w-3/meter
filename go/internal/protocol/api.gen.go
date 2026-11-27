@@ -232,6 +232,42 @@ func (e ProviderInfoStatus) Valid() bool {
 	}
 }
 
+// Defines values for QueuedBackgroundMode.
+const (
+	QueuedBackgroundModeExit    QueuedBackgroundMode = "exit"
+	QueuedBackgroundModeMonitor QueuedBackgroundMode = "monitor"
+)
+
+// Valid indicates whether the value is a known member of the QueuedBackgroundMode enum.
+func (e QueuedBackgroundMode) Valid() bool {
+	switch e {
+	case QueuedBackgroundModeExit:
+		return true
+	case QueuedBackgroundModeMonitor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueuedBackgroundNotice.
+const (
+	QueuedBackgroundNoticeExit   QueuedBackgroundNotice = "exit"
+	QueuedBackgroundNoticeOutput QueuedBackgroundNotice = "output"
+)
+
+// Valid indicates whether the value is a known member of the QueuedBackgroundNotice enum.
+func (e QueuedBackgroundNotice) Valid() bool {
+	switch e {
+	case QueuedBackgroundNoticeExit:
+		return true
+	case QueuedBackgroundNoticeOutput:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueuedMessageMode.
 const (
 	QueuedMessageModeFollowUp QueuedMessageMode = "followUp"
@@ -487,16 +523,54 @@ type AuthMethod struct {
 // AuthMethodType defines model for AuthMethod.Type.
 type AuthMethodType string
 
+// BackgroundJob defines model for BackgroundJob.
+type BackgroundJob struct {
+	Command        string             `json:"command"`
+	ConversationId string             `json:"conversationId"`
+	Cwd            string             `json:"cwd"`
+	DeadlineAt     *int               `json:"deadlineAt,omitempty"`
+	DroppedEvents  int                `json:"droppedEvents"`
+	EndedAt        *int               `json:"endedAt,omitempty"`
+	Events         int                `json:"events"`
+	ExitCode       *int               `json:"exitCode,omitempty"`
+	Id             openapi_types.UUID `json:"id"`
+	Label          string             `json:"label"`
+	Mode           string             `json:"mode"`
+	Output         string             `json:"output"`
+	Pid            *int               `json:"pid,omitempty"`
+	Signal         *string            `json:"signal,omitempty"`
+	StartedAt      int                `json:"startedAt"`
+	Status         string             `json:"status"`
+}
+
+// BackgroundJobList defines model for BackgroundJobList.
+type BackgroundJobList struct {
+	Jobs []BackgroundJob `json:"jobs"`
+}
+
 // Catalog defines model for Catalog.
 type Catalog struct {
 	Conversations []Conversation `json:"conversations"`
 	Projects      []Project      `json:"projects"`
 }
 
+// ContextBreakdown defines model for ContextBreakdown.
+type ContextBreakdown struct {
+	AssistantMessages   int `json:"assistantMessages"`
+	ProjectInstructions int `json:"projectInstructions"`
+	Skills              int `json:"skills"`
+	SystemPrompt        int `json:"systemPrompt"`
+	ToolDefinitions     int `json:"toolDefinitions"`
+	ToolResults         int `json:"toolResults"`
+	UserMessages        int `json:"userMessages"`
+}
+
 // ContextUsage defines model for ContextUsage.
 type ContextUsage struct {
-	Tokens int `json:"tokens"`
-	Window int `json:"window"`
+	Breakdown *ContextBreakdown `json:"breakdown,omitempty"`
+	Estimated *bool             `json:"estimated,omitempty"`
+	Tokens    int               `json:"tokens"`
+	Window    int               `json:"window"`
 }
 
 // Conversation defines model for Conversation.
@@ -841,12 +915,27 @@ type ProviderSetting struct {
 	Sessions *ProviderSessions `json:"sessions,omitempty"`
 }
 
+// QueuedBackground defines model for QueuedBackground.
+type QueuedBackground struct {
+	JobId  string                 `json:"jobId"`
+	Label  string                 `json:"label"`
+	Mode   *QueuedBackgroundMode  `json:"mode,omitempty"`
+	Notice QueuedBackgroundNotice `json:"notice"`
+}
+
+// QueuedBackgroundMode defines model for QueuedBackground.Mode.
+type QueuedBackgroundMode string
+
+// QueuedBackgroundNotice defines model for QueuedBackground.Notice.
+type QueuedBackgroundNotice string
+
 // QueuedMessage defines model for QueuedMessage.
 type QueuedMessage struct {
-	Id     string            `json:"id"`
-	Images int               `json:"images"`
-	Mode   QueuedMessageMode `json:"mode"`
-	Text   string            `json:"text"`
+	Background *QueuedBackground `json:"background,omitempty"`
+	Id         string            `json:"id"`
+	Images     int               `json:"images"`
+	Mode       QueuedMessageMode `json:"mode"`
+	Text       string            `json:"text"`
 }
 
 // QueuedMessageMode defines model for QueuedMessage.Mode.
@@ -917,6 +1006,7 @@ type ServerInfo struct {
 	Provider        string               `json:"provider"`
 	Ready           ServerInfoReady      `json:"ready"`
 	Revision        *string              `json:"revision,omitempty"`
+	Storage         *StorageInfo         `json:"storage,omitempty"`
 	Transport       *ServerInfoTransport `json:"transport,omitempty"`
 }
 
@@ -941,6 +1031,13 @@ type Settings struct {
 
 // SettingsSource defines model for Settings.Source.
 type SettingsSource string
+
+// StorageInfo defines model for StorageInfo.
+type StorageInfo struct {
+	Conversations string `json:"conversations"`
+	DataDirectory string `json:"dataDirectory"`
+	Workspace     string `json:"workspace"`
+}
 
 // SubmitInput defines model for SubmitInput.
 type SubmitInput struct {
@@ -1264,6 +1361,12 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	AbortRun(ctx context.Context, id string, body AbortRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetBackgroundJobs performs a GET /v1/conversations/{id}/background (the `GetBackgroundJobs` operationId) request.
+	GetBackgroundJobs(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StopBackgroundJob performs a POST /v1/conversations/{id}/background/{jobId}/stop (the `StopBackgroundJob` operationId) request.
+	StopBackgroundJob(ctx context.Context, id string, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SetConversationCwdWithBody performs a PUT /v1/conversations/{id}/cwd (the `SetConversationCwd` operationId) request,
 	// with any type of body and a specified content type.
 	SetConversationCwdWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1481,6 +1584,32 @@ func (c *Client) AbortRunWithBody(ctx context.Context, id string, contentType st
 // Takes a body of the `application/json` content type.
 func (c *Client) AbortRun(ctx context.Context, id string, body AbortRunJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAbortRunRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetBackgroundJobs performs a GET /v1/conversations/{id}/background (the `GetBackgroundJobs` operationId) request.
+func (c *Client) GetBackgroundJobs(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBackgroundJobsRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// StopBackgroundJob performs a POST /v1/conversations/{id}/background/{jobId}/stop (the `StopBackgroundJob` operationId) request.
+func (c *Client) StopBackgroundJob(ctx context.Context, id string, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStopBackgroundJobRequest(c.Server, id, jobId)
 	if err != nil {
 		return nil, err
 	}
@@ -2179,6 +2308,81 @@ func NewAbortRunRequestWithBody(server string, id string, contentType string, bo
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetBackgroundJobsRequest constructs an http.Request for the GetBackgroundJobs method
+func NewGetBackgroundJobsRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/background", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStopBackgroundJobRequest constructs an http.Request for the StopBackgroundJob method
+func NewStopBackgroundJobRequest(server string, id string, jobId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "jobId", jobId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/conversations/%s/background/%s/stop", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -3406,6 +3610,16 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	AbortRunWithResponse(ctx context.Context, id string, body AbortRunJSONRequestBody, reqEditors ...RequestEditorFn) (*AbortRunResponse, error)
 
+	// GetBackgroundJobsWithResponse performs a GET /v1/conversations/{id}/background (the `GetBackgroundJobs` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetBackgroundJobsWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetBackgroundJobsResponse, error)
+
+	// StopBackgroundJobWithResponse performs a POST /v1/conversations/{id}/background/{jobId}/stop (the `StopBackgroundJob` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	StopBackgroundJobWithResponse(ctx context.Context, id string, jobId string, reqEditors ...RequestEditorFn) (*StopBackgroundJobResponse, error)
+
 	// SetConversationCwdWithBodyWithResponse performs a PUT /v1/conversations/{id}/cwd (the `SetConversationCwd` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -3870,6 +4084,144 @@ func (r AbortRunResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r AbortRunResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetBackgroundJobsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BackgroundJobList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetBackgroundJobsResponse) GetJSON200() *BackgroundJobList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetBackgroundJobsResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetBackgroundJobsResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r GetBackgroundJobsResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetBackgroundJobsResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetBackgroundJobsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBackgroundJobsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBackgroundJobsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBackgroundJobsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type StopBackgroundJobResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *BackgroundJob
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Problem
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Problem
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Problem
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r StopBackgroundJobResponse) GetJSON200() *BackgroundJob {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r StopBackgroundJobResponse) GetJSON400() *Problem {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r StopBackgroundJobResponse) GetJSON404() *Problem {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r StopBackgroundJobResponse) GetJSON409() *Problem {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r StopBackgroundJobResponse) GetJSON500() *Problem {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r StopBackgroundJobResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r StopBackgroundJobResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StopBackgroundJobResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r StopBackgroundJobResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5804,6 +6156,28 @@ func (c *ClientWithResponses) AbortRunWithResponse(ctx context.Context, id strin
 	return ParseAbortRunResponse(rsp)
 }
 
+// GetBackgroundJobsWithResponse performs a GET /v1/conversations/{id}/background (the `GetBackgroundJobs` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetBackgroundJobsWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetBackgroundJobsResponse, error) {
+	rsp, err := c.GetBackgroundJobs(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBackgroundJobsResponse(rsp)
+}
+
+// StopBackgroundJobWithResponse performs a POST /v1/conversations/{id}/background/{jobId}/stop (the `StopBackgroundJob` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) StopBackgroundJobWithResponse(ctx context.Context, id string, jobId string, reqEditors ...RequestEditorFn) (*StopBackgroundJobResponse, error) {
+	rsp, err := c.StopBackgroundJob(ctx, id, jobId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStopBackgroundJobResponse(rsp)
+}
+
 // SetConversationCwdWithBodyWithResponse performs a PUT /v1/conversations/{id}/cwd (the `SetConversationCwd` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -6422,6 +6796,114 @@ func ParseAbortRunResponse(rsp *http.Response) (*AbortRunResponse, error) {
 	switch {
 	case rsp.StatusCode == 202:
 		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetBackgroundJobsResponse parses an HTTP response from a GetBackgroundJobsWithResponse call
+func ParseGetBackgroundJobsResponse(rsp *http.Response) (*GetBackgroundJobsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBackgroundJobsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BackgroundJobList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStopBackgroundJobResponse parses an HTTP response from a StopBackgroundJobWithResponse call
+func ParseStopBackgroundJobResponse(rsp *http.Response) (*StopBackgroundJobResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StopBackgroundJobResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BackgroundJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Problem

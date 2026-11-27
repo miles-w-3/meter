@@ -14,6 +14,7 @@ type nameEditor struct {
 }
 
 func (a *app) dialogs(c *ui.Context) {
+	a.contextDialog(c)
 	if target := a.closePaneConfirm; target != nil {
 		open := true
 		ui.Modal(c.Key("close-running-pane"), &open, func() {

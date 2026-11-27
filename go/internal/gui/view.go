@@ -739,7 +739,7 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 		a.transcript(c, p, id)
 	})
 	composerArea(c, func() {
-		a.backgroundPreview(c, p)
+		a.backgroundView(c, p)
 		queuedMessages(c, a, p, id)
 		mode := protocol.SubmitInputMode("prompt")
 		if running {
@@ -757,8 +757,11 @@ func (a *app) renderPane(c *ui.Context, project protocol.Project, tab *protocol.
 			if a.dictation != nil || p.queuePending != "" || p.state.Current.Queued == nil || len(*p.state.Current.Queued) == 0 {
 				return false
 			}
-			items := *p.state.Current.Queued
-			a.recallQueued(p, id, items[len(items)-1], false)
+			item, ok := latestUserQueued(*p.state.Current.Queued)
+			if !ok {
+				return false
+			}
+			a.recallQueued(p, id, item, false)
 			return true
 		})
 

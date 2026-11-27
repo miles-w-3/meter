@@ -3,7 +3,7 @@ import { codeSearchTools } from "./tools/code-search.ts";
 import { mermaidPreview } from "./fixtures/mermaid-preview.ts";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { calculateContextTokens, estimateMessageTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { createModels } from "@earendil-works/pi-ai/models";
 import type { FauxResponseFactory } from "@earendil-works/pi-ai/providers/faux";
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
@@ -22,6 +22,8 @@ import type { submitInput } from "../contracts/schemas.ts";
 import type { WebSearch } from "./tools/web-search.ts";
 import { webFetchTool } from "./tools/web-fetch.ts";
 import { snapshot, compare } from "./tools/file-diffs.ts";
+import { backgroundTools } from "./tools/background.ts";
+import type { BackgroundJobs } from "./background-jobs.ts";
 
 const answer = () => fauxAssistantMessage([fauxText("Fixture completed after running the coding tools.")]);
 const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
@@ -37,7 +39,19 @@ function fixtureProvider() {
     const results = messages.filter((message) => message.role === "toolResult");
     const preview = /^fixture:mermaid:(tiny|wide|tall|square|wide-data)$/.exec(prompt.trim());
     if (preview) return fauxAssistantMessage([fauxText(mermaidPreview[preview[1]])]);
-    if (prompt === "fixture:background-preview") return fauxAssistantMessage([fauxText("I've started the unit tests and a CI monitor. I'll investigate the integration failure while those run.\n\nCI reports that the integration tests failed on linux-arm64. I'm checking the timeout in the integration suite.")]);
+    if (prompt === "fixture:background-queue" || prompt === "fixture:background-queue-preview") {
+      const previewQueue = prompt === "fixture:background-queue-preview";
+      if (!results.length) return tool("bg_run", { command: previewQueue ? "echo 'CI started'; sleep 2; echo 'Tests running'; sleep 2; echo 'Integration test failed'; sleep 90" : "sleep 2; echo 'queued CI event'; sleep 30", label: "Queued CI", mode: "monitor" });
+      if (results.length === 1) return tool("bash", { command: previewQueue ? "sleep 90" : "sleep 8" });
+      return fauxAssistantMessage([fauxText("Finished the foreground work.")]);
+    }
+    if (prompt === "fixture:background-preview" || prompt === "fixture:background-test") {
+      const testing = prompt === "fixture:background-test";
+      if (!results.length) return tool("bg_run", { command: testing ? "sleep 2; echo 'Unit tests passed'" : "echo 'Running integration tests…'; sleep 30; echo 'Unit tests passed'", label: "Unit tests" });
+      if (results.length === 1) return tool("bg_run", { command: testing ? "echo 'CI queued'; sleep 30" : "echo 'CI queued'; sleep 5; echo 'integration tests failed on linux-arm64'; sleep 60", label: "CI status", mode: "monitor" });
+      return fauxAssistantMessage([fauxText("I've started the unit tests and a CI monitor. I'll investigate the integration failure while those run.")]);
+    }
+    if (prompt.startsWith("[Background ")) return fauxAssistantMessage([fauxText("Background update received.")]);
     if (prompt === "fixture:thinking") return fauxAssistantMessage([fauxThinking("Let me consider the request and check the relevant details.\n\nFirst, I should understand what the user is asking and identify the constraints. The answer should be clear, direct, and grounded in the available information.\n\nNext, I can compare the possible approaches:\n- Keep the explanation concise.\n- Include an example where it helps.\n- Call out any uncertainty rather than making assumptions.\n\nWith those points in mind, I can put together a useful response."), fauxText("Here is the answer after considering it.")]);
     if (prompt.includes("fixture:demo")) return fauxAssistantMessage([fauxText("desktop reconnect output ".repeat(200))]);
     if (prompt.includes("fixture:slow")) return fauxAssistantMessage([fauxText("streamed model output ".repeat(45))]);
@@ -112,7 +126,7 @@ class LiveProbeEnv extends NodeExecutionEnv {
 
 export type Provider = string;
 
-export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch, options?: { claudeEnabled?: boolean; claudeSessions?: ProviderSessions; computedDiffs?: () => boolean; webFetchEnabled?: () => boolean }) {
+export async function openHarness(db: string, provider: Provider, webSearch?: WebSearch, options?: { claudeEnabled?: boolean; claudeSessions?: ProviderSessions; computedDiffs?: () => boolean; webFetchEnabled?: () => boolean; backgroundJobs?: BackgroundJobs }) {
   const useOpenAI = provider !== "fixture";
   // An empty provider is the normal server mode: it has no environment default.
   // Explicit providers are still accepted by direct harness callers and the live smoke test.
@@ -191,6 +205,7 @@ export async function openHarness(db: string, provider: Provider, webSearch?: We
     ? defineExtension({ name: "live-probe-tools", tools: [createReadTool(), createWriteTool()] })
     : defineExtension({ name: "coding-tools", tools: [createReadTool(), trackedWrite, createEditTool(), trackedBash, ...codeSearchTools()] }));
   registry.install(defineExtension({ name: "mermaid-catalog", tools: [mermaidCatalogTool()] }));
+  if (options?.backgroundJobs && provider !== "openai-smoke") registry.install(defineExtension({ name: "background-jobs", tools: backgroundTools(options.backgroundJobs) }));
   const searchExtension = webSearch && defineExtension({ name: "web-search", tools: [webSearch.tool()] });
   let searchInstalled = false;
   const fetchEnabled = () => options?.webFetchEnabled?.() ?? true;
@@ -364,14 +379,14 @@ export async function recallQueued(conversation: Conversation, submission: strin
     const index = inbox.items.findIndex((item) => String(item.id) === submission);
     if (index < 0) return undefined;
     const item = inbox.items[index];
-    if (item.mode === "write") return undefined;
+    if (item.mode === "write" || item.entry?.kind === "meter.background") return undefined;
     const blocks = typeof item.content === "string" ? [] : item.content;
     saved.content = typeof item.content === "string" ? item.content : blocks.flatMap((block) => block.type === "text" ? [block.text] : []).join("\n");
     saved.images = blocks.flatMap((block) => block.type === "image" && block.mimeType === "image/png" ? [{ data: block.data, mimeType: "image/png" as const }] : []);
     saved.recalled = true;
     for (let i = inbox.items.length - 1; i >= index; i--) {
       const removed = inbox.items[i];
-      if (removed.mode === "write") continue;
+      if (removed.mode === "write" || removed.entry?.kind === "meter.background") continue;
       inbox.items.splice(i, 1);
       tx.settleSubmission(removed.id, { status: "unanswered", reason: i === index ? "recalled" : "discarded_after_recall" });
       if (i !== index) saved.clearedAfter++;
@@ -386,7 +401,7 @@ export async function steerQueued(conversation: Conversation, submission: string
     if (!live.run) return false;
     const inbox = await tx.doc(InboxDoc, conversation.id);
     const item = inbox.items.find((item) => String(item.id) === submission);
-    if (!item || item.mode === "write") return false;
+    if (!item || item.mode === "write" || item.entry?.kind === "meter.background") return false;
     item.mode = "steer";
     return true;
   }, context);
@@ -551,6 +566,47 @@ export function contextTokens(active: ContextView) {
   return active.messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
 }
 
+export function contextBreakdown(active: ContextView) {
+  const raw = {
+    systemPrompt: 0, projectInstructions: 0, skills: 0, toolDefinitions: 0,
+    userMessages: 0, assistantMessages: 0, toolResults: 0,
+  };
+  const text = (content: string | readonly { type: string; text?: string }[]) => typeof content === "string"
+    ? content : content.flatMap(block => block.type === "text" && block.text ? [block.text] : []).join("\n");
+  for (const message of active.messages) {
+    if (message.role === "system") {
+      raw.systemPrompt += estimateTextTokens(text(message.content));
+      for (const [name, section] of Object.entries(message.sections ?? {})) {
+        if (!section) continue;
+        const tokens = estimateTextTokens(section);
+        if (name === "skills") raw.skills += tokens;
+        else if (name === "project_context") raw.projectInstructions += tokens;
+        else if (name === "tools") raw.toolDefinitions += tokens;
+        else raw.systemPrompt += tokens;
+      }
+      if (message.toolsAdded?.length) raw.toolDefinitions += estimateTextTokens(JSON.stringify(message.toolsAdded));
+      if (message.toolsRemoved?.length) raw.toolDefinitions += estimateTextTokens(JSON.stringify(message.toolsRemoved));
+    } else if (message.role === "user") {
+      const tokens = estimateMessageTokens(message);
+      if (/^<skill name="[^"]+" location="[^"]+">\n/u.test(text(message.content))) raw.skills += tokens;
+      else raw.userMessages += tokens;
+    } else if (message.role === "assistant") raw.assistantMessages += estimateMessageTokens(message);
+    else raw.toolResults += estimateMessageTokens(message);
+  }
+  const total = contextTokens(active);
+  const entries = Object.entries(raw) as [keyof typeof raw, number][];
+  const estimated = entries.reduce((sum, [, value]) => sum + value, 0);
+  if (!estimated || !total) return raw;
+  const scaled = entries.map(([key, value]) => {
+    const exact = value * total / estimated;
+    return { key, value: Math.floor(exact), fraction: exact - Math.floor(exact) };
+  });
+  let remainder = total - scaled.reduce((sum, item) => sum + item.value, 0);
+  scaled.sort((a, b) => b.fraction - a.fraction);
+  for (let i = 0; i < remainder; i++) scaled[i % scaled.length]!.value++;
+  return Object.fromEntries(scaled.map(item => [item.key, item.value])) as typeof raw;
+}
+
 // The stream's view of a conversation. A stream watcher passes its own
 // EntryProjections so that each entry is projected once.
 export function project(value: ConversationView, projections = new EntryProjections()) {
@@ -571,7 +627,14 @@ export function project(value: ConversationView, projections = new EntryProjecti
       .filter((item) => item.mode !== "write").map((item) => {
         const blocks = typeof item.content === "string" ? [] : item.content;
         const text = typeof item.content === "string" ? item.content : blocks.flatMap((block) => block.type === "text" ? [block.text] : []).join("\n");
-        return { id: String(item.id), mode: item.mode, text: clip(text, 2_000), images: blocks.filter((block) => block.type === "image").length };
+        const data = item.entry?.kind === "meter.background" && item.entry.data && typeof item.entry.data === "object" && !Array.isArray(item.entry.data) ? item.entry.data : undefined;
+        const background = data ? {
+          jobId: typeof data.jobId === "string" ? data.jobId : "",
+          label: typeof data.label === "string" ? data.label : "Background job",
+          notice: data.notice === "exit" ? "exit" as const : "output" as const,
+          mode: data.mode === "monitor" || data.mode === "exit" ? data.mode : undefined,
+        } : undefined;
+        return { id: String(item.id), mode: item.mode, text: clip(text, 2_000), images: blocks.filter((block) => block.type === "image").length, background };
       }),
     tools: live?.tools?.slice(0, 24).map((slot) => ({
       callId: slot.callId, taskId: slot.taskId === undefined ? undefined : String(slot.taskId),
